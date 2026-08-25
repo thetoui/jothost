@@ -3,9 +3,10 @@
 A self-hosted Linux hosting control panel: websites, PHP and Node.js applications,
 databases, SSL, files, cron, backups, monitoring, and security from one web interface.
 
-**Status:** Phase 0 (project foundation) complete. See [TASKS.md](TASKS.md) for the
-phase plan and [docs/PHASE0.md](docs/PHASE0.md) for what this foundation does and
-does not include.
+**Status:** Phases 0 (foundation) and 1 (authentication) complete. See
+[TASKS.md](TASKS.md) for the phase plan, and [docs/PHASE0.md](docs/PHASE0.md) /
+[docs/PHASE1.md](docs/PHASE1.md) for what each phase does and does not
+include.
 
 ---
 
@@ -35,6 +36,8 @@ Three rules define the design:
    with `0660` permissions.
 3. **No arbitrary shell execution**, ever. Operations are typed constants
    validated against an allowlist before dispatch.
+4. **Sessions are revocable.** Access tokens are opaque and server-side, so
+   logout takes effect immediately rather than at expiry.
 
 Full detail: [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -68,6 +71,15 @@ Postgres, Redis, the Agent, the API, the frontend, and Nginx.
 | API liveness | http://localhost:8080/healthz |
 | API readiness | http://localhost:8080/readyz |
 
+Create the first administrator — credentials come from the environment so they
+never reach the process list or shell history:
+
+```bash
+JOTHOST_ADMIN_USERNAME=admin JOTHOST_ADMIN_PASSWORD='a-long-password' make create-admin
+```
+
+Then sign in at http://localhost:8081.
+
 Without Make:
 
 ```bash
@@ -93,6 +105,12 @@ make docker-test              # full containerised suite incl. integration
 make verify                   # everything CI runs
 ```
 
+```bash
+make migrate                  # apply pending database migrations
+make migrate-status           # show migration state
+make create-admin             # create an administrator
+```
+
 ---
 
 ## Repository layout
@@ -103,7 +121,7 @@ agent/      Go Host Agent — privileged, Unix socket only
 shared/     Go module shared by api and agent (logger, protocol, version)
 frontend/   React + TypeScript + Vite + Tailwind
 docker/     Dockerfiles and Nginx configuration
-migrations/ SQL migrations (Phase 1 onward)
+migrations/ SQL migrations
 tests/      Integration and end-to-end tests
 docs/       Development and phase documentation
 ```
@@ -116,6 +134,10 @@ Configuration comes from the environment; nothing is hard-coded and secrets are
 never committed. Start from [.env.example](.env.example). Every variable is
 validated at startup — the API and Agent refuse to boot on invalid
 configuration rather than running with a surprising default.
+
+`ENCRYPTION_KEY` is required and protects secrets at rest (currently 2FA
+secrets). Generate one with `openssl rand -hex 32`. Losing or changing it makes
+every stored 2FA secret undecryptable, so treat it like a database password.
 
 ---
 
@@ -131,11 +153,18 @@ configuration rather than running with a surprising default.
 | [CLAUDE.md](CLAUDE.md) | Engineering rules |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Day-to-day workflow |
 | [docs/PHASE0.md](docs/PHASE0.md) | Phase 0 scope, decisions, and known limitations |
+| [docs/PHASE1.md](docs/PHASE1.md) | Phase 1 scope, decisions, and known limitations |
 
 ---
 
 ## Security
 
 Security is a first-class requirement, not a later phase. If you find a problem,
-do not open a public issue — see [docs/PHASE0.md](docs/PHASE0.md) for the
-boundaries that are already enforced and tested.
+do not open a public issue — see [docs/PHASE0.md](docs/PHASE0.md) and
+[docs/PHASE1.md](docs/PHASE1.md) for the boundaries that are already enforced
+and tested.
+
+Currently enforced: Argon2id password hashing, opaque revocable sessions,
+single-use refresh tokens with theft detection, TOTP two-factor, RBAC,
+per-account and per-IP login throttling, encrypted secrets at rest, and an
+append-only audit trail.

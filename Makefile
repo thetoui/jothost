@@ -10,6 +10,10 @@ COMPOSE_TEST := docker compose -f docker-compose.test.yml
 GO_IMAGE     := golang:1.23-alpine
 GO_MODULES   := shared api agent
 
+# Credentials for the account the Phase 1 auth checks sign in with. Test-only.
+INTEGRATION_ADMIN_USERNAME ?= integration_admin
+INTEGRATION_ADMIN_PASSWORD ?= integration-admin-pw-9271
+
 # Runs a command inside a throwaway Go container with the repo mounted.
 GO_RUN = docker run --rm \
 	-v "$(CURDIR):/src" \
@@ -65,9 +69,11 @@ ps: ## Show service status and health
 go-build: ## Compile the API and Agent binaries
 	@$(GO_RUN) 'for m in $(GO_MODULES); do (cd /src/$$m && go build ./...); done'
 
+# go-test runs through the test profile because the api suite needs a real
+# PostgreSQL and Redis; the profile starts throwaway instances for it.
 .PHONY: go-test
 go-test: ## Run Go unit and security tests
-	@$(GO_RUN) 'for m in $(GO_MODULES); do echo "=== $$m ==="; (cd /src/$$m && go test -count=1 ./...); done'
+	$(COMPOSE_TEST) run --rm go-tests
 
 .PHONY: go-lint
 go-lint: ## Run go vet and gofmt checks
@@ -112,6 +118,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(COMPOSE_TEST) run --rm go-tests
 	$(COMPOSE_TEST) run --rm frontend-tests
 	$(MAKE) docker-test-integration
+	$(MAKE) docker-test-auth
 
 .PHONY: docker-test-integration
 docker-test-integration: ## Run integration tests against the running dev stack
@@ -127,5 +134,29 @@ docker-test-integration: ## Run integration tests against the running dev stack
 	if [ $$timeout -le 0 ]; then echo "Timed out waiting for healthy services"; $(COMPOSE) ps; exit 1; fi
 	$(COMPOSE_TEST) run --rm integration
 
+.PHONY: docker-test-auth
+docker-test-auth: create-integration-admin ## Run the Phase 1 auth integration checks
+	$(COMPOSE_TEST) run --rm auth-integration
+
+# create-integration-admin provisions the account the auth checks sign in with.
+# Re-running is harmless: an existing username is reported and ignored.
+.PHONY: create-integration-admin
+create-integration-admin:
+	@$(COMPOSE) exec -e JOTHOST_ADMIN_USERNAME=$(INTEGRATION_ADMIN_USERNAME) -e JOTHOST_ADMIN_PASSWORD=$(INTEGRATION_ADMIN_PASSWORD) api jothost-api create-admin >/dev/null 2>&1 || echo "integration admin already exists"
+
+.PHONY: create-admin
+create-admin: ## Create the first administrator (prompts via environment)
+	@[ -n "$$JOTHOST_ADMIN_USERNAME" ] || (echo "Set JOTHOST_ADMIN_USERNAME"; exit 1)
+	@[ -n "$$JOTHOST_ADMIN_PASSWORD" ] || (echo "Set JOTHOST_ADMIN_PASSWORD"; exit 1)
+	$(COMPOSE) exec -e JOTHOST_ADMIN_USERNAME -e JOTHOST_ADMIN_PASSWORD -e JOTHOST_ADMIN_EMAIL api jothost-api create-admin
+
+.PHONY: migrate
+migrate: ## Apply pending database migrations
+	$(COMPOSE) exec api jothost-api migrate up
+
+.PHONY: migrate-status
+migrate-status: ## Show migration state
+	$(COMPOSE) exec api jothost-api migrate status
+
 .PHONY: verify
-verify: lint test docker-test-integration ## Everything CI runs
+verify: lint test docker-test-integration docker-test-auth ## Everything CI runs

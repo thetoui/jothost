@@ -2,9 +2,6 @@ package server
 
 import (
 	"context"
-	"net"
-	"net/url"
-	"strings"
 	"time"
 )
 
@@ -23,47 +20,33 @@ const (
 // dependency cannot stall the readiness endpoint.
 const dependencyTimeout = 3 * time.Second
 
-// checkTCP reports whether the host:port encoded in rawURL accepts a
-// connection.
+// checkPostgres runs a trivial query against the pool.
 //
-// Phase 0 deliberately probes at the TCP layer: the API has no database or
-// Redis driver yet (no schema exists before Phase 1). Phase 1 replaces this
-// with a real `SELECT 1` / `PING` once the pools are introduced.
-func checkTCP(ctx context.Context, rawURL string, defaultPort string) checkResult {
-	address, err := addressFromURL(rawURL, defaultPort)
-	if err != nil {
-		return checkResult{Status: statusDown, Error: "invalid connection URL"}
-	}
-
+// Phase 1 replaced the Phase 0 TCP dial with a real round trip: a database
+// that accepts connections but rejects authentication now reports down, which
+// a dial could not detect.
+func (s *Server) checkPostgres(ctx context.Context) checkResult {
 	ctx, cancel := context.WithTimeout(ctx, dependencyTimeout)
 	defer cancel()
 
-	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "tcp", address)
-	if err != nil {
-		// The error text can embed credentials from the URL, so only a
-		// generic reason is reported.
-		return checkResult{Status: statusDown, Error: "connection refused"}
+	var one int
+	if err := s.pool.QueryRow(ctx, `SELECT 1`).Scan(&one); err != nil {
+		// The driver error can embed the connection string, so only a generic
+		// reason is reported.
+		s.log.Warn("postgres readiness probe failed", "error", err.Error())
+		return checkResult{Status: statusDown, Error: "query failed"}
 	}
-	_ = conn.Close()
 	return checkResult{Status: statusUp}
 }
 
-// addressFromURL extracts host:port from a connection URL without exposing the
-// embedded credentials.
-func addressFromURL(rawURL, defaultPort string) (string, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
-	}
+// checkRedis pings the cache.
+func (s *Server) checkRedis(ctx context.Context) checkResult {
+	ctx, cancel := context.WithTimeout(ctx, dependencyTimeout)
+	defer cancel()
 
-	host := parsed.Hostname()
-	if host == "" {
-		return "", &url.Error{Op: "parse", URL: "redacted", Err: errEmptyHost}
+	if err := s.redis.Ping(ctx).Err(); err != nil {
+		s.log.Warn("redis readiness probe failed", "error", err.Error())
+		return checkResult{Status: statusDown, Error: "ping failed"}
 	}
-	port := parsed.Port()
-	if strings.TrimSpace(port) == "" {
-		port = defaultPort
-	}
-	return net.JoinHostPort(host, port), nil
+	return checkResult{Status: statusUp}
 }

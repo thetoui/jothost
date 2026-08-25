@@ -89,26 +89,37 @@ frontend build                -> succeeds
 
 # PHASE 1 — Authentication
 
-- [ ] User model
-- [ ] User repository
-- [ ] Password hashing
-- [ ] Login API
-- [ ] Logout API
-- [ ] Refresh token
-- [ ] Session management
-- [ ] RBAC
-- [ ] Permissions
-- [ ] Admin role
-- [ ] TOTP 2FA
-- [ ] Login rate limit
-- [ ] Audit logging
+**Status: COMPLETE** — see [docs/PHASE1.md](docs/PHASE1.md) for scope, decisions, and known limitations.
+
+- [x] User model
+- [x] User repository
+- [x] Password hashing
+- [x] Login API
+- [x] Logout API
+- [x] Refresh token
+- [x] Session management
+- [x] RBAC
+- [x] Permissions
+- [x] Admin role
+- [x] TOTP 2FA
+- [x] Login rate limit
+- [x] Audit logging
+
+Additionally required by the above:
+
+- [x] Migration runner (up / down / status)
+- [x] Schema for users, roles, permissions, sessions, 2FA, audit logs
+- [x] PostgreSQL and Redis connection pools
+- [x] Secrets-at-rest encryption (AES-256-GCM)
+- [x] `create-admin` bootstrap command
+- [x] Login, 2FA, and account-security UI
 
 Acceptance:
 
 ```text
-Admin can securely login.
-Unauthorized users cannot access protected API.
-2FA works.
+Admin can securely login.                     verified: browser + integration
+Unauthorized users cannot access protected API.  verified: 401 on every guarded route
+2FA works.                                    verified: enrol, login, disable in browser
 ```
 
 ---

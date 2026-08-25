@@ -40,6 +40,10 @@ RUN apk add --no-cache ca-certificates tzdata \
 
 COPY --from=builder /out/jothost-api /usr/local/bin/jothost-api
 
+# Migrations are read from disk at startup rather than embedded, so the
+# repository layout in ARCHITECTURE.md section 3 stays the single source.
+COPY migrations/ /app/migrations/
+
 # The API is unprivileged: it never performs root operations itself
 # (PRD.md section 10).
 USER jothost

@@ -1,4 +1,11 @@
-import type { ApiEnvelope, ApiErrorDetail } from '@/types/api';
+import {
+  clearTokens,
+  getAccessToken,
+  getRefreshToken,
+  setAccessToken,
+  setRefreshToken,
+} from '@/features/auth/tokenStorage';
+import type { ApiEnvelope, ApiErrorDetail, TokenPair } from '@/types/api';
 
 /**
  * ApiError carries the structured error returned by the API so feature hooks
@@ -30,27 +37,88 @@ export interface RequestOptions {
   method?: string;
   body?: unknown;
   signal?: AbortSignal;
+  /** Skips the Authorization header and the refresh retry. */
+  anonymous?: boolean;
+}
+
+/** Listeners notified when the session ends and the user must log in again. */
+type SessionEndedListener = () => void;
+const sessionEndedListeners = new Set<SessionEndedListener>();
+
+/**
+ * onSessionEnded registers a callback for an unrecoverable auth failure.
+ * The auth store uses it to reset itself without importing the client, which
+ * would be a cycle.
+ */
+export function onSessionEnded(listener: SessionEndedListener): () => void {
+  sessionEndedListeners.add(listener);
+  return () => sessionEndedListeners.delete(listener);
+}
+
+function endSession(): void {
+  clearTokens();
+  for (const listener of sessionEndedListeners) {
+    listener();
+  }
 }
 
 /**
- * request is the single entry point to the API. Components never call fetch
- * directly (CLAUDE.md section 10): page -> feature hook -> API service.
+ * refreshInFlight de-duplicates concurrent refreshes.
  *
- * Tokens are deliberately not read from localStorage here; Phase 1 introduces
- * authentication and will decide on the storage mechanism explicitly.
+ * Refresh tokens are single-use and rotate, so two parallel 401s must not both
+ * try to redeem the same token: the second would be treated as reuse and would
+ * destroy the session. All callers await the same promise.
  */
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, signal } = options;
+let refreshInFlight: Promise<boolean> | null = null;
 
-  const init: RequestInit = {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-    },
-    // Session cookies, when Phase 1 introduces them, must accompany requests.
-    credentials: 'same-origin',
+async function refreshSession(): Promise<boolean> {
+  refreshInFlight ??= (async () => {
+    try {
+      const token = getRefreshToken();
+      if (!token) {
+        return false;
+      }
+
+      const pair = await rawRequest<TokenPair>('/auth/refresh', {
+        method: 'POST',
+        body: { refresh_token: token },
+        anonymous: true,
+      });
+
+      setAccessToken(pair.access_token);
+      setRefreshToken(pair.refresh_token);
+      return true;
+    } catch {
+      // Any refresh failure is terminal: the stored token is gone or revoked.
+      endSession();
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+/** rawRequest performs one call with no refresh handling. */
+async function rawRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { method = 'GET', body, signal, anonymous = false } = options;
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
   };
+
+  if (!anonymous) {
+    const token = getAccessToken();
+    if (token) {
+      // Tokens travel in the Authorization header only — never in the URL,
+      // where they would be captured by access logs and browser history.
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  const init: RequestInit = { method, headers, credentials: 'same-origin' };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
   }
@@ -78,4 +146,29 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   return envelope.data as T;
+}
+
+/**
+ * request is the single entry point to the API. Components never call fetch
+ * directly (CLAUDE.md section 10): page -> feature hook -> API service.
+ *
+ * A 401 triggers one refresh attempt and one retry. If the refresh fails the
+ * session is ended rather than retried again, so a revoked token cannot put
+ * the client into a loop.
+ */
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  try {
+    return await rawRequest<T>(path, options);
+  } catch (error) {
+    const isAuthFailure = error instanceof ApiError && error.status === 401;
+    if (!isAuthFailure || options.anonymous) {
+      throw error;
+    }
+
+    const refreshed = await refreshSession();
+    if (!refreshed) {
+      throw error;
+    }
+    return rawRequest<T>(path, options);
+  }
 }

@@ -22,6 +22,38 @@ jobs:
       fail-fast: false
       matrix:
         module: [shared, api, agent]
+
+    # The api suite exercises real Postgres and Redis rather than mocks; the
+    # other modules ignore these and skip their database-backed tests.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: jothost_test
+          POSTGRES_PASSWORD: jothost_test
+          POSTGRES_DB: jothost_test
+        options: >-
+          --health-cmd "pg_isready -U jothost_test -d jothost_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+        ports:
+          - 6379:6379
+
+    env:
+      TEST_DATABASE_URL: postgres://jothost_test:jothost_test@localhost:5432/jothost_test?sslmode=disable
+      TEST_REDIS_URL: redis://localhost:6379/0
+      TEST_MIGRATIONS_DIR: ${{ github.workspace }}/migrations
+
     steps:
       - uses: actions/checkout@v4
 
@@ -54,7 +86,7 @@ jobs:
       # connections and the API drains requests during shutdown.
       - name: test
         working-directory: ${{ matrix.module }}
-        run: go test -race -count=1 ./...
+        run: go test -p 1 -race -count=1 ./...
 
   frontend:
     name: Frontend
@@ -106,8 +138,15 @@ jobs:
           docker compose ps
           exit 1
 
-      - name: Run integration checks
+      - name: Run Phase 0 integration checks
         run: docker compose -f docker-compose.test.yml run --rm integration
+
+      - name: Create the integration administrator
+        run: |
+          docker compose exec -T -e JOTHOST_ADMIN_USERNAME=integration_admin -e JOTHOST_ADMIN_PASSWORD=integration-admin-pw-9271 api jothost-api create-admin
+
+      - name: Run Phase 1 authentication checks
+        run: docker compose -f docker-compose.test.yml run --rm auth-integration
 
       - name: Dump logs on failure
         if: failure()

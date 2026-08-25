@@ -72,10 +72,39 @@ Response:
   "data": {
     "access_token": "...",
     "refresh_token": "...",
+    "token_type": "Bearer",
     "expires_in": 900
   }
 }
 ```
+
+When the account has two-factor authentication enabled, no tokens are issued.
+The response instead carries a short-lived challenge to be completed at
+`POST /auth/2fa/verify`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "mfa_required": true,
+    "mfa_token": "..."
+  }
+}
+```
+
+Failures return `401 UNAUTHORIZED` with an identical body for a wrong password
+and for an unknown username, so the endpoint cannot be used to enumerate
+accounts. Repeated failures return `429 RATE_LIMITED`.
+
+### Token semantics
+
+Access tokens are **opaque**, not JWTs: they are random strings resolved
+server-side against Redis. This makes logout and revocation take effect
+immediately rather than at expiry. See docs/PHASE1.md section 3.1.
+
+Refresh tokens are single-use. Every refresh returns a new refresh token and
+invalidates the old one; presenting a superseded token is treated as theft and
+revokes the user's entire session set.
 
 ---
 
@@ -93,6 +122,14 @@ POST /auth/logout
 POST /auth/refresh
 ```
 
+Request:
+
+```json
+{ "refresh_token": "..." }
+```
+
+Returns a new token pair. The submitted refresh token is invalidated.
+
 ---
 
 ## Current User
@@ -101,14 +138,72 @@ POST /auth/refresh
 GET /auth/me
 ```
 
+Returns the caller's profile, including their effective roles and permissions:
+
+```json
+{
+  "id": "...",
+  "username": "admin",
+  "email": null,
+  "status": "active",
+  "roles": ["admin"],
+  "permissions": ["server.view", "..."],
+  "two_factor_enabled": false,
+  "last_login_at": "2026-08-25T05:30:00Z",
+  "created_at": "2026-08-25T05:00:00Z"
+}
+```
+
 ---
 
 ## 2FA
 
 ```http
-POST /auth/2fa/setup
-POST /auth/2fa/verify
-POST /auth/2fa/disable
+POST /auth/2fa/setup     (authenticated)  start enrolment, returns the secret
+POST /auth/2fa/enable    (authenticated)  confirm a code and activate
+POST /auth/2fa/verify    (anonymous)      complete a login that requires 2FA
+POST /auth/2fa/disable   (authenticated)  requires the current password
+```
+
+`setup` and `verify` were split into three endpoints during Phase 1 because
+they serve two different callers. `enable` is used by a signed-in user
+finishing enrolment; `verify` is used by a caller who has passed the password
+step but holds no session yet, so it cannot require a bearer token.
+
+### Setup
+
+Returns the shared secret once. It is never retrievable again.
+
+```json
+{
+  "secret": "JBSWY3DPEHPK3PXP",
+  "otpauth_uri": "otpauth://totp/JotHost%20Panel:admin?..."
+}
+```
+
+### Enable
+
+```json
+{ "code": "123456" }
+```
+
+### Verify
+
+Completes a login. The `mfa_token` comes from the login response.
+
+```json
+{ "mfa_token": "...", "code": "123456" }
+```
+
+Responds with the standard token pair.
+
+### Disable
+
+The current password is required: an unlocked browser session must not be
+enough to remove a second factor.
+
+```json
+{ "password": "..." }
 ```
 
 ---

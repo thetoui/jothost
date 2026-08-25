@@ -8,6 +8,7 @@ import {
   Lock,
   Server,
   ShieldCheck,
+  UserCog,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -32,7 +33,8 @@ const navItems: NavItem[] = [
   { label: 'Files', to: '/files', icon: Files, enabled: false },
   { label: 'Editor', to: '/editor', icon: FileCode2, enabled: false },
   { label: 'SSL', to: '/ssl', icon: Lock, enabled: false },
-  { label: 'Security', to: '/security', icon: ShieldCheck, enabled: false },
+  { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: false },
+  { label: 'Account security', to: '/security', icon: UserCog, enabled: true },
 ];
 
 export function Sidebar() {

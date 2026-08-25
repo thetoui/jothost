@@ -17,6 +17,15 @@ Docker, and Go 1.23+ to run Go tests without the container round-trip.
 make dev
 ```
 
+Then create the first administrator. Credentials come from the environment so
+they never land in the process list or shell history:
+
+```bash
+JOTHOST_ADMIN_USERNAME=admin JOTHOST_ADMIN_PASSWORD='a-long-password' make create-admin
+```
+
+Sign in at http://localhost:8081.
+
 Verify:
 
 ```bash
@@ -116,6 +125,62 @@ Adding a feature means adding `frontend/src/features/<name>/` with `api.ts`,
 
 ---
 
+## Database migrations
+
+```bash
+make migrate          # apply pending migrations
+make migrate-status   # show what is applied
+```
+
+The API applies pending migrations at startup by default (`AUTO_MIGRATE`).
+Set it to `false` to manage them by hand; the API then verifies the schema on
+boot and refuses to serve one it does not recognise.
+
+Adding a migration means adding a **pair** of files (CLAUDE.md section 8):
+
+```text
+migrations/000N_description.up.sql
+migrations/000N_description.down.sql
+```
+
+Versions must be contiguous from `0001` and every up file needs a down file —
+the loader rejects the alternative, so an un-reversible migration fails at
+startup rather than during an incident. `TestUpAndDownRoundTrip` applies and
+rolls back the whole set on every run, so a down migration that does not
+actually reverse its up will fail the build.
+
+Never edit a migration that has been applied anywhere. Add a new one.
+
+---
+
+## Authentication
+
+The panel uses **opaque bearer tokens**, not JWTs: access tokens are random
+strings resolved against Redis, which makes logout take effect immediately.
+Refresh tokens rotate on every use and reuse is treated as theft. The reasoning
+is in [PHASE1.md section 3.1](PHASE1.md).
+
+Guarding a new endpoint:
+
+```go
+mux.Handle("GET /api/v1/websites",
+    authService.RequireAuth(
+        authService.RequirePermission(rbac.PermWebsiteView)(handler)))
+```
+
+`RequirePermission` must sit inside `RequireAuth`; used alone it returns 500
+rather than silently allowing the request.
+
+Adding a permission means adding it to migration `0002_seed_rbac`'s catalogue
+*and* to the constants in `api/internal/rbac` and
+`frontend/src/features/auth/permissions.ts`, so a typo is a compile error
+rather than a check that silently never passes.
+
+Never log a token, a password, or a 2FA secret. The shared logger redacts known
+key names, but the reliable habit is not to pass them.
+
+---
+
 ## Adding an Agent operation
 
 Every privileged operation follows the same path. Skipping a step breaks a
@@ -148,13 +213,41 @@ rejection case for an injection-shaped input.
 ```bash
 make test                     # Go and frontend unit tests
 make docker-test              # everything, in containers
-make docker-test-integration  # black-box checks against the running stack
+make docker-test-integration  # Phase 0 black-box checks
+make docker-test-auth         # Phase 1 authentication checks
 make verify                   # what CI runs
 ```
 
-The integration suite (`tests/integration/phase0_smoke.sh`) asserts the response
-envelope, request IDs, readiness reporting, the reverse proxy, and that the
-Agent answers no HTTP port.
+`tests/integration/phase0_smoke.sh` asserts the response envelope, request IDs,
+readiness reporting, the reverse proxy, and that the Agent answers no HTTP
+port. `tests/integration/phase1_auth.sh` asserts the login contract, that
+protected routes refuse anonymous callers, refresh rotation and reuse
+detection, immediate logout, and login throttling.
+
+### Database-backed Go tests
+
+Repository, session, and auth tests run against a real PostgreSQL and Redis
+rather than mocks, because the behaviour that matters lives in the engines: the
+append-only trigger, atomic token rotation, unique constraints, key expiry.
+
+`make go-test` and `make docker-test` start throwaway instances automatically.
+Running `go test` by hand needs them pointed out, and needs `-p 1` because the
+suite shares one database:
+
+```bash
+export TEST_DATABASE_URL='postgres://jothost_test:jothost_test@localhost:5432/jothost_test?sslmode=disable'
+```
+
+```bash
+export TEST_REDIS_URL='redis://localhost:6379/0'
+```
+
+```bash
+cd api && go test -p 1 ./...
+```
+
+Without those variables the database-backed tests skip rather than fail, so a
+bare checkout still runs green.
 
 ---
 

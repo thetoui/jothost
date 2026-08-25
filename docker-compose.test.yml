@@ -3,13 +3,43 @@
 # Runs every suite inside Linux containers so results match production
 # (ARCHITECTURE.md section 16). Used by:  make docker-test
 #
-#   go-tests        unit + security tests for shared, api, agent
-#   frontend-tests  vitest suite
-#   integration     black-box checks against the running dev stack
+#   go-tests         unit + security tests for shared, api, agent
+#   frontend-tests   vitest suite
+#   integration      Phase 0 black-box checks against the running dev stack
+#   auth-integration Phase 1 authentication checks against the running stack
+#
+# go-tests brings its own throwaway Postgres and Redis so the suite never
+# touches development data.
 
 name: jothost-test
 
 services:
+  test-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jothost_test
+      POSTGRES_PASSWORD: jothost_test
+      POSTGRES_DB: jothost_test
+    # Test data is disposable, so durability is traded for speed.
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jothost_test -d jothost_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  test-redis:
+    image: redis:7-alpine
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   go-tests:
     image: golang:1.23-alpine
     working_dir: /src
@@ -17,16 +47,25 @@ services:
       GOFLAGS: -mod=mod
       GOCACHE: /tmp/gocache
       CGO_ENABLED: "0"
+      TEST_DATABASE_URL: postgres://jothost_test:jothost_test@test-postgres:5432/jothost_test?sslmode=disable
+      TEST_REDIS_URL: redis://test-redis:6379/0
+      TEST_MIGRATIONS_DIR: /src/migrations
     volumes:
       - ./:/src:ro
       - go-build-cache:/tmp/gocache
+      - go-mod-cache:/go/pkg/mod
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
     command:
       - sh
       - -euc
       - |
         for module in shared api agent; do
           echo "=== go test ./... ($$module) ==="
-          (cd "/src/$$module" && go vet ./... && go test -count=1 ./...)
+          (cd "/src/$$module" && go vet ./... && go test -p 1 -count=1 ./...)
         done
 
   frontend-tests:
@@ -58,8 +97,22 @@ services:
       - jothost_default
     command: ["sh", "/tests/integration/phase0_smoke.sh"]
 
+  auth-integration:
+    image: alpine:3.21
+    environment:
+      API_BASE_URL: ${INTEGRATION_API_URL:-http://api:8080}
+      # Credentials for the account created by `make docker-test-integration`.
+      INTEGRATION_ADMIN_USERNAME: ${INTEGRATION_ADMIN_USERNAME:-integration_admin}
+      INTEGRATION_ADMIN_PASSWORD: ${INTEGRATION_ADMIN_PASSWORD:-integration-admin-pw-9271}
+    volumes:
+      - ./tests:/tests:ro
+    networks:
+      - jothost_default
+    command: ["sh", "/tests/integration/phase1_auth.sh"]
+
 volumes:
   go-build-cache:
+  go-mod-cache:
   frontend-node-modules:
 
 networks:

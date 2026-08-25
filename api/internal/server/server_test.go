@@ -7,23 +7,15 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jothost/panel/api/internal/config"
 	"github.com/jothost/panel/api/internal/httpx"
+	"github.com/jothost/panel/api/internal/testsupport"
 	"github.com/jothost/panel/shared/logger"
-	"github.com/jothost/panel/shared/protocol"
 )
-
-func testServer(t *testing.T, cfg config.Config) *Server {
-	t.Helper()
-	var buf bytes.Buffer
-	return New(cfg, logger.New(logger.Options{Service: "api", Output: &buf}))
-}
 
 func baseConfig() config.Config {
 	return config.Config{
@@ -38,7 +30,36 @@ func baseConfig() config.Config {
 		RedisURL:        "redis://127.0.0.1:1/0",
 		AgentSocket:     "/nonexistent/agent.sock",
 		AgentTimeout:    time.Second,
+		Auth: config.AuthConfig{
+			EncryptionKey:    testsupport.TestEncryptionKey,
+			AccessTokenTTL:   15 * time.Minute,
+			RefreshTokenTTL:  time.Hour,
+			MFAChallengeTTL:  5 * time.Minute,
+			TOTPIssuer:       "JotHost Test",
+			LoginRateLimit:   5,
+			LoginIPRateLimit: 20,
+			LoginRateWindow:  time.Minute,
+		},
 	}
+}
+
+// testServer builds a Server against the live test dependencies.
+func testServer(t *testing.T) *Server {
+	t.Helper()
+
+	deps := testsupport.Require(t)
+
+	var buf bytes.Buffer
+	srv, err := New(Options{
+		Config: baseConfig(),
+		Log:    logger.New(logger.Options{Service: "api", Output: &buf}),
+		Pool:   deps.Pool,
+		Redis:  deps.Redis,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return srv
 }
 
 func do(t *testing.T, s *Server, method, path string) *httptest.ResponseRecorder {
@@ -49,7 +70,7 @@ func do(t *testing.T, s *Server, method, path string) *httptest.ResponseRecorder
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	s := testServer(t, baseConfig())
+	s := testServer(t)
 
 	for _, path := range []string{"/healthz", "/api/v1/health"} {
 		rec := do(t, s, http.MethodGet, path)
@@ -74,37 +95,54 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestHealthEndpointIsLivenessOnly(t *testing.T) {
-	// /healthz must not depend on Postgres, Redis, or the Agent: all three are
-	// unreachable in baseConfig and it must still return 200.
-	rec := do(t, testServer(t, baseConfig()), http.MethodGet, "/healthz")
+	// /healthz must not depend on the Agent, which is unreachable here.
+	rec := do(t, testServer(t), http.MethodGet, "/healthz")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("liveness must not probe dependencies, got %d", rec.Code)
 	}
 }
 
 func TestVersionEndpoint(t *testing.T) {
-	rec := do(t, testServer(t, baseConfig()), http.MethodGet, "/api/v1/version")
+	rec := do(t, testServer(t), http.MethodGet, "/api/v1/version")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "\"version\"") {
+	if !strings.Contains(rec.Body.String(), `"version"`) {
 		t.Fatalf("version payload missing: %s", rec.Body.String())
 	}
 }
 
-func TestReadinessFailsWhenDependenciesDown(t *testing.T) {
-	rec := do(t, testServer(t, baseConfig()), http.MethodGet, "/readyz")
+func TestReadinessReportsPerDependencyState(t *testing.T) {
+	// Postgres and Redis are live; the Agent socket is not, so readiness must
+	// fail overall while still reporting the healthy dependencies as up.
+	rec := do(t, testServer(t), http.MethodGet, "/readyz")
 
 	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when dependencies are down, got %d", rec.Code)
+		t.Fatalf("expected 503 while the agent is down, got %d (%s)", rec.Code, rec.Body.String())
 	}
 
-	var env httpx.Envelope
+	var env struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Ready  bool `json:"ready"`
+			Checks map[string]struct {
+				Status string `json:"status"`
+			} `json:"checks"`
+		} `json:"data"`
+		Error *httpx.ErrorDetail `json:"error"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
 		t.Fatalf("invalid envelope: %v", err)
 	}
-	if env.Success {
-		t.Fatal("readiness must report success=false when a dependency is down")
+
+	if env.Data.Checks["postgres"].Status != "up" {
+		t.Fatalf("postgres must report up, got %q", env.Data.Checks["postgres"].Status)
+	}
+	if env.Data.Checks["redis"].Status != "up" {
+		t.Fatalf("redis must report up, got %q", env.Data.Checks["redis"].Status)
+	}
+	if env.Data.Checks["agent"].Status != "down" {
+		t.Fatalf("agent must report down, got %q", env.Data.Checks["agent"].Status)
 	}
 	if env.Error == nil || env.Error.Code != httpx.CodeUnavailable {
 		t.Fatalf("unexpected readiness error: %+v", env.Error)
@@ -115,24 +153,8 @@ func TestReadinessFailsWhenDependenciesDown(t *testing.T) {
 	}
 }
 
-func TestReadinessSucceedsWhenDependenciesUp(t *testing.T) {
-	pg := listenTCP(t)
-	redis := listenTCP(t)
-	socket := startFakeAgent(t)
-
-	cfg := baseConfig()
-	cfg.DatabaseURL = "postgres://user:pw@" + pg + "/jothost"
-	cfg.RedisURL = "redis://" + redis + "/0"
-	cfg.AgentSocket = socket
-
-	rec := do(t, testServer(t, cfg), http.MethodGet, "/readyz")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 when all dependencies are up, got %d (%s)", rec.Code, rec.Body.String())
-	}
-}
-
 func TestUnknownRouteReturnsEnvelope(t *testing.T) {
-	rec := do(t, testServer(t, baseConfig()), http.MethodGet, "/api/v1/does-not-exist")
+	rec := do(t, testServer(t), http.MethodGet, "/api/v1/does-not-exist")
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
@@ -148,17 +170,46 @@ func TestUnknownRouteReturnsEnvelope(t *testing.T) {
 }
 
 func TestSecurityHeadersApplied(t *testing.T) {
-	rec := do(t, testServer(t, baseConfig()), http.MethodGet, "/healthz")
+	rec := do(t, testServer(t), http.MethodGet, "/healthz")
 	if rec.Header().Get("X-Frame-Options") != "DENY" {
 		t.Fatal("security headers must apply to every response")
 	}
 }
 
-func TestRunShutsDownGracefully(t *testing.T) {
-	cfg := baseConfig()
-	cfg.HTTPAddr = "127.0.0.1:0"
+func TestProtectedRoutesRejectAnonymousCallers(t *testing.T) {
+	s := testServer(t)
 
-	s := testServer(t, cfg)
+	// Every authenticated route must answer 401 without a token. A route added
+	// later without RequireAuth should make this fail.
+	protected := []struct {
+		method, path string
+	}{
+		{http.MethodGet, "/api/v1/auth/me"},
+		{http.MethodPost, "/api/v1/auth/logout"},
+		{http.MethodPost, "/api/v1/auth/2fa/setup"},
+		{http.MethodPost, "/api/v1/auth/2fa/enable"},
+		{http.MethodPost, "/api/v1/auth/2fa/disable"},
+	}
+
+	for _, route := range protected {
+		rec := do(t, s, route.method, route.path)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s: expected 401 without a token, got %d", route.method, route.path, rec.Code)
+		}
+
+		var env httpx.Envelope
+		if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+			t.Fatalf("%s %s: invalid envelope: %v", route.method, route.path, err)
+		}
+		if env.Error == nil || env.Error.Code != httpx.CodeUnauthorized {
+			t.Fatalf("%s %s: unexpected error %+v", route.method, route.path, env.Error)
+		}
+	}
+}
+
+func TestRunShutsDownGracefully(t *testing.T) {
+	s := testServer(t)
+
 	// Bind an ephemeral port explicitly so the test never races on a fixed one.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -173,7 +224,6 @@ func TestRunShutsDownGracefully(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- s.Run(ctx) }()
 
-	// Give the listener a moment, then request shutdown.
 	time.Sleep(100 * time.Millisecond)
 	cancel()
 
@@ -185,97 +235,4 @@ func TestRunShutsDownGracefully(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("server did not shut down within 5s")
 	}
-}
-
-func TestAddressFromURL(t *testing.T) {
-	cases := []struct {
-		raw, defaultPort, want string
-		wantErr                bool
-	}{
-		{"postgres://u:p@postgres:5432/db", "5432", "postgres:5432", false},
-		{"redis://redis/0", "6379", "redis:6379", false},
-		{"postgres://", "5432", "", true},
-		{"://bad", "5432", "", true},
-	}
-	for _, tc := range cases {
-		got, err := addressFromURL(tc.raw, tc.defaultPort)
-		if tc.wantErr {
-			if err == nil {
-				t.Fatalf("addressFromURL(%q) expected error", tc.raw)
-			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("addressFromURL(%q) returned error: %v", tc.raw, err)
-		}
-		if got != tc.want {
-			t.Fatalf("addressFromURL(%q) = %q, want %q", tc.raw, got, tc.want)
-		}
-	}
-}
-
-// listenTCP starts a throwaway TCP listener and returns its host:port.
-func listenTCP(t *testing.T) string {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	t.Cleanup(func() { _ = ln.Close() })
-
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			_ = conn.Close()
-		}
-	}()
-	return ln.Addr().String()
-}
-
-// startFakeAgent serves protocol.OperationPing over a Unix socket.
-func startFakeAgent(t *testing.T) string {
-	t.Helper()
-	if _, err := os.Stat("/proc"); err != nil {
-		t.Skip("unix socket test requires a Linux environment")
-	}
-
-	dir := t.TempDir()
-	socket := filepath.Join(dir, "agent.sock")
-
-	ln, err := net.Listen("unix", socket)
-	if err != nil {
-		t.Skipf("unix sockets unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = ln.Close() })
-
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go func(c net.Conn) {
-				defer func() { _ = c.Close() }()
-				buf := make([]byte, 4096)
-				n, err := c.Read(buf)
-				if err != nil || n == 0 {
-					return
-				}
-				var req protocol.Request
-				if err := json.Unmarshal(bytes.TrimSpace(buf[:n]), &req); err != nil {
-					return
-				}
-				resp := protocol.NewSuccess(req.RequestID, map[string]any{"pong": true})
-				out, err := json.Marshal(resp)
-				if err != nil {
-					return
-				}
-				_, _ = c.Write(append(out, '\n'))
-			}(conn)
-		}
-	}()
-	return socket
 }

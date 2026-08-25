@@ -21,6 +21,16 @@ updated_at TIMESTAMPTZ NOT NULL
 last_login_at TIMESTAMPTZ
 ```
 
+Constraints applied in migration 0001:
+
+```text
+status IN ('active', 'disabled', 'locked')
+username matches ^[a-z0-9][a-z0-9_.-]{2,99}$
+```
+
+`password_hash` holds an Argon2id PHC string. `email` is nullable, and an
+absent address is stored as NULL so several accounts may omit one.
+
 ---
 
 # 2. roles
@@ -94,6 +104,23 @@ expires_at TIMESTAMPTZ NOT NULL
 created_at TIMESTAMPTZ NOT NULL
 revoked_at TIMESTAMPTZ
 ```
+
+---
+
+# 6.1 session_token_history
+
+Added in Phase 1 to make refresh-token reuse detectable.
+
+```sql
+token_hash TEXT PRIMARY KEY
+session_id UUID REFERENCES sessions(id) ON DELETE CASCADE
+rotated_at TIMESTAMPTZ NOT NULL
+```
+
+Rotation overwrites `sessions.token_hash`, which would leave a replayed older
+token with no row to match and no way to distinguish theft from an invalid
+token. Retired hashes are recorded here instead, so presenting one is
+unambiguous evidence the token leaked. See docs/PHASE1.md section 3.2.
 
 ---
 
@@ -404,6 +431,10 @@ created_at TIMESTAMPTZ NOT NULL
 
 Audit logs should be append-only.
 
+Migration 0001 enforces this with `BEFORE UPDATE` and `BEFORE DELETE` triggers
+that raise an exception, so history cannot be rewritten through the API or by
+anything else holding a database connection.
+
 ---
 
 # 26. system_metrics
@@ -456,6 +487,19 @@ source_cidr CIDR
 description TEXT
 enabled BOOLEAN DEFAULT TRUE
 created_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 28.1 schema_migrations
+
+Created and maintained by the migration runner
+(`api/internal/db/migrate`), not by a migration file.
+
+```sql
+version    INTEGER PRIMARY KEY
+name       TEXT NOT NULL
+applied_at TIMESTAMPTZ NOT NULL
 ```
 
 ---

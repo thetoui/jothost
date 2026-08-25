@@ -148,6 +148,9 @@ jobs:
       - name: Run Phase 1 authentication checks
         run: docker compose -f docker-compose.test.yml run --rm auth-integration
 
+      - name: Run Phase 2 Host Agent checks
+        run: docker compose exec -T agent sh /tests/integration/phase2_agent.sh
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color

@@ -84,9 +84,13 @@ func New(opts Options) (*Server, error) {
 	})
 
 	s := &Server{
-		cfg:   cfg,
-		log:   log,
-		agent: agentclient.New(cfg.AgentSocket, cfg.AgentTimeout),
+		cfg: cfg,
+		log: log,
+		agent: agentclient.New(agentclient.Options{
+			SocketPath: cfg.AgentSocket,
+			Timeout:    cfg.AgentTimeout,
+			Token:      cfg.AgentToken,
+		}),
 		pool:  opts.Pool,
 		redis: opts.Redis,
 		auth:  authService,

@@ -29,6 +29,34 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	// MaxConcurrent limits simultaneous operations to prevent resource abuse.
 	MaxConcurrent int
+
+	// Token is the shared secret callers must present. It must never be
+	// logged. Empty disables the check, which is only safe when the socket's
+	// permissions are the sole boundary.
+	Token string
+	// AllowedUIDs lists the UIDs permitted to call the Agent, checked against
+	// kernel-supplied peer credentials. Empty disables the check.
+	AllowedUIDs []int
+
+	// ProcRoot and SysRoot locate the kernel's virtual filesystems. They are
+	// configurable so the Agent can read a host's /proc when running in a
+	// container, and so collectors can be tested against fixtures.
+	ProcRoot string
+	SysRoot  string
+
+	// AuditLogPath is the Agent's own append-only audit trail. Empty sends
+	// audit records only to the structured log.
+	AuditLogPath string
+
+	// Job execution bounds.
+	MaxJobs           int
+	MaxConcurrentJobs int
+	JobTimeout        time.Duration
+	JobRetention      time.Duration
+
+	// SystemctlPath is the absolute path to systemctl. It is configuration
+	// rather than a PATH lookup so a hostile PATH cannot substitute a program.
+	SystemctlPath string
 }
 
 // Load reads and validates Agent configuration.
@@ -41,15 +69,33 @@ func Load() (Config, error) {
 		OperationTimeout: getDuration("AGENT_OPERATION_TIMEOUT", 30*time.Second),
 		ShutdownTimeout:  getDuration("AGENT_SHUTDOWN_TIMEOUT", 15*time.Second),
 		MaxConcurrent:    getInt("AGENT_MAX_CONCURRENT", 16),
+
+		Token:       getString("AGENT_TOKEN", ""),
+		AllowedUIDs: getIntList("AGENT_ALLOWED_UIDS"),
+
+		ProcRoot: getString("AGENT_PROC_ROOT", "/proc"),
+		SysRoot:  getString("AGENT_SYS_ROOT", "/sys"),
+
+		AuditLogPath: getString("AGENT_AUDIT_LOG", "/var/log/jothost/agent-audit.log"),
+
+		MaxJobs:           getInt("AGENT_MAX_JOBS", 256),
+		MaxConcurrentJobs: getInt("AGENT_MAX_CONCURRENT_JOBS", 4),
+		JobTimeout:        getDuration("AGENT_JOB_TIMEOUT", 30*time.Minute),
+		JobRetention:      getDuration("AGENT_JOB_RETENTION", 15*time.Minute),
+
+		SystemctlPath: getString("AGENT_SYSTEMCTL_PATH", "/usr/bin/systemctl"),
 	}
 
 	var problems []string
-	if !filepath.IsAbs(cfg.SocketPath) {
-		problems = append(problems, "AGENT_SOCKET must be an absolute path")
+	problems = append(problems, validateAbsolute("AGENT_SOCKET", cfg.SocketPath)...)
+	problems = append(problems, validateAbsolute("AGENT_PROC_ROOT", cfg.ProcRoot)...)
+	problems = append(problems, validateAbsolute("AGENT_SYS_ROOT", cfg.SysRoot)...)
+	problems = append(problems, validateAbsolute("AGENT_SYSTEMCTL_PATH", cfg.SystemctlPath)...)
+
+	if cfg.AuditLogPath != "" {
+		problems = append(problems, validateAbsolute("AGENT_AUDIT_LOG", cfg.AuditLogPath)...)
 	}
-	if strings.Contains(cfg.SocketPath, "..") {
-		problems = append(problems, "AGENT_SOCKET must not contain '..'")
-	}
+
 	if cfg.OperationTimeout <= 0 {
 		problems = append(problems, "AGENT_OPERATION_TIMEOUT must be greater than zero")
 	}
@@ -59,11 +105,59 @@ func Load() (Config, error) {
 	if cfg.MaxConcurrent <= 0 {
 		problems = append(problems, "AGENT_MAX_CONCURRENT must be greater than zero")
 	}
+	if cfg.MaxJobs <= 0 {
+		problems = append(problems, "AGENT_MAX_JOBS must be greater than zero")
+	}
+	if cfg.MaxConcurrentJobs <= 0 {
+		problems = append(problems, "AGENT_MAX_CONCURRENT_JOBS must be greater than zero")
+	}
+	if cfg.JobTimeout <= 0 {
+		problems = append(problems, "AGENT_JOB_TIMEOUT must be greater than zero")
+	}
+	if cfg.JobRetention <= 0 {
+		problems = append(problems, "AGENT_JOB_RETENTION must be greater than zero")
+	}
+	// A token that is present but trivially short gives false confidence; a
+	// short one is worse than none because it looks like protection.
+	if cfg.Token != "" && len(cfg.Token) < MinTokenLength {
+		problems = append(problems,
+			fmt.Sprintf("AGENT_TOKEN must be at least %d characters (generate one with: openssl rand -hex 32)", MinTokenLength))
+	}
+	for _, uid := range cfg.AllowedUIDs {
+		if uid < 0 {
+			problems = append(problems, "AGENT_ALLOWED_UIDS must contain non-negative user IDs")
+			break
+		}
+	}
 
 	if len(problems) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration: %s", strings.Join(problems, "; "))
 	}
 	return cfg, nil
+}
+
+// MinTokenLength is the shortest accepted shared secret.
+const MinTokenLength = 32
+
+// Authenticated reports whether at least one caller check is configured.
+//
+// The Agent warns rather than refuses when neither is set: a development
+// container where the socket's permissions are the only boundary is a valid
+// configuration, but it should never be a silent one.
+func (c Config) Authenticated() bool {
+	return c.Token != "" || len(c.AllowedUIDs) > 0
+}
+
+// validateAbsolute checks a path is absolute and free of traversal segments.
+func validateAbsolute(name, path string) []string {
+	var problems []string
+	if !filepath.IsAbs(path) {
+		problems = append(problems, name+" must be an absolute path")
+	}
+	if strings.Contains(path, "..") {
+		problems = append(problems, name+" must not contain '..'")
+	}
+	return problems
 }
 
 func getString(key, fallback string) string {
@@ -82,6 +176,28 @@ func getInt(key string, fallback int) int {
 		return v
 	}
 	return fallback
+}
+
+// getIntList parses a comma-separated list of integers. Unparsable entries are
+// skipped rather than failing the whole list, so one typo does not lock out
+// every configured caller.
+func getIntList(key string) []int {
+	raw, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	var values []int
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if v, err := strconv.Atoi(part); err == nil {
+			values = append(values, v)
+		}
+	}
+	return values
 }
 
 func getDuration(key string, fallback time.Duration) time.Duration {

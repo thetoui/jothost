@@ -52,10 +52,22 @@ services:
       AGENT_SOCKET: /run/jothost/agent.sock
       AGENT_OPERATION_TIMEOUT: 30s
       AGENT_MAX_CONCURRENT: 16
+      # Shared secret authenticating the API to the Agent. Development default
+      # only; production must supply its own.
+      AGENT_TOKEN: ${AGENT_TOKEN:-dev-agent-token-0123456789abcdef0123456789abcdef}
+      # UID 10001 is the API container's jothost user. Peer credentials come
+      # from the kernel and cannot be forged by the caller.
+      AGENT_ALLOWED_UIDS: ${AGENT_ALLOWED_UIDS:-10001}
+      AGENT_AUDIT_LOG: /var/log/jothost/agent-audit.log
+      AGENT_MAX_CONCURRENT_JOBS: 4
+      AGENT_JOB_RETENTION: 15m
     volumes:
       # The socket directory is the only channel between API and Agent.
       # No port is published: the Agent must never be reachable over TCP.
       - agent-socket:/run/jothost
+      - agent-audit:/var/log/jothost
+      # The Phase 2 checks run inside this container, against a live Agent.
+      - ./tests:/tests:ro
     healthcheck:
       test: ["CMD", "/usr/local/bin/jothost-agent", "-ping"]
       interval: 10s
@@ -77,6 +89,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       AGENT_SOCKET: /run/jothost/agent.sock
       AGENT_TIMEOUT: 30s
+      # Must match the Agent's AGENT_TOKEN.
+      AGENT_TOKEN: ${AGENT_TOKEN:-dev-agent-token-0123456789abcdef0123456789abcdef}
       MIGRATIONS_DIR: /app/migrations
       AUTO_MIGRATE: "true"
       # Development key only. Production must supply its own; losing it makes
@@ -155,3 +169,4 @@ volumes:
   postgres-data:
   redis-data:
   agent-socket:
+  agent-audit:

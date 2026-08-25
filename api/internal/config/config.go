@@ -47,6 +47,9 @@ type Config struct {
 	AgentSocket string
 	// AgentTimeout bounds every agent operation (CLAUDE.md section 6).
 	AgentTimeout time.Duration
+	// AgentToken authenticates the API to the Host Agent. It must match the
+	// Agent's AGENT_TOKEN and must never be logged.
+	AgentToken string
 
 	// Auth holds the authentication settings.
 	Auth AuthConfig
@@ -96,6 +99,7 @@ func Load() (Config, error) {
 		AutoMigrate:     getBool("AUTO_MIGRATE", true),
 		AgentSocket:     getString("AGENT_SOCKET", "/run/jothost/agent.sock"),
 		AgentTimeout:    getDuration("AGENT_TIMEOUT", 30*time.Second),
+		AgentToken:      getString("AGENT_TOKEN", ""),
 		Auth: AuthConfig{
 			EncryptionKey:    getString("ENCRYPTION_KEY", ""),
 			AccessTokenTTL:   getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),

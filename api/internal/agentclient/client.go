@@ -23,13 +23,29 @@ const maxResponseBytes = 1 << 20 // 1 MiB
 type Client struct {
 	socketPath string
 	timeout    time.Duration
-	dialer     net.Dialer
+	// token authenticates this API to the Agent. It is a shared secret and
+	// must never be logged.
+	token  string
+	dialer net.Dialer
 }
 
-// New returns a Client bound to a Unix socket path. timeout bounds the whole
-// request/response exchange (CLAUDE.md section 6).
-func New(socketPath string, timeout time.Duration) *Client {
-	return &Client{socketPath: socketPath, timeout: timeout}
+// Options configures a Client.
+type Options struct {
+	SocketPath string
+	// Timeout bounds the whole request/response exchange (CLAUDE.md section 6).
+	Timeout time.Duration
+	// Token is the Agent's shared secret. An empty token is sent as absent,
+	// which the Agent accepts only when it has no token configured.
+	Token string
+}
+
+// New returns a Client bound to a Unix socket path.
+func New(opts Options) *Client {
+	return &Client{
+		socketPath: opts.SocketPath,
+		timeout:    opts.Timeout,
+		token:      opts.Token,
+	}
 }
 
 // ErrUnavailable indicates the agent socket could not be reached.
@@ -42,6 +58,10 @@ func (c *Client) Do(ctx context.Context, req protocol.Request) (protocol.Respons
 	if err := req.Validate(); err != nil {
 		return protocol.Response{}, fmt.Errorf("invalid agent request: %w", err)
 	}
+
+	// The token is attached here rather than by callers, so no call site can
+	// forget it and no caller needs to hold the secret.
+	req.Token = c.token
 
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()

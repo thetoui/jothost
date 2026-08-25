@@ -126,30 +126,49 @@ Unauthorized users cannot access protected API.  verified: 401 on every guarded 
 
 # PHASE 2 — Host Agent
 
-- [ ] Agent daemon
-- [ ] Unix socket
-- [ ] Agent authentication
-- [ ] Operation protocol
-- [ ] Operation allowlist
-- [ ] Operation validation
-- [ ] CPU collector
-- [ ] RAM collector
-- [ ] Disk collector
-- [ ] Network collector
-- [ ] Process collector
-- [ ] Service collector
-- [ ] Job execution
-- [ ] Agent logging
-- [ ] Agent audit
+**Status: COMPLETE** — see [docs/PHASE2.md](docs/PHASE2.md) for scope, decisions, and known limitations.
+
+- [x] Agent daemon
+- [x] Unix socket
+- [x] Agent authentication
+- [x] Operation protocol
+- [x] Operation allowlist
+- [x] Operation validation
+- [x] CPU collector
+- [x] RAM collector
+- [x] Disk collector
+- [x] Network collector
+- [x] Process collector
+- [x] Service collector
+- [x] Job execution
+- [x] Agent logging
+- [x] Agent audit
+
+Additionally required by the above:
+
+- [x] Allowlisted command execution (no shell, ever)
+- [x] Path validation (traversal and symlink escape)
+- [x] Typed payload decoding with unknown-field rejection
+- [x] Typed API client wrappers for every operation
+- [x] `jothost-agent -call` operator diagnostics
 
 Security tests:
 
-- [ ] Path traversal
-- [ ] Command injection
-- [ ] Invalid operation
-- [ ] Privilege escalation
-- [ ] Timeout
-- [ ] Resource abuse
+- [x] Path traversal
+- [x] Command injection
+- [x] Invalid operation
+- [x] Privilege escalation
+- [x] Timeout
+- [x] Resource abuse
+
+Acceptance:
+
+```text
+Agent reads real host metrics.        verified: 40 integration checks on a live host
+Only allowlisted operations run.      verified: registry/allowlist cross-checked both ways
+Callers are authenticated.            verified: peer credentials + token, both enforced
+Every operation is audited.           verified: append-only trail names the calling process
+```
 
 ---
 

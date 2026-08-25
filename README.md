@@ -3,10 +3,9 @@
 A self-hosted Linux hosting control panel: websites, PHP and Node.js applications,
 databases, SSL, files, cron, backups, monitoring, and security from one web interface.
 
-**Status:** Phases 0 (foundation) and 1 (authentication) complete. See
-[TASKS.md](TASKS.md) for the phase plan, and [docs/PHASE0.md](docs/PHASE0.md) /
-[docs/PHASE1.md](docs/PHASE1.md) for what each phase does and does not
-include.
+**Status:** Phases 0 (foundation), 1 (authentication), and 2 (Host Agent)
+complete. See [TASKS.md](TASKS.md) for the phase plan, and the per-phase notes
+in [docs/](docs/) for what each does and does not include.
 
 ---
 
@@ -111,6 +110,12 @@ make migrate-status           # show migration state
 make create-admin             # create an administrator
 ```
 
+Ask the Agent about the host directly:
+
+```bash
+docker compose exec agent jothost-agent -call metrics.memory
+```
+
 ---
 
 ## Repository layout
@@ -154,6 +159,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Day-to-day workflow |
 | [docs/PHASE0.md](docs/PHASE0.md) | Phase 0 scope, decisions, and known limitations |
 | [docs/PHASE1.md](docs/PHASE1.md) | Phase 1 scope, decisions, and known limitations |
+| [docs/PHASE2.md](docs/PHASE2.md) | Phase 2 scope, decisions, and known limitations |
 
 ---
 
@@ -168,3 +174,8 @@ Currently enforced: Argon2id password hashing, opaque revocable sessions,
 single-use refresh tokens with theft detection, TOTP two-factor, RBAC,
 per-account and per-IP login throttling, encrypted secrets at rest, and an
 append-only audit trail.
+
+On the Agent: kernel-verified caller identity plus a shared token, an operation
+allowlist that cannot drift from its handlers, argv-only command execution with
+no shell anywhere, path validation against traversal and symlink escape, and a
+separate append-only audit trail that survives the database being unreachable.

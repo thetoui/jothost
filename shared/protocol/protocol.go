@@ -12,17 +12,50 @@ import (
 // OperationType identifies a privileged operation the Agent may perform.
 type OperationType string
 
-// Operations known to the Agent. Phase 0 ships only the non-privileged
-// liveness operation; later phases append their own constants and register
-// them in allowedOperations.
+// Operations known to the Agent.
+//
+// Adding a constant is not enough to make an operation callable: it must also
+// appear in allowedOperations below, and a handler must be registered for it
+// in the Agent. The three lists are cross-checked at startup and in tests.
 const (
+	// Agent introspection. Neither touches the host.
 	OperationPing OperationType = "agent.ping"
+	OperationInfo OperationType = "agent.info"
+
+	// Read-only host inspection.
+	OperationSystemInfo     OperationType = "system.info"
+	OperationMetricsCPU     OperationType = "metrics.cpu"
+	OperationMetricsMemory  OperationType = "metrics.memory"
+	OperationMetricsDisk    OperationType = "metrics.disk"
+	OperationMetricsNetwork OperationType = "metrics.network"
+	OperationMetricsLoad    OperationType = "metrics.load"
+	OperationProcessList    OperationType = "process.list"
+	OperationServiceList    OperationType = "service.list"
+	OperationServiceStatus  OperationType = "service.status"
+
+	// Asynchronous execution control.
+	OperationJobStatus OperationType = "job.status"
+	OperationJobCancel OperationType = "job.cancel"
+	OperationJobList   OperationType = "job.list"
 )
 
 // allowedOperations is the allowlist consulted by Validate. An operation that
 // is not present here can never reach a handler.
 var allowedOperations = map[OperationType]struct{}{
-	OperationPing: {},
+	OperationPing:           {},
+	OperationInfo:           {},
+	OperationSystemInfo:     {},
+	OperationMetricsCPU:     {},
+	OperationMetricsMemory:  {},
+	OperationMetricsDisk:    {},
+	OperationMetricsNetwork: {},
+	OperationMetricsLoad:    {},
+	OperationProcessList:    {},
+	OperationServiceList:    {},
+	OperationServiceStatus:  {},
+	OperationJobStatus:      {},
+	OperationJobCancel:      {},
+	OperationJobList:        {},
 }
 
 // ErrUnknownOperation is returned for any operation outside the allowlist.
@@ -34,18 +67,68 @@ func IsAllowed(op OperationType) bool {
 	return ok
 }
 
+// AllowedOperations returns the allowlist, for diagnostics and tests.
+func AllowedOperations() []OperationType {
+	ops := make([]OperationType, 0, len(allowedOperations))
+	for op := range allowedOperations {
+		ops = append(ops, op)
+	}
+	return ops
+}
+
+// ExecutionMode selects synchronous or asynchronous execution.
+type ExecutionMode string
+
+// Execution modes. The zero value is treated as ModeSync so an omitted field
+// cannot accidentally detach an operation from its caller.
+const (
+	ModeSync  ExecutionMode = "sync"
+	ModeAsync ExecutionMode = "async"
+)
+
+// jobControlOperations may never be submitted asynchronously: dispatching them
+// through the job runner would let a caller queue a job that cancels jobs,
+// which is both useless and a way to obscure intent in the audit trail.
+var jobControlOperations = map[OperationType]struct{}{
+	OperationJobStatus: {},
+	OperationJobCancel: {},
+	OperationJobList:   {},
+}
+
+// IsJobControl reports whether op manages the job runner itself.
+func IsJobControl(op OperationType) bool {
+	_, ok := jobControlOperations[op]
+	return ok
+}
+
+// maxRequestIDLength bounds a caller-supplied correlation ID before it reaches
+// logs or an audit record.
+const maxRequestIDLength = 64
+
 // Request is a single typed operation sent from the API to the Agent.
 type Request struct {
 	// Operation must be a member of the allowlist.
 	Operation OperationType `json:"operation"`
 	// RequestID correlates agent logs with API logs.
 	RequestID string `json:"request_id"`
+	// Token authenticates the caller. It is a shared secret and must never be
+	// logged (CLAUDE.md section 14).
+	Token string `json:"token,omitempty"`
+	// Mode selects synchronous or asynchronous execution.
+	Mode ExecutionMode `json:"mode,omitempty"`
 	// Payload carries operation-specific arguments. Each handler decodes it
 	// into its own typed struct; it is never interpreted as a shell string.
 	Payload map[string]any `json:"payload,omitempty"`
 }
 
+// Async reports whether the request asked for background execution.
+func (r Request) Async() bool { return r.Mode == ModeAsync }
+
 // Validate enforces the allowlist and the required envelope fields.
+//
+// It deliberately does not check the token: authentication is the transport's
+// job and happens before validation, so a caller that fails it never reaches
+// operation dispatch at all.
 func (r Request) Validate() error {
 	if r.Operation == "" {
 		return errors.New("operation is required")
@@ -55,6 +138,17 @@ func (r Request) Validate() error {
 	}
 	if r.RequestID == "" {
 		return errors.New("request_id is required")
+	}
+	if len(r.RequestID) > maxRequestIDLength {
+		return fmt.Errorf("request_id must be at most %d characters", maxRequestIDLength)
+	}
+	switch r.Mode {
+	case "", ModeSync, ModeAsync:
+	default:
+		return fmt.Errorf("mode must be %q or %q", ModeSync, ModeAsync)
+	}
+	if r.Async() && IsJobControl(r.Operation) {
+		return fmt.Errorf("operation %q cannot be run asynchronously", r.Operation)
 	}
 	return nil
 }
@@ -66,6 +160,8 @@ type Status string
 const (
 	StatusSuccess Status = "SUCCESS"
 	StatusFailed  Status = "FAILED"
+	// StatusAccepted is returned when an asynchronous request has been queued.
+	StatusAccepted Status = "ACCEPTED"
 )
 
 // Error is a structured agent-side failure. It never carries shell commands,
@@ -84,12 +180,17 @@ type Response struct {
 	Duration  time.Duration  `json:"-"`
 }
 
-// Error codes returned by the Agent transport layer.
+// Error codes returned by the Agent transport and handlers.
 const (
 	CodeUnknownOperation = "UNKNOWN_OPERATION"
 	CodeInvalidRequest   = "INVALID_REQUEST"
+	CodeInvalidPayload   = "INVALID_PAYLOAD"
+	CodeUnauthorized     = "UNAUTHORIZED"
 	CodeInternal         = "INTERNAL_ERROR"
 	CodeTimeout          = "OPERATION_TIMEOUT"
+	CodeUnsupported      = "UNSUPPORTED"
+	CodeNotFound         = "NOT_FOUND"
+	CodeBusy             = "AGENT_BUSY"
 )
 
 // NewError builds a failed Response carrying a structured error.
@@ -104,4 +205,36 @@ func NewError(requestID, code, message string) Response {
 // NewSuccess builds a successful Response.
 func NewSuccess(requestID string, data map[string]any) Response {
 	return Response{Status: StatusSuccess, RequestID: requestID, Data: data}
+}
+
+// NewAccepted builds the reply to an accepted asynchronous request.
+func NewAccepted(requestID, jobID string) Response {
+	return Response{
+		Status:    StatusAccepted,
+		RequestID: requestID,
+		Data:      map[string]any{"job_id": jobID},
+	}
+}
+
+// JobState is the lifecycle state of an asynchronous operation. The values
+// match the job states in PRD.md section 11.
+type JobState string
+
+// Job states.
+const (
+	JobPending   JobState = "PENDING"
+	JobRunning   JobState = "RUNNING"
+	JobSuccess   JobState = "SUCCESS"
+	JobFailed    JobState = "FAILED"
+	JobCancelled JobState = "CANCELLED"
+)
+
+// Terminal reports whether a job has finished and will not change again.
+func (s JobState) Terminal() bool {
+	switch s {
+	case JobSuccess, JobFailed, JobCancelled:
+		return true
+	default:
+		return false
+	}
 }

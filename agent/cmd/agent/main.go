@@ -8,14 +8,20 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/jothost/panel/agent/internal/audit"
+	"github.com/jothost/panel/agent/internal/collectors"
+	"github.com/jothost/panel/agent/internal/command"
 	"github.com/jothost/panel/agent/internal/config"
+	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/operations"
+	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/socket"
 	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/protocol"
@@ -27,6 +33,11 @@ func main() {
 	// systemd health checks use it so no extra tooling is required in the
 	// runtime image.
 	pingMode := flag.Bool("ping", false, "probe a running agent over its socket and exit")
+	// -call is an operator diagnostic: it asks a running Agent for one
+	// operation and prints the reply. It authenticates like any other caller.
+	callOp := flag.String("call", "", "send one operation to a running agent and print the response")
+	callPayload := flag.String("payload", "", "JSON payload for -call")
+	callAsync := flag.Bool("async", false, "submit -call as a background job")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -36,11 +47,19 @@ func main() {
 	}
 
 	if *pingMode {
-		if err := ping(cfg.SocketPath); err != nil {
+		if err := ping(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "agent: ping failed: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("ok")
+		return
+	}
+
+	if *callOp != "" {
+		if err := call(cfg, *callOp, *callPayload, *callAsync); err != nil {
+			fmt.Fprintf(os.Stderr, "agent: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -59,9 +78,46 @@ func run(cfg config.Config) error {
 	log.Info("starting jothost agent",
 		"version", version.Current().Version,
 		"socket", cfg.SocketPath,
+		"proc_root", cfg.ProcRoot,
 	)
 
-	srv := socket.New(cfg, log, operations.NewRegistry(log))
+	// An Agent with no caller checks is a valid development configuration but
+	// never an acceptable production one, so it is called out loudly rather
+	// than accepted in silence.
+	if !cfg.Authenticated() {
+		log.Warn("agent is running without caller authentication",
+			"detail", "set AGENT_TOKEN and AGENT_ALLOWED_UIDS; socket permissions are the only boundary")
+	}
+
+	auditWriter, err := audit.NewWriter(audit.Options{Path: cfg.AuditLogPath, Log: log})
+	if err != nil {
+		// A missing audit file degrades to logger-only auditing rather than
+		// stopping the daemon; the failure is reported, not hidden.
+		log.Error("audit log unavailable, falling back to structured logs only",
+			logger.KeyError, err.Error())
+	}
+	defer func() {
+		if err := auditWriter.Close(); err != nil {
+			log.Error("failed to close audit log", logger.KeyError, err.Error())
+		}
+	}()
+
+	registry, jobRunner, err := buildRegistry(cfg, log)
+	if err != nil {
+		return err
+	}
+
+	srv := socket.New(socket.Options{
+		Config:   cfg,
+		Log:      log,
+		Registry: registry,
+		Auth: socket.NewAuthenticator(socket.AuthOptions{
+			AllowedUIDs: cfg.AllowedUIDs,
+			Token:       cfg.Token,
+		}),
+		Audit: auditWriter,
+	})
+
 	if err := srv.Listen(); err != nil {
 		log.Error("failed to bind agent socket", logger.KeyError, err.Error())
 		return err
@@ -70,16 +126,73 @@ func run(cfg config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := srv.Serve(ctx); err != nil {
-		log.Error("agent terminated with error", logger.KeyError, err.Error())
-		return err
+	serveErr := srv.Serve(ctx)
+
+	// Running jobs are cancelled and drained after the listener stops, so a
+	// shutdown does not leave a half-finished infrastructure change behind
+	// without recording that it was interrupted.
+	if err := jobRunner.Shutdown(cfg.ShutdownTimeout); err != nil {
+		log.Error("job runner did not drain cleanly", logger.KeyError, err.Error())
+	}
+
+	if serveErr != nil {
+		log.Error("agent terminated with error", logger.KeyError, serveErr.Error())
+		return serveErr
 	}
 	return nil
 }
 
+// buildRegistry assembles the operation registry and its collaborators.
+func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *jobs.Runner, error) {
+	collector := collectors.New(collectors.Options{
+		ProcRoot: cfg.ProcRoot,
+		SysRoot:  cfg.SysRoot,
+	})
+	if !collector.Available() {
+		// Metrics are advertised through agent.info capabilities, so an
+		// unavailable /proc produces honest "unsupported" answers rather than
+		// confusing internal errors.
+		log.Warn("metrics are unavailable: /proc is not readable", "proc_root", cfg.ProcRoot)
+	}
+
+	// The command allowlist is the complete set of programs this Agent may
+	// ever execute. Adding one is a deliberate, reviewable change.
+	runner, err := command.NewRunner(command.Spec{
+		Name:    services.CommandName,
+		Path:    cfg.SystemctlPath,
+		Timeout: 10 * time.Second,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("build command allowlist: %w", err)
+	}
+
+	serviceProvider := services.NewProvider(runner)
+	if !serviceProvider.Available() {
+		log.Warn("service management is unavailable: systemctl not found",
+			"path", cfg.SystemctlPath)
+	}
+
+	jobRunner := jobs.NewRunner(jobs.Options{
+		MaxConcurrent: cfg.MaxConcurrentJobs,
+		MaxJobs:       cfg.MaxJobs,
+		Timeout:       cfg.JobTimeout,
+		Retention:     cfg.JobRetention,
+		Log:           log,
+	})
+
+	registry := operations.NewRegistry(operations.Dependencies{
+		Collector: collector,
+		Services:  serviceProvider,
+		Jobs:      jobRunner,
+		Log:       log,
+	})
+
+	return registry, jobRunner, nil
+}
+
 // ping issues a single agent.ping over the socket and reports the outcome.
-func ping(socketPath string) error {
-	conn, err := net.DialTimeout("unix", socketPath, 5*time.Second)
+func ping(cfg config.Config) error {
+	conn, err := net.DialTimeout("unix", cfg.SocketPath, 5*time.Second)
 	if err != nil {
 		return err
 	}
@@ -92,6 +205,9 @@ func ping(socketPath string) error {
 	req, err := json.Marshal(protocol.Request{
 		Operation: protocol.OperationPing,
 		RequestID: "req_healthcheck",
+		// The health check authenticates like any other caller. It connects as
+		// root, so the peer check passes, but the token must still be right.
+		Token: cfg.Token,
 	})
 	if err != nil {
 		return err

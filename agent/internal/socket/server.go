@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jothost/panel/agent/internal/audit"
 	"github.com/jothost/panel/agent/internal/config"
 	"github.com/jothost/panel/agent/internal/operations"
 	"github.com/jothost/panel/shared/protocol"
@@ -33,19 +34,36 @@ type Server struct {
 	cfg      config.Config
 	log      *slog.Logger
 	registry *operations.Registry
+	auth     *Authenticator
+	audit    *audit.Writer
 
 	listener net.Listener
 	sem      chan struct{}
 	wg       sync.WaitGroup
 }
 
+// Options are the collaborators a Server needs.
+type Options struct {
+	Config   config.Config
+	Log      *slog.Logger
+	Registry *operations.Registry
+	Auth     *Authenticator
+	Audit    *audit.Writer
+}
+
 // New builds a socket server.
-func New(cfg config.Config, log *slog.Logger, registry *operations.Registry) *Server {
+func New(opts Options) *Server {
+	maxConcurrent := opts.Config.MaxConcurrent
+	if maxConcurrent <= 0 {
+		maxConcurrent = 1
+	}
 	return &Server{
-		cfg:      cfg,
-		log:      log,
-		registry: registry,
-		sem:      make(chan struct{}, cfg.MaxConcurrent),
+		cfg:      opts.Config,
+		log:      opts.Log,
+		registry: opts.Registry,
+		auth:     opts.Auth,
+		audit:    opts.Audit,
+		sem:      make(chan struct{}, maxConcurrent),
 	}
 }
 
@@ -102,6 +120,8 @@ func (s *Server) Listen() error {
 		"socket", s.cfg.SocketPath,
 		"mode", fmt.Sprintf("%#o", s.cfg.SocketMode),
 		"max_concurrent", s.cfg.MaxConcurrent,
+		"peer_check", s.auth.RestrictsPeers(),
+		"token_check", s.auth.RequiresToken(),
 	)
 	return nil
 }
@@ -216,6 +236,26 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 		}
 	}()
 
+	// The caller's identity is established before anything else is read.
+	// A connection whose peer cannot be identified is refused outright: the
+	// Agent must never act on a request it cannot attribute.
+	peer, err := peerCredentials(conn)
+	if err != nil {
+		s.log.Warn("refusing connection with unidentifiable peer", "error", err.Error())
+		s.audit.Write(audit.Record{
+			Status:    audit.StatusDenied,
+			ErrorCode: protocol.CodeUnauthorized,
+			Detail:    map[string]any{"reason": "peer_unavailable"},
+		})
+		s.write(conn, protocol.NewError("", protocol.CodeUnauthorized, "Not authorised"))
+		return
+	}
+
+	if err := s.auth.AuthorizePeer(peer); err != nil {
+		s.denyConnection(conn, peer, "", "", "peer_denied", err)
+		return
+	}
+
 	// Bound concurrency so a flood of connections cannot exhaust host
 	// resources; excess connections wait for a slot or for shutdown.
 	select {
@@ -252,6 +292,16 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 		return
 	}
 
+	// The token is checked before dispatch, so an unauthenticated caller never
+	// reaches an operation handler even for a read-only operation.
+	if err := s.auth.AuthorizeToken(req.Token); err != nil {
+		s.denyConnection(conn, peer, string(req.Operation), req.RequestID, "token_rejected", err)
+		return
+	}
+	// The token has served its purpose and must not travel any further:
+	// clearing it keeps it out of handlers, job records, and audit detail.
+	req.Token = ""
+
 	start := time.Now()
 	resp := s.registry.Dispatch(opCtx, req)
 
@@ -259,13 +309,82 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 		resp = protocol.NewError(req.RequestID, protocol.CodeTimeout, "Operation timed out")
 	}
 
+	duration := time.Since(start)
+
 	s.log.Info("agent_operation",
 		"operation", string(req.Operation),
 		"request_id", req.RequestID,
 		"status", string(resp.Status),
-		"duration_ms", time.Since(start).Milliseconds(),
+		"duration_ms", duration.Milliseconds(),
+		"peer_uid", peer.UID,
 	)
+
+	// Every operation is audited, successful or not (CLAUDE.md section 15).
+	// The record names the calling process, which is what makes the trail
+	// useful during an incident.
+	record := audit.Record{
+		Operation:  string(req.Operation),
+		RequestID:  req.RequestID,
+		Status:     auditStatus(resp.Status),
+		PeerUID:    peer.UID,
+		PeerGID:    peer.GID,
+		PeerPID:    peer.PID,
+		DurationMS: duration.Milliseconds(),
+		Detail:     map[string]any{"mode": string(effectiveMode(req))},
+	}
+	if resp.Error != nil {
+		record.ErrorCode = resp.Error.Code
+	}
+	if jobID, ok := resp.Data["job_id"].(string); ok {
+		record.Detail["job_id"] = jobID
+	}
+	s.audit.Write(record)
+
 	s.write(conn, resp)
+}
+
+// denyConnection audits a rejected caller and returns a uniform refusal.
+//
+// The reason is recorded but never disclosed: telling a caller whether it
+// failed on UID or on token would help it work out which to attack.
+func (s *Server) denyConnection(conn net.Conn, peer PeerCredentials, operation, requestID, reason string, cause error) {
+	s.log.Warn("rejected agent caller",
+		"reason", reason,
+		"peer_uid", peer.UID,
+		"peer_pid", peer.PID,
+		"operation", operation,
+		"error", cause.Error(),
+	)
+	s.audit.Write(audit.Record{
+		Operation: operation,
+		RequestID: requestID,
+		Status:    audit.StatusDenied,
+		PeerUID:   peer.UID,
+		PeerGID:   peer.GID,
+		PeerPID:   peer.PID,
+		ErrorCode: protocol.CodeUnauthorized,
+		Detail:    map[string]any{"reason": reason},
+	})
+	s.write(conn, protocol.NewError(requestID, protocol.CodeUnauthorized, "Not authorised"))
+}
+
+// auditStatus maps a protocol status onto an audit outcome.
+func auditStatus(status protocol.Status) string {
+	switch status {
+	case protocol.StatusSuccess, protocol.StatusAccepted:
+		return audit.StatusSuccess
+	default:
+		return audit.StatusFailure
+	}
+}
+
+// effectiveMode reports the execution mode actually used, treating the empty
+// value as synchronous so the audit trail never records an ambiguous "".
+func effectiveMode(req protocol.Request) protocol.ExecutionMode {
+	if req.Mode == "" {
+		return protocol.ModeSync
+	}
+	return req.Mode
 }
 
 func (s *Server) write(conn net.Conn, resp protocol.Response) {

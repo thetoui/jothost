@@ -67,7 +67,7 @@ func successReply(req protocol.Request) []byte {
 func TestPingSucceeds(t *testing.T) {
 	socketPath := fakeAgent(t, successReply)
 
-	if err := New(socketPath, 2*time.Second).Ping(context.Background(), "req_1"); err != nil {
+	if err := New(Options{SocketPath: socketPath, Timeout: 2 * time.Second}).Ping(context.Background(), "req_1"); err != nil {
 		t.Fatalf("Ping returned error: %v", err)
 	}
 }
@@ -75,7 +75,7 @@ func TestPingSucceeds(t *testing.T) {
 func TestDoEchoesRequestID(t *testing.T) {
 	socketPath := fakeAgent(t, successReply)
 
-	resp, err := New(socketPath, 2*time.Second).Do(context.Background(), protocol.Request{
+	resp, err := New(Options{SocketPath: socketPath, Timeout: 2 * time.Second}).Do(context.Background(), protocol.Request{
 		Operation: protocol.OperationPing,
 		RequestID: "req_echo",
 	})
@@ -90,7 +90,7 @@ func TestDoEchoesRequestID(t *testing.T) {
 func TestDoValidatesBeforeDialing(t *testing.T) {
 	// The client must refuse a non-allowlisted operation without opening a
 	// connection to the privileged process at all.
-	client := New("/nonexistent/agent.sock", time.Second)
+	client := New(Options{SocketPath: "/nonexistent/agent.sock", Timeout: time.Second})
 
 	_, err := client.Do(context.Background(), protocol.Request{
 		Operation: "shell.exec",
@@ -108,7 +108,7 @@ func TestDoValidatesBeforeDialing(t *testing.T) {
 }
 
 func TestDoReportsUnavailableSocket(t *testing.T) {
-	client := New("/nonexistent/agent.sock", time.Second)
+	client := New(Options{SocketPath: "/nonexistent/agent.sock", Timeout: time.Second})
 
 	_, err := client.Do(context.Background(), protocol.Request{
 		Operation: protocol.OperationPing,
@@ -125,7 +125,7 @@ func TestPingFailsOnAgentError(t *testing.T) {
 		return out
 	})
 
-	err := New(socketPath, 2*time.Second).Ping(context.Background(), "req_1")
+	err := New(Options{SocketPath: socketPath, Timeout: 2 * time.Second}).Ping(context.Background(), "req_1")
 	if err == nil {
 		t.Fatal("a FAILED response must surface as an error")
 	}
@@ -140,7 +140,7 @@ func TestDoTimesOutOnSilentAgent(t *testing.T) {
 	})
 
 	start := time.Now()
-	_, err := New(socketPath, 300*time.Millisecond).Do(context.Background(), protocol.Request{
+	_, err := New(Options{SocketPath: socketPath, Timeout: 300 * time.Millisecond}).Do(context.Background(), protocol.Request{
 		Operation: protocol.OperationPing,
 		RequestID: "req_1",
 	})
@@ -158,7 +158,7 @@ func TestDoRejectsOversizedResponse(t *testing.T) {
 		return []byte(strings.Repeat("A", (1<<20)+1024))
 	})
 
-	_, err := New(socketPath, 3*time.Second).Do(context.Background(), protocol.Request{
+	_, err := New(Options{SocketPath: socketPath, Timeout: 3 * time.Second}).Do(context.Background(), protocol.Request{
 		Operation: protocol.OperationPing,
 		RequestID: "req_1",
 	})
@@ -172,11 +172,183 @@ func TestDoRejectsMalformedResponse(t *testing.T) {
 		return []byte("{not json")
 	})
 
-	_, err := New(socketPath, 2*time.Second).Do(context.Background(), protocol.Request{
+	_, err := New(Options{SocketPath: socketPath, Timeout: 2 * time.Second}).Do(context.Background(), protocol.Request{
 		Operation: protocol.OperationPing,
 		RequestID: "req_1",
 	})
 	if err == nil {
 		t.Fatal("malformed agent response must be rejected")
+	}
+}
+
+func TestTokenIsAttachedToEveryRequest(t *testing.T) {
+	// The client attaches the secret so no call site can forget it and no
+	// caller needs to hold it.
+	received := make(chan string, 1)
+	socketPath := fakeAgent(t, func(req protocol.Request) []byte {
+		received <- req.Token
+		return successReply(req)
+	})
+
+	client := New(Options{
+		SocketPath: socketPath,
+		Timeout:    2 * time.Second,
+		Token:      "0123456789abcdef0123456789abcdef",
+	})
+	if err := client.Ping(context.Background(), "req_1"); err != nil {
+		t.Fatalf("Ping: %v", err)
+	}
+
+	select {
+	case token := <-received:
+		if token != "0123456789abcdef0123456789abcdef" {
+			t.Fatalf("agent received token %q", token)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the agent never received a request")
+	}
+}
+
+func TestTokenOverridesACallerSuppliedValue(t *testing.T) {
+	// A caller must not be able to substitute its own token: the client's
+	// configured secret is authoritative.
+	received := make(chan string, 1)
+	socketPath := fakeAgent(t, func(req protocol.Request) []byte {
+		received <- req.Token
+		return successReply(req)
+	})
+
+	client := New(Options{
+		SocketPath: socketPath,
+		Timeout:    2 * time.Second,
+		Token:      "configured-token-0123456789abcdef",
+	})
+	if _, err := client.Do(context.Background(), protocol.Request{
+		Operation: protocol.OperationPing,
+		RequestID: "req_1",
+		Token:     "caller-supplied-token",
+	}); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+
+	if token := <-received; token != "configured-token-0123456789abcdef" {
+		t.Fatalf("the configured token must win, got %q", token)
+	}
+}
+
+func TestTypedWrappersDecodeResults(t *testing.T) {
+	socketPath := fakeAgent(t, func(req protocol.Request) []byte {
+		var data map[string]any
+
+		switch req.Operation {
+		case protocol.OperationMetricsMemory:
+			data = map[string]any{"total_bytes": 16384, "used_percent": 25.5}
+		case protocol.OperationMetricsCPU:
+			data = map[string]any{"usage_percent": 12.5, "cores": 4}
+		case protocol.OperationInfo:
+			data = map[string]any{
+				"version":      "0.1.0-dev",
+				"capabilities": map[string]any{"metrics": true, "services": false},
+			}
+		default:
+			data = map[string]any{}
+		}
+
+		out, _ := json.Marshal(protocol.NewSuccess(req.RequestID, data))
+		return out
+	})
+
+	client := New(Options{SocketPath: socketPath, Timeout: 2 * time.Second})
+	ctx := context.Background()
+
+	memory, err := client.Memory(ctx, "req_1")
+	if err != nil {
+		t.Fatalf("Memory: %v", err)
+	}
+	if memory.TotalBytes != 16384 || memory.UsedPercent != 25.5 {
+		t.Fatalf("unexpected memory result: %+v", memory)
+	}
+
+	cpu, err := client.CPU(ctx, "req_2")
+	if err != nil {
+		t.Fatalf("CPU: %v", err)
+	}
+	if cpu.UsagePercent != 12.5 || cpu.Cores != 4 {
+		t.Fatalf("unexpected cpu result: %+v", cpu)
+	}
+
+	info, err := client.Info(ctx, "req_3")
+	if err != nil {
+		t.Fatalf("Info: %v", err)
+	}
+	if !info.Capabilities["metrics"] || info.Capabilities["services"] {
+		t.Fatalf("unexpected capabilities: %+v", info.Capabilities)
+	}
+}
+
+func TestOperationFailureCarriesTheCode(t *testing.T) {
+	socketPath := fakeAgent(t, func(req protocol.Request) []byte {
+		out, _ := json.Marshal(protocol.NewError(req.RequestID,
+			protocol.CodeUnsupported, "This metric is not available on this host"))
+		return out
+	})
+
+	client := New(Options{SocketPath: socketPath, Timeout: 2 * time.Second})
+
+	_, err := client.CPU(context.Background(), "req_1")
+	if err == nil {
+		t.Fatal("a FAILED response must surface as an error")
+	}
+
+	var failed *ErrOperationFailed
+	if !errors.As(err, &failed) {
+		t.Fatalf("expected ErrOperationFailed, got %T", err)
+	}
+	if failed.Code != protocol.CodeUnsupported {
+		t.Fatalf("code = %q", failed.Code)
+	}
+	// Callers hide a feature rather than showing an error when the host simply
+	// cannot do it.
+	if !IsUnsupported(err) {
+		t.Fatal("IsUnsupported must recognise an UNSUPPORTED failure")
+	}
+}
+
+func TestSubmitAsyncReturnsAJobID(t *testing.T) {
+	socketPath := fakeAgent(t, func(req protocol.Request) []byte {
+		if !req.Async() {
+			out, _ := json.Marshal(protocol.NewError(req.RequestID, protocol.CodeInvalidRequest, "expected async"))
+			return out
+		}
+		out, _ := json.Marshal(protocol.NewAccepted(req.RequestID, "job_abc123"))
+		return out
+	})
+
+	client := New(Options{SocketPath: socketPath, Timeout: 2 * time.Second})
+
+	jobID, err := client.SubmitAsync(context.Background(), "req_1", protocol.OperationMetricsDisk, nil)
+	if err != nil {
+		t.Fatalf("SubmitAsync: %v", err)
+	}
+	if jobID != "job_abc123" {
+		t.Fatalf("job id = %q", jobID)
+	}
+}
+
+func TestSubmitAsyncRejectsAMissingJobID(t *testing.T) {
+	socketPath := fakeAgent(t, func(req protocol.Request) []byte {
+		// ACCEPTED without a job id leaves the caller unable to poll, so it is
+		// an error rather than a silent success.
+		out, _ := json.Marshal(protocol.Response{
+			Status:    protocol.StatusAccepted,
+			RequestID: req.RequestID,
+		})
+		return out
+	})
+
+	client := New(Options{SocketPath: socketPath, Timeout: 2 * time.Second})
+
+	if _, err := client.SubmitAsync(context.Background(), "req_1", protocol.OperationMetricsDisk, nil); err == nil {
+		t.Fatal("an accepted response without a job id must be rejected")
 	}
 }

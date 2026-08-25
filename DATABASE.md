@@ -1,0 +1,498 @@
+# JotHost Panel — Database Design
+
+Database:
+
+```text
+PostgreSQL
+```
+
+---
+
+# 1. users
+
+```sql
+id UUID PRIMARY KEY
+username VARCHAR(100) UNIQUE NOT NULL
+email VARCHAR(255) UNIQUE
+password_hash TEXT NOT NULL
+status VARCHAR(30) NOT NULL
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+last_login_at TIMESTAMPTZ
+```
+
+---
+
+# 2. roles
+
+```sql
+id UUID PRIMARY KEY
+name VARCHAR(50) UNIQUE NOT NULL
+description TEXT
+created_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 3. user_roles
+
+```sql
+user_id UUID REFERENCES users(id)
+role_id UUID REFERENCES roles(id)
+
+PRIMARY KEY(user_id, role_id)
+```
+
+---
+
+# 4. permissions
+
+```sql
+id UUID PRIMARY KEY
+name VARCHAR(100) UNIQUE NOT NULL
+description TEXT
+```
+
+Examples:
+
+```text
+server.view
+server.manage
+website.view
+website.create
+website.update
+website.delete
+database.manage
+ssl.manage
+firewall.manage
+backup.manage
+user.manage
+```
+
+---
+
+# 5. role_permissions
+
+```sql
+role_id UUID REFERENCES roles(id)
+permission_id UUID REFERENCES permissions(id)
+
+PRIMARY KEY(role_id, permission_id)
+```
+
+---
+
+# 6. sessions
+
+```sql
+id UUID PRIMARY KEY
+user_id UUID REFERENCES users(id)
+token_hash TEXT NOT NULL
+ip_address INET
+user_agent TEXT
+expires_at TIMESTAMPTZ NOT NULL
+created_at TIMESTAMPTZ NOT NULL
+revoked_at TIMESTAMPTZ
+```
+
+---
+
+# 7. two_factor_auth
+
+```sql
+id UUID PRIMARY KEY
+user_id UUID UNIQUE REFERENCES users(id)
+secret_encrypted TEXT NOT NULL
+enabled BOOLEAN NOT NULL DEFAULT FALSE
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 8. servers
+
+```sql
+id UUID PRIMARY KEY
+hostname VARCHAR(255) NOT NULL
+os_name VARCHAR(100)
+os_version VARCHAR(100)
+kernel VARCHAR(255)
+architecture VARCHAR(50)
+ipv4 INET
+ipv6 INET
+status VARCHAR(30)
+agent_version VARCHAR(50)
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 9. websites
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+name VARCHAR(255)
+primary_domain VARCHAR(255) UNIQUE NOT NULL
+document_root TEXT NOT NULL
+system_user VARCHAR(100) NOT NULL
+php_version VARCHAR(20)
+status VARCHAR(30) NOT NULL
+ssl_enabled BOOLEAN DEFAULT FALSE
+https_redirect BOOLEAN DEFAULT FALSE
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 10. domains
+
+```sql
+id UUID PRIMARY KEY
+website_id UUID REFERENCES websites(id)
+domain VARCHAR(255) UNIQUE NOT NULL
+type VARCHAR(30) NOT NULL
+status VARCHAR(30) NOT NULL
+created_at TIMESTAMPTZ NOT NULL
+```
+
+Types:
+
+```text
+primary
+alias
+subdomain
+redirect
+```
+
+---
+
+# 11. php_versions
+
+```sql
+id UUID PRIMARY KEY
+version VARCHAR(20) UNIQUE NOT NULL
+binary_path TEXT
+fpm_service VARCHAR(255)
+status VARCHAR(30)
+installed BOOLEAN DEFAULT FALSE
+created_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 12. php_pools
+
+```sql
+id UUID PRIMARY KEY
+website_id UUID UNIQUE REFERENCES websites(id)
+php_version VARCHAR(20) NOT NULL
+pool_name VARCHAR(100) NOT NULL
+socket_path TEXT NOT NULL
+memory_limit VARCHAR(30)
+max_children INTEGER
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 13. node_versions
+
+```sql
+id UUID PRIMARY KEY
+version VARCHAR(30) UNIQUE NOT NULL
+binary_path TEXT
+installed BOOLEAN DEFAULT FALSE
+status VARCHAR(30)
+created_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 14. node_apps
+
+```sql
+id UUID PRIMARY KEY
+website_id UUID REFERENCES websites(id)
+name VARCHAR(255) NOT NULL
+node_version VARCHAR(30) NOT NULL
+application_root TEXT NOT NULL
+startup_file TEXT
+port INTEGER
+status VARCHAR(30)
+systemd_service VARCHAR(255)
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 15. node_environment
+
+```sql
+id UUID PRIMARY KEY
+node_app_id UUID REFERENCES node_apps(id)
+key VARCHAR(255) NOT NULL
+value_encrypted TEXT NOT NULL
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+
+UNIQUE(node_app_id, key)
+```
+
+---
+
+# 16. databases
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+name VARCHAR(255) NOT NULL
+engine VARCHAR(30) NOT NULL
+status VARCHAR(30)
+created_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 17. database_users
+
+```sql
+id UUID PRIMARY KEY
+database_id UUID REFERENCES databases(id)
+username VARCHAR(255) NOT NULL
+password_encrypted TEXT NOT NULL
+created_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 18. database_permissions
+
+```sql
+id UUID PRIMARY KEY
+database_user_id UUID REFERENCES database_users(id)
+database_id UUID REFERENCES databases(id)
+permissions JSONB NOT NULL
+```
+
+---
+
+# 19. ssl_certificates
+
+```sql
+id UUID PRIMARY KEY
+website_id UUID REFERENCES websites(id)
+provider VARCHAR(50) NOT NULL
+domains JSONB NOT NULL
+certificate_path TEXT
+private_key_path TEXT
+issued_at TIMESTAMPTZ
+expires_at TIMESTAMPTZ
+auto_renew BOOLEAN DEFAULT TRUE
+status VARCHAR(30)
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 20. dns_records
+
+```sql
+id UUID PRIMARY KEY
+domain VARCHAR(255) NOT NULL
+type VARCHAR(20) NOT NULL
+name VARCHAR(255) NOT NULL
+value TEXT NOT NULL
+ttl INTEGER
+priority INTEGER
+provider VARCHAR(50)
+external_id VARCHAR(255)
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 21. cron_jobs
+
+```sql
+id UUID PRIMARY KEY
+website_id UUID REFERENCES websites(id)
+schedule VARCHAR(100) NOT NULL
+command TEXT NOT NULL
+enabled BOOLEAN DEFAULT TRUE
+last_run_at TIMESTAMPTZ
+last_status VARCHAR(30)
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 22. backups
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+website_id UUID REFERENCES websites(id)
+type VARCHAR(30) NOT NULL
+destination VARCHAR(255)
+path TEXT
+size_bytes BIGINT
+status VARCHAR(30)
+started_at TIMESTAMPTZ
+completed_at TIMESTAMPTZ
+created_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 23. backup_schedules
+
+```sql
+id UUID PRIMARY KEY
+website_id UUID REFERENCES websites(id)
+schedule VARCHAR(100) NOT NULL
+retention_days INTEGER NOT NULL
+enabled BOOLEAN DEFAULT TRUE
+destination_type VARCHAR(30)
+destination_config_encrypted TEXT
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 24. jobs
+
+```sql
+id UUID PRIMARY KEY
+type VARCHAR(100) NOT NULL
+status VARCHAR(30) NOT NULL
+payload JSONB
+result JSONB
+error TEXT
+progress INTEGER DEFAULT 0
+created_by UUID REFERENCES users(id)
+created_at TIMESTAMPTZ NOT NULL
+started_at TIMESTAMPTZ
+completed_at TIMESTAMPTZ
+```
+
+---
+
+# 25. audit_logs
+
+```sql
+id UUID PRIMARY KEY
+user_id UUID REFERENCES users(id)
+action VARCHAR(100) NOT NULL
+resource_type VARCHAR(100)
+resource_id UUID
+ip_address INET
+user_agent TEXT
+status VARCHAR(30)
+metadata JSONB
+created_at TIMESTAMPTZ NOT NULL
+```
+
+Audit logs should be append-only.
+
+---
+
+# 26. system_metrics
+
+```sql
+id BIGSERIAL PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+timestamp TIMESTAMPTZ NOT NULL
+cpu_percent NUMERIC
+memory_percent NUMERIC
+disk_percent NUMERIC
+load_1 NUMERIC
+load_5 NUMERIC
+load_15 NUMERIC
+network_rx BIGINT
+network_tx BIGINT
+```
+
+Use indexes and retention policies.
+
+---
+
+# 27. security_findings
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+severity VARCHAR(20) NOT NULL
+category VARCHAR(100) NOT NULL
+title VARCHAR(255) NOT NULL
+description TEXT
+status VARCHAR(30)
+metadata JSONB
+created_at TIMESTAMPTZ NOT NULL
+resolved_at TIMESTAMPTZ
+```
+
+---
+
+# 28. firewall_rules
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+action VARCHAR(20) NOT NULL
+protocol VARCHAR(20)
+port_start INTEGER
+port_end INTEGER
+source_cidr CIDR
+description TEXT
+enabled BOOLEAN DEFAULT TRUE
+created_at TIMESTAMPTZ NOT NULL
+```
+
+---
+
+# 29. indexes
+
+Important indexes:
+
+```text
+users.username
+users.email
+websites.primary_domain
+domains.domain
+jobs.status
+jobs.created_at
+audit_logs.created_at
+audit_logs.user_id
+ssl_certificates.expires_at
+system_metrics.server_id + timestamp
+security_findings.server_id
+```
+
+---
+
+# 30. Encryption
+
+Sensitive database values must be encrypted:
+
+```text
+Cloudflare tokens
+Database passwords
+Node environment secrets
+2FA secrets
+Backup credentials
+S3 credentials
+```
+
+Passwords must use one-way password hashing.
+
+Use Argon2id or bcrypt as appropriate.

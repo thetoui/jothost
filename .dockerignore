@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+frontend/node_modules
+frontend/dist
+frontend/coverage
+**/*.tsbuildinfo
+.env
+.env.local
+*.log
+docs
+tests/e2e

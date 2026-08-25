@@ -1,0 +1,11 @@
+# Normalise to LF in the repository and in working copies.
+#
+# This is not cosmetic: shell scripts and Dockerfiles are executed inside Linux
+# containers, and a CRLF shebang (`#!/bin/sh\r`) fails at runtime.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff  binary
+*.woff2 binary

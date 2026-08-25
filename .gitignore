@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+frontend/coverage/
+bin/
+dist/
+*.exe
+
+# Go
+*.test
+*.out
+tsconfig.tsbuildinfo
+frontend/*.tsbuildinfo
+
+# Environment and secrets — never commit real credentials
+.env
+.env.local
+*.pem
+*.key
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and runtime
+*.log
+run/

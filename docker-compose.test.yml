@@ -1,0 +1,69 @@
+# JotHost Panel — test profile.
+#
+# Runs every suite inside Linux containers so results match production
+# (ARCHITECTURE.md section 16). Used by:  make docker-test
+#
+#   go-tests        unit + security tests for shared, api, agent
+#   frontend-tests  vitest suite
+#   integration     black-box checks against the running dev stack
+
+name: jothost-test
+
+services:
+  go-tests:
+    image: golang:1.23-alpine
+    working_dir: /src
+    environment:
+      GOFLAGS: -mod=mod
+      GOCACHE: /tmp/gocache
+      CGO_ENABLED: "0"
+    volumes:
+      - ./:/src:ro
+      - go-build-cache:/tmp/gocache
+    command:
+      - sh
+      - -euc
+      - |
+        for module in shared api agent; do
+          echo "=== go test ./... ($$module) ==="
+          (cd "/src/$$module" && go vet ./... && go test -count=1 ./...)
+        done
+
+  frontend-tests:
+    image: node:22-alpine
+    working_dir: /app
+    environment:
+      CI: "true"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    command:
+      - sh
+      - -euc
+      - |
+        npm ci
+        npm run lint
+        npm run typecheck
+        npm run test
+
+  integration:
+    image: alpine:3.21
+    environment:
+      # Reached over the compose network of the running dev stack.
+      API_BASE_URL: ${INTEGRATION_API_URL:-http://api:8080}
+      PANEL_BASE_URL: ${INTEGRATION_PANEL_URL:-http://nginx:80}
+    volumes:
+      - ./tests:/tests:ro
+    networks:
+      - jothost_default
+    command: ["sh", "/tests/integration/phase0_smoke.sh"]
+
+volumes:
+  go-build-cache:
+  frontend-node-modules:
+
+networks:
+  # Attaches to the network created by docker-compose.yml so the integration
+  # container can reach the running services by name.
+  jothost_default:
+    external: true

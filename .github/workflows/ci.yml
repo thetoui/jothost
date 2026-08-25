@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [shared, api, agent]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          # The Go modules have no third-party dependencies, so there is no
+          # go.sum to key a module cache on.
+          cache: false
+
+      - name: gofmt
+        working-directory: ${{ matrix.module }}
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        working-directory: ${{ matrix.module }}
+        run: go vet ./...
+
+      - name: build
+        working-directory: ${{ matrix.module }}
+        run: go build ./...
+
+      # The race detector matters most here: the Agent serves concurrent
+      # connections and the API drains requests during shutdown.
+      - name: test
+        working-directory: ${{ matrix.module }}
+        run: go test -race -count=1 ./...
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  integration:
+    name: Docker integration
+    runs-on: ubuntu-latest
+    needs: [go, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start the stack
+        run: |
+          cp .env.example .env
+          docker compose up -d --build
+
+      - name: Wait for healthy services
+        run: |
+          for _ in $(seq 1 40); do
+            state="$(docker compose ps --format '{{.Health}}' api nginx | sort -u | tr '\n' ' ')"
+            case "$state" in
+              *unhealthy*) echo "A service is unhealthy"; docker compose ps; exit 1 ;;
+            esac
+            if [ "$state" = "healthy " ]; then
+              echo "Stack is healthy"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Timed out waiting for healthy services"
+          docker compose ps
+          exit 1
+
+      - name: Run integration checks
+        run: docker compose -f docker-compose.test.yml run --rm integration
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

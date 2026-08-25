@@ -174,15 +174,34 @@ Every operation is audited.           verified: append-only trail names the call
 
 # PHASE 3 — Dashboard
 
-- [ ] Dashboard API
-- [ ] CPU widget
-- [ ] RAM widget
-- [ ] Disk widget
-- [ ] Network widget
-- [ ] Service status
-- [ ] Server information
-- [ ] Alert widget
-- [ ] Metric graph
+**Status: COMPLETE** — see [docs/PHASE3.md](docs/PHASE3.md) for scope, decisions, and known limitations.
+
+- [x] Dashboard API
+- [x] CPU widget
+- [x] RAM widget
+- [x] Disk widget
+- [x] Network widget
+- [x] Service status
+- [x] Server information
+- [x] Alert widget
+- [x] Metric graph
+
+Additionally required by the above:
+
+- [x] `servers` and `system_metrics` schema
+- [x] Local server registration from the Agent
+- [x] Metric sampler with retention pruning
+- [x] Bucketed metric history API (1h / 24h / 7d / 30d)
+- [x] Server read endpoints
+
+Acceptance:
+
+```text
+Dashboard shows live host metrics.     verified: browser + 42 integration checks
+Widgets degrade independently.         verified: unreachable agent still renders the page
+History is sampled and graphed.        verified: sampler writes, chart plots, ranges switch
+Only authorised callers see it.        verified: 401 anonymous, 403 without server.view
+```
 
 ---
 

@@ -156,11 +156,17 @@ func serve(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 
+	// Registration runs after migrations so the servers table exists, and
+	// before the server is built so the dashboard and sampler know which host
+	// they are reporting on.
+	localServerID := registerLocalServer(ctx, cfg, pool, log)
+
 	srv, err := server.New(server.Options{
-		Config: cfg,
-		Log:    log,
-		Pool:   pool,
-		Redis:  redisClient,
+		Config:        cfg,
+		Log:           log,
+		Pool:          pool,
+		Redis:         redisClient,
+		LocalServerID: localServerID,
 	})
 	if err != nil {
 		log.Error("failed to build server", logger.KeyError, err.Error())

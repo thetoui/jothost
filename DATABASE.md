@@ -154,6 +154,18 @@ created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
 ```
 
+Constraints applied in migration 0004:
+
+```text
+status IN ('online', 'offline', 'unknown')
+hostname UNIQUE
+```
+
+The unique hostname is what makes registration an idempotent upsert: the API
+refreshes the existing row at startup rather than adding one per restart.
+Facts the Agent could not determine are stored as NULL, so "unknown" and
+"empty" stay distinguishable.
+
 ---
 
 # 9. websites
@@ -454,6 +466,19 @@ network_tx BIGINT
 ```
 
 Use indexes and retention policies.
+
+Migration 0004 adds a composite `(server_id, timestamp DESC)` index for history
+queries and a `timestamp` index for retention pruning, and cascades deletes
+from `servers` so metrics cannot outlive the host they describe.
+
+`network_rx` and `network_tx` store the kernel's **cumulative** counters rather
+than a rate. A stored rate would be locked to the sampling interval it was
+taken at; the counter lets a rate be derived over any window, which is what
+keeps the 1h and 30d graphs consistent. See docs/PHASE3.md section 3.2.
+
+Every metric column is nullable. A partially available reading is normal — a
+host may answer for memory while its disk probe times out — and recording a
+zero would be indistinguishable from a genuinely idle machine.
 
 ---
 

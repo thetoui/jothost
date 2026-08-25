@@ -78,3 +78,164 @@ export interface TwoFactorSetupResponse {
   secret: string;
   otpauth_uri: string;
 }
+
+/* ------------------------------------------------------------- dashboard */
+
+/**
+ * A dashboard panel and its availability.
+ *
+ * The three states are distinct: data present, unavailable for a stated
+ * reason, or unsupported by this host. Rendering "unsupported" as an error
+ * would tell an operator to fix something that is not broken.
+ */
+export interface Widget<T> {
+  available: boolean;
+  data?: T;
+  unsupported?: boolean;
+  error?: string;
+}
+
+export interface ServerRecord {
+  id: string;
+  hostname: string;
+  os_name: string | null;
+  os_version: string | null;
+  kernel: string | null;
+  architecture: string | null;
+  ipv4: string | null;
+  ipv6: string | null;
+  status: 'online' | 'offline' | 'unknown';
+  agent_version: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SystemInfo {
+  hostname: string;
+  os_name: string;
+  os_version: string;
+  kernel_version: string;
+  architecture: string;
+  uptime_seconds: number;
+  boot_time: string;
+  cores: number;
+}
+
+export interface CPUStats {
+  usage_percent: number;
+  user_percent: number;
+  system_percent: number;
+  iowait_percent: number;
+  idle_percent: number;
+  cores: number;
+  sample_window: string;
+}
+
+export interface MemoryStats {
+  total_bytes: number;
+  available_bytes: number;
+  used_bytes: number;
+  free_bytes: number;
+  buffers_bytes: number;
+  cached_bytes: number;
+  swap_total_bytes: number;
+  swap_used_bytes: number;
+  swap_free_bytes: number;
+  used_percent: number;
+  swap_used_percent: number;
+}
+
+export interface Filesystem {
+  device: string;
+  mount_point: string;
+  type: string;
+  total_bytes: number;
+  used_bytes: number;
+  free_bytes: number;
+  available_bytes: number;
+  used_percent: number;
+  inodes_used_percent: number;
+  read_only: boolean;
+}
+
+export interface DiskStats {
+  filesystems: Filesystem[];
+  total_bytes: number;
+  used_bytes: number;
+}
+
+export interface NetworkInterface {
+  name: string;
+  rx_bytes: number;
+  tx_bytes: number;
+  rx_errors: number;
+  tx_errors: number;
+  rx_bytes_per_second: number;
+  tx_bytes_per_second: number;
+}
+
+export interface NetworkStats {
+  interfaces: NetworkInterface[];
+  total_rx_bytes: number;
+  total_tx_bytes: number;
+  sample_window: string;
+}
+
+export interface LoadStats {
+  load_1: number;
+  load_5: number;
+  load_15: number;
+  running_processes: number;
+  total_processes: number;
+  cores: number;
+  load_per_core: number;
+}
+
+export interface ServiceState {
+  name: string;
+  kind: 'systemd' | 'dependency';
+  running: boolean;
+  status: string;
+  enabled?: boolean | null;
+}
+
+export type AlertSeverity = 'critical' | 'warning';
+
+export interface DashboardAlert {
+  severity: AlertSeverity;
+  category: string;
+  message: string;
+}
+
+export interface DashboardSnapshot {
+  server: ServerRecord;
+  system: Widget<SystemInfo>;
+  cpu: Widget<CPUStats>;
+  memory: Widget<MemoryStats>;
+  disk: Widget<DiskStats>;
+  network: Widget<NetworkStats>;
+  load: Widget<LoadStats>;
+  services: Widget<ServiceState[]>;
+  alerts: DashboardAlert[];
+  generated_at: string;
+}
+
+export type MetricRange = '1h' | '24h' | '7d' | '30d';
+
+export interface MetricPoint {
+  timestamp: string;
+  cpu_percent: number | null;
+  memory_percent: number | null;
+  disk_percent: number | null;
+  load_1: number | null;
+  network_rx_per_second: number | null;
+  network_tx_per_second: number | null;
+}
+
+export interface MetricSeries {
+  range: MetricRange;
+  bucket: string;
+  from: string;
+  to: string;
+  points: MetricPoint[];
+}

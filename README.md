@@ -3,9 +3,9 @@
 A self-hosted Linux hosting control panel: websites, PHP and Node.js applications,
 databases, SSL, files, cron, backups, monitoring, and security from one web interface.
 
-**Status:** Phases 0 (foundation), 1 (authentication), and 2 (Host Agent)
-complete. See [TASKS.md](TASKS.md) for the phase plan, and the per-phase notes
-in [docs/](docs/) for what each does and does not include.
+**Status:** Phases 0 (foundation), 1 (authentication), 2 (Host Agent), and
+3 (dashboard) complete. See [TASKS.md](TASKS.md) for the phase plan, and the
+per-phase notes in [docs/](docs/) for what each does and does not include.
 
 ---
 
@@ -160,6 +160,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE0.md](docs/PHASE0.md) | Phase 0 scope, decisions, and known limitations |
 | [docs/PHASE1.md](docs/PHASE1.md) | Phase 1 scope, decisions, and known limitations |
 | [docs/PHASE2.md](docs/PHASE2.md) | Phase 2 scope, decisions, and known limitations |
+| [docs/PHASE3.md](docs/PHASE3.md) | Phase 3 scope, decisions, and known limitations |
 
 ---
 

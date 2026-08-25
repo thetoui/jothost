@@ -7,6 +7,7 @@
 #   frontend-tests   vitest suite
 #   integration      Phase 0 black-box checks against the running dev stack
 #   auth-integration Phase 1 authentication checks against the running stack
+#   dashboard-integration  Phase 3 dashboard checks against the running stack
 #
 # go-tests brings its own throwaway Postgres and Redis so the suite never
 # touches development data.
@@ -96,6 +97,18 @@ services:
     networks:
       - jothost_default
     command: ["sh", "/tests/integration/phase0_smoke.sh"]
+
+  dashboard-integration:
+    image: alpine:3.21
+    environment:
+      API_BASE_URL: ${INTEGRATION_API_URL:-http://api:8080}
+      INTEGRATION_ADMIN_USERNAME: ${INTEGRATION_ADMIN_USERNAME:-integration_admin}
+      INTEGRATION_ADMIN_PASSWORD: ${INTEGRATION_ADMIN_PASSWORD:-integration-admin-pw-9271}
+    volumes:
+      - ./tests:/tests:ro
+    networks:
+      - jothost_default
+    command: ["sh", "/tests/integration/phase3_dashboard.sh"]
 
   auth-integration:
     image: alpine:3.21

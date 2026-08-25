@@ -144,7 +144,8 @@ func (d *Deps) Reset(t *testing.T) {
 	// which is what makes a clean slate possible while the API itself still
 	// cannot rewrite history.
 	_, err := d.Pool.Exec(ctx, `
-		TRUNCATE TABLE audit_logs, two_factor_auth, session_token_history, sessions, user_roles, users
+		TRUNCATE TABLE audit_logs, two_factor_auth, session_token_history, sessions,
+			user_roles, users, system_metrics, servers
 		RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("reset database: %v", err)

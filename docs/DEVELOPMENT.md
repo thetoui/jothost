@@ -223,6 +223,29 @@ socket's permissions are then the only boundary.
 own namespace. The process list and interfaces are the container's, not the
 host's. In production the Agent runs on the host, where this is correct.
 
+## Monitoring
+
+The API samples the Agent every `METRIC_SAMPLE_INTERVAL` and stores readings in
+`system_metrics`; the dashboard reads live values from the Agent per request.
+Those are two separate paths, and the distinction matters when something looks
+wrong:
+
+- A blank **widget** means the Agent could not answer that probe *now*.
+- A gap in the **graph** means the sampler could not reach it *then*.
+
+```bash
+docker compose logs api | grep -E 'sampler|registered local server'
+```
+
+A metric that reads as absent rather than zero is deliberate: a nullable column
+records "not collected", which is not the same claim as "zero". Widgets follow
+the same rule — `unsupported` means the host cannot answer, not that something
+broke.
+
+Alert thresholds live in `.env` (`ALERT_*`) and are mirrored by
+`usageTone` in the frontend, so a bar turning red and an alert appearing are
+the same event rather than two systems disagreeing. Change both together.
+
 ## Adding an Agent operation
 
 Every privileged operation follows the same path. Skipping a step breaks a
@@ -299,6 +322,7 @@ make docker-test              # everything, in containers
 make docker-test-integration  # Phase 0 black-box checks
 make docker-test-auth         # Phase 1 authentication checks
 make docker-test-agent        # Phase 2 Host Agent checks
+make docker-test-dashboard    # Phase 3 dashboard checks
 make verify                   # what CI runs
 ```
 
@@ -310,6 +334,8 @@ detection, immediate logout, and login throttling.
 `tests/integration/phase2_agent.sh` runs inside the agent container and drives
 a live Agent: real host metrics, payload validation, command-injection
 refusals, authentication, async jobs, and the audit trail.
+`tests/integration/phase3_dashboard.sh` checks the dashboard: registration,
+live aggregation, independent widget degradation, and the sampled history.
 
 ### Database-backed Go tests
 

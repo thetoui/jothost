@@ -39,12 +39,19 @@ type DiskStats struct {
 
 // virtualFilesystems are excluded from a "disk usage" report. They are kernel
 // interfaces rather than storage, and including them makes the output noise.
+//
+// tmpfs is excluded too, which is a judgement call worth stating: it is
+// memory-backed, so its consumption is already visible in the memory figures,
+// and a typical host mounts half a dozen of them (/dev/shm, /run, several
+// cgroup paths). Listing them buries the one or two real filesystems an
+// operator is looking for. The trade-off is that a filling /run shows up as
+// memory pressure rather than as a disk warning.
 var virtualFilesystems = map[string]struct{}{
 	"autofs": {}, "bpf": {}, "cgroup": {}, "cgroup2": {}, "configfs": {},
 	"debugfs": {}, "devpts": {}, "devtmpfs": {}, "efivarfs": {}, "fuse.gvfsd-fuse": {},
 	"fusectl": {}, "hugetlbfs": {}, "mqueue": {}, "nsfs": {}, "overlay": {},
 	"proc": {}, "pstore": {}, "ramfs": {}, "rpc_pipefs": {}, "securityfs": {},
-	"selinuxfs": {}, "squashfs": {}, "sysfs": {}, "tracefs": {},
+	"selinuxfs": {}, "squashfs": {}, "sysfs": {}, "tmpfs": {}, "tracefs": {},
 }
 
 // mountEntry is one line of /proc/mounts.

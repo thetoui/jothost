@@ -214,19 +214,38 @@ enough to remove a second factor.
 GET /dashboard
 ```
 
-Returns:
+Requires `server.view`. Accepts an optional `server_id`; without one the local
+host is used.
+
+Each panel is wrapped in a widget carrying its availability, so one failing
+probe does not fail the page:
+
+```json
+{
+  "server":   { "id": "...", "hostname": "web01", "status": "online" },
+  "system":   { "available": true, "data": { "kernel_version": "...", "uptime_seconds": 86400 } },
+  "cpu":      { "available": true, "data": { "usage_percent": 12.5, "cores": 4 } },
+  "memory":   { "available": true, "data": { "used_percent": 40.0, "total_bytes": 16000000000 } },
+  "disk":     { "available": true, "data": { "filesystems": [] } },
+  "network":  { "available": true, "data": { "interfaces": [] } },
+  "load":     { "available": true, "data": { "load_1": 0.5, "load_per_core": 0.125 } },
+  "services": { "available": true, "data": [] },
+  "alerts":   [{ "severity": "critical", "category": "disk", "message": "Disk /var is 95% full" }],
+  "generated_at": "2026-08-25T10:00:00Z"
+}
+```
+
+A widget reports one of three states, which callers must not conflate:
 
 ```text
-CPU
-RAM
-Disk
-Network
-Services
-Website count
-Database count
-SSL alerts
-Security alerts
+available: true        data is present
+available: false       could not be collected; "error" says why
+unsupported: true      the host cannot provide this at all
 ```
+
+Website, database, and SSL counts are not yet included: their tables arrive in
+Phases 4, 8, and 6, and reporting zero before then would be inaccurate. See
+docs/PHASE3.md section 5.
 
 ---
 
@@ -235,9 +254,18 @@ Security alerts
 ```http
 GET /servers
 GET /servers/:id
-POST /servers
-PATCH /servers/:id
-DELETE /servers/:id
+```
+
+Both require `server.view`.
+
+The mutating endpoints below manage a fleet, and multi-server clustering is an
+explicit non-goal in PRD.md section 3. They are not implemented; the single
+managed host is registered automatically from what the Agent reports.
+
+```text
+POST /servers            not implemented
+PATCH /servers/:id       not implemented
+DELETE /servers/:id      not implemented
 ```
 
 ---
@@ -248,14 +276,48 @@ DELETE /servers/:id
 GET /servers/:id/metrics
 ```
 
+Requires `server.view`.
+
 Query:
 
 ```text
-range=1h
-range=24h
-range=7d
-range=30d
+range=1h     1 minute buckets
+range=24h    15 minute buckets
+range=7d     1 hour buckets
+range=30d    6 hour buckets
 ```
+
+`range` defaults to `1h`. Any other value returns `400`, rather than silently
+falling back — a typo returning the wrong window looks like a working graph.
+
+Readings are averaged within each bucket, so a response is 60-200 points
+regardless of range:
+
+```json
+{
+  "range": "1h",
+  "bucket": "1m0s",
+  "from": "2026-08-25T09:00:00Z",
+  "to": "2026-08-25T10:00:00Z",
+  "points": [
+    {
+      "timestamp": "2026-08-25T09:00:00Z",
+      "cpu_percent": 12.5,
+      "memory_percent": 40.0,
+      "disk_percent": 45.0,
+      "load_1": 0.5,
+      "network_rx_per_second": 1024.0,
+      "network_tx_per_second": 512.0
+    }
+  ]
+}
+```
+
+Any field may be `null`, meaning that metric was not collected for that bucket.
+A chart should break its line rather than interpolating across the gap.
+
+Network is reported as a rate derived from the stored cumulative counters, so
+the same underlying data is consistent across every range.
 
 ---
 

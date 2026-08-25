@@ -53,6 +53,28 @@ type Config struct {
 
 	// Auth holds the authentication settings.
 	Auth AuthConfig
+	// Dashboard holds the Phase 3 monitoring settings.
+	Dashboard DashboardConfig
+}
+
+// DashboardConfig groups the monitoring settings.
+type DashboardConfig struct {
+	// SampleInterval is how often metrics are recorded.
+	SampleInterval time.Duration
+	// MetricRetention is how long samples are kept.
+	MetricRetention time.Duration
+	// MonitoredServices are the systemd units shown on the dashboard. A host
+	// without a given unit reports it as not installed rather than failing.
+	MonitoredServices []string
+
+	// Alert thresholds, as percentages except the load figures, which are per
+	// core so the same numbers mean the same thing on any machine.
+	DiskWarnPercent   float64
+	DiskCritPercent   float64
+	MemoryWarnPercent float64
+	MemoryCritPercent float64
+	LoadWarnPerCore   float64
+	LoadCritPerCore   float64
 }
 
 // AuthConfig groups the Phase 1 authentication settings.
@@ -100,6 +122,18 @@ func Load() (Config, error) {
 		AgentSocket:     getString("AGENT_SOCKET", "/run/jothost/agent.sock"),
 		AgentTimeout:    getDuration("AGENT_TIMEOUT", 30*time.Second),
 		AgentToken:      getString("AGENT_TOKEN", ""),
+		Dashboard: DashboardConfig{
+			SampleInterval:  getDuration("METRIC_SAMPLE_INTERVAL", 30*time.Second),
+			MetricRetention: getDuration("METRIC_RETENTION", 30*24*time.Hour),
+			MonitoredServices: getStringList("DASHBOARD_SERVICES",
+				[]string{"nginx", "php-fpm", "postgresql", "redis"}),
+			DiskWarnPercent:   getFloat("ALERT_DISK_WARN_PERCENT", 80),
+			DiskCritPercent:   getFloat("ALERT_DISK_CRIT_PERCENT", 90),
+			MemoryWarnPercent: getFloat("ALERT_MEMORY_WARN_PERCENT", 85),
+			MemoryCritPercent: getFloat("ALERT_MEMORY_CRIT_PERCENT", 95),
+			LoadWarnPerCore:   getFloat("ALERT_LOAD_WARN_PER_CORE", 1.5),
+			LoadCritPerCore:   getFloat("ALERT_LOAD_CRIT_PER_CORE", 3.0),
+		},
 		Auth: AuthConfig{
 			EncryptionKey:    getString("ENCRYPTION_KEY", ""),
 			AccessTokenTTL:   getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
@@ -144,6 +178,7 @@ func Load() (Config, error) {
 	}
 
 	problems = append(problems, cfg.Auth.validate()...)
+	problems = append(problems, cfg.Dashboard.validate()...)
 
 	if len(problems) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration: %s", strings.Join(problems, "; "))
@@ -189,6 +224,44 @@ func (a AuthConfig) validate() []string {
 	return problems
 }
 
+// validate checks the monitoring settings.
+func (d DashboardConfig) validate() []string {
+	var problems []string
+
+	if d.SampleInterval < time.Second {
+		problems = append(problems, "METRIC_SAMPLE_INTERVAL must be at least 1s")
+	}
+	// Retention shorter than the longest queryable range would produce a
+	// 30-day graph that silently stops partway.
+	if d.MetricRetention < 30*24*time.Hour {
+		problems = append(problems,
+			"METRIC_RETENTION must be at least 720h to cover the 30d range")
+	}
+
+	thresholds := []struct {
+		name           string
+		warn, critical float64
+	}{
+		{"DISK", d.DiskWarnPercent, d.DiskCritPercent},
+		{"MEMORY", d.MemoryWarnPercent, d.MemoryCritPercent},
+		{"LOAD", d.LoadWarnPerCore, d.LoadCritPerCore},
+	}
+	for _, t := range thresholds {
+		if t.warn <= 0 || t.critical <= 0 {
+			problems = append(problems, "ALERT_"+t.name+" thresholds must be greater than zero")
+			continue
+		}
+		// A critical threshold below its warning would fire critical first and
+		// make the warning unreachable.
+		if t.critical < t.warn {
+			problems = append(problems,
+				"ALERT_"+t.name+" critical threshold must not be below its warning threshold")
+		}
+	}
+
+	return problems
+}
+
 func getString(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok && strings.TrimSpace(v) != "" {
 		return strings.TrimSpace(v)
@@ -202,6 +275,38 @@ func getInt(key string, fallback int) int {
 		return fallback
 	}
 	if v, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
+		return v
+	}
+	return fallback
+}
+
+// getStringList parses a comma-separated list. An empty value yields an empty
+// list rather than the fallback, so monitoring can be switched off explicitly.
+func getStringList(key string, fallback []string) []string {
+	raw, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	if strings.TrimSpace(raw) == "" {
+		return []string{}
+	}
+
+	var values []string
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return values
+}
+
+// getFloat parses a decimal setting.
+func getFloat(key string, fallback float64) float64 {
+	raw, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return fallback
+	}
+	if v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64); err == nil {
 		return v
 	}
 	return fallback

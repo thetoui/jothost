@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -15,11 +16,14 @@ import (
 	"github.com/jothost/panel/api/internal/audit"
 	"github.com/jothost/panel/api/internal/auth"
 	"github.com/jothost/panel/api/internal/config"
+	"github.com/jothost/panel/api/internal/dashboard"
 	"github.com/jothost/panel/api/internal/httpx"
+	"github.com/jothost/panel/api/internal/metrics"
 	"github.com/jothost/panel/api/internal/middleware"
 	"github.com/jothost/panel/api/internal/ratelimit"
 	"github.com/jothost/panel/api/internal/rbac"
 	"github.com/jothost/panel/api/internal/secrets"
+	"github.com/jothost/panel/api/internal/servers"
 	"github.com/jothost/panel/api/internal/sessions"
 	"github.com/jothost/panel/api/internal/twofactor"
 	"github.com/jothost/panel/api/internal/users"
@@ -36,6 +40,11 @@ type Server struct {
 	auth  *auth.Service
 	http  *http.Server
 
+	servers   *servers.Repository
+	metrics   *metrics.Repository
+	dashboard *dashboard.Handler
+	sampler   *metrics.Sampler
+
 	// Router is exported so tests can exercise the full middleware chain
 	// without binding a port.
 	Router http.Handler
@@ -47,6 +56,10 @@ type Options struct {
 	Log    *slog.Logger
 	Pool   *pgxpool.Pool
 	Redis  *redis.Client
+	// LocalServerID is the registered host this API manages. It is empty when
+	// registration failed, which leaves the dashboard reporting no server
+	// rather than serving a snapshot of nothing.
+	LocalServerID string
 }
 
 // New builds a Server from validated configuration and live dependencies.
@@ -83,17 +96,64 @@ func New(opts Options) (*Server, error) {
 		Log: log,
 	})
 
+	agent := agentclient.New(agentclient.Options{
+		SocketPath: cfg.AgentSocket,
+		Timeout:    cfg.AgentTimeout,
+		Token:      cfg.AgentToken,
+	})
+
+	serverRepo := servers.NewRepository(opts.Pool)
+	metricRepo := metrics.NewRepository(opts.Pool)
+
 	s := &Server{
-		cfg: cfg,
-		log: log,
-		agent: agentclient.New(agentclient.Options{
-			SocketPath: cfg.AgentSocket,
-			Timeout:    cfg.AgentTimeout,
-			Token:      cfg.AgentToken,
-		}),
-		pool:  opts.Pool,
-		redis: opts.Redis,
-		auth:  authService,
+		cfg:     cfg,
+		log:     log,
+		agent:   agent,
+		pool:    opts.Pool,
+		redis:   opts.Redis,
+		auth:    authService,
+		servers: serverRepo,
+		metrics: metricRepo,
+	}
+
+	dashboardService := dashboard.NewService(dashboard.Options{
+		Agent:   agent,
+		Servers: serverRepo,
+		Log:     log,
+		Thresholds: dashboard.Thresholds{
+			DiskWarning:    cfg.Dashboard.DiskWarnPercent,
+			DiskCritical:   cfg.Dashboard.DiskCritPercent,
+			MemoryWarning:  cfg.Dashboard.MemoryWarnPercent,
+			MemoryCritical: cfg.Dashboard.MemoryCritPercent,
+			LoadWarning:    cfg.Dashboard.LoadWarnPerCore,
+			LoadCritical:   cfg.Dashboard.LoadCritPerCore,
+		},
+		MonitoredUnits: cfg.Dashboard.MonitoredServices,
+		// Postgres and Redis are checked by the API itself: it holds the
+		// pools, so its own probe is a better answer than asking the Agent
+		// whether a unit happens to be running.
+		Dependencies:    []string{"postgres", "redis"},
+		CheckDependency: s.checkDependencyHealth,
+	})
+
+	s.dashboard = dashboard.NewHandler(dashboard.HandlerOptions{
+		Service:         dashboardService,
+		Servers:         serverRepo,
+		Metrics:         metricRepo,
+		Auth:            authService,
+		DefaultServerID: opts.LocalServerID,
+	})
+
+	if opts.LocalServerID != "" {
+		s.sampler = metrics.NewSampler(metrics.SamplerOptions{
+			Agent:     agent,
+			Metrics:   metricRepo,
+			Servers:   serverRepo,
+			Log:       log,
+			ServerID:  opts.LocalServerID,
+			Interval:  cfg.Dashboard.SampleInterval,
+			Retention: cfg.Dashboard.MetricRetention,
+		})
 	}
 
 	s.Router = s.routes()
@@ -122,6 +182,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/version", s.handleVersion)
 
 	auth.NewHandler(s.auth).Routes(mux)
+	s.dashboard.Routes(mux)
 
 	// Anything unmatched returns the standard error envelope rather than the
 	// net/http plain-text default.
@@ -214,6 +275,19 @@ func (s *Server) checkAgent(ctx context.Context, requestID string) checkResult {
 func (s *Server) Run(ctx context.Context) error {
 	errCh := make(chan error, 1)
 
+	// The metric sampler is the only reason a history exists to graph, so it
+	// runs for the lifetime of the server and stops with it.
+	var samplerDone chan struct{}
+	if s.sampler != nil {
+		samplerDone = make(chan struct{})
+		go func() {
+			defer close(samplerDone)
+			s.sampler.Run(ctx)
+		}()
+	} else {
+		s.log.Warn("metric sampling is disabled: no server is registered")
+	}
+
 	go func() {
 		s.log.Info("api listening",
 			"addr", s.cfg.HTTPAddr,
@@ -245,6 +319,16 @@ func (s *Server) Run(ctx context.Context) error {
 			return errors.Join(err, closeErr)
 		}
 		return err
+	}
+
+	// The sampler observes the same cancelled context, so this only waits for
+	// an in-flight sample to finish rather than driving the shutdown.
+	if samplerDone != nil {
+		select {
+		case <-samplerDone:
+		case <-time.After(s.cfg.ShutdownTimeout):
+			s.log.Warn("metric sampler did not stop within the shutdown timeout")
+		}
 	}
 
 	s.log.Info("shutdown complete")

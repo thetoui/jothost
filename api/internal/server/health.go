@@ -39,6 +39,22 @@ func (s *Server) checkPostgres(ctx context.Context) checkResult {
 	return checkResult{Status: statusUp}
 }
 
+// checkDependencyHealth reports whether an API-side dependency is usable.
+//
+// The dashboard asks through this rather than reaching into the pools, so both
+// the readiness endpoint and the services widget answer from the same probe
+// and cannot disagree.
+func (s *Server) checkDependencyHealth(ctx context.Context, name string) bool {
+	switch name {
+	case "postgres":
+		return s.checkPostgres(ctx).Status == statusUp
+	case "redis":
+		return s.checkRedis(ctx).Status == statusUp
+	default:
+		return false
+	}
+}
+
 // checkRedis pings the cache.
 func (s *Server) checkRedis(ctx context.Context) checkResult {
 	ctx, cancel := context.WithTimeout(ctx, dependencyTimeout)

@@ -42,6 +42,20 @@ const (
 	OperationNginxValidate OperationType = "nginx.validate"
 	OperationNginxReload   OperationType = "nginx.reload"
 
+	OperationPHPVersions   OperationType = "php.versions"
+	OperationPHPInstall    OperationType = "php.install"
+	OperationPHPUninstall  OperationType = "php.uninstall"
+	OperationPHPPoolCreate OperationType = "php.pool.create"
+	OperationPHPPoolDelete OperationType = "php.pool.delete"
+	OperationPHPPoolStatus OperationType = "php.pool.status"
+	OperationPHPExtensions OperationType = "php.extensions"
+
+	// A website's PHP is set and unset as one operation because the pool and
+	// the vhost must change together: a pool nothing passes to is never
+	// reached, and a fastcgi_pass to a missing pool returns 502.
+	OperationWebsitePHPSet   OperationType = "website.php.set"
+	OperationWebsitePHPUnset OperationType = "website.php.unset"
+
 	// Asynchronous execution control.
 	OperationJobStatus OperationType = "job.status"
 	OperationJobCancel OperationType = "job.cancel"
@@ -51,27 +65,36 @@ const (
 // allowedOperations is the allowlist consulted by Validate. An operation that
 // is not present here can never reach a handler.
 var allowedOperations = map[OperationType]struct{}{
-	OperationPing:           {},
-	OperationInfo:           {},
-	OperationSystemInfo:     {},
-	OperationMetricsCPU:     {},
-	OperationMetricsMemory:  {},
-	OperationMetricsDisk:    {},
-	OperationMetricsNetwork: {},
-	OperationMetricsLoad:    {},
-	OperationProcessList:    {},
-	OperationServiceList:    {},
-	OperationServiceStatus:  {},
-	OperationWebsiteCreate:  {},
-	OperationWebsiteDelete:  {},
-	OperationWebsiteUpdate:  {},
-	OperationWebsiteStatus:  {},
-	OperationWebsiteLogs:    {},
-	OperationNginxValidate:  {},
-	OperationNginxReload:    {},
-	OperationJobStatus:      {},
-	OperationJobCancel:      {},
-	OperationJobList:        {},
+	OperationPing:            {},
+	OperationInfo:            {},
+	OperationSystemInfo:      {},
+	OperationMetricsCPU:      {},
+	OperationMetricsMemory:   {},
+	OperationMetricsDisk:     {},
+	OperationMetricsNetwork:  {},
+	OperationMetricsLoad:     {},
+	OperationProcessList:     {},
+	OperationServiceList:     {},
+	OperationServiceStatus:   {},
+	OperationWebsiteCreate:   {},
+	OperationWebsiteDelete:   {},
+	OperationWebsiteUpdate:   {},
+	OperationWebsiteStatus:   {},
+	OperationWebsiteLogs:     {},
+	OperationNginxValidate:   {},
+	OperationNginxReload:     {},
+	OperationPHPVersions:     {},
+	OperationPHPInstall:      {},
+	OperationPHPUninstall:    {},
+	OperationPHPPoolCreate:   {},
+	OperationPHPPoolDelete:   {},
+	OperationPHPPoolStatus:   {},
+	OperationPHPExtensions:   {},
+	OperationWebsitePHPSet:   {},
+	OperationWebsitePHPUnset: {},
+	OperationJobStatus:       {},
+	OperationJobCancel:       {},
+	OperationJobList:         {},
 }
 
 // ErrUnknownOperation is returned for any operation outside the allowlist.

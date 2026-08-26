@@ -22,6 +22,7 @@ import (
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/operations"
+	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/socket"
@@ -163,14 +164,23 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	// Both account tools are listed because distributions disagree: Debian and
 	// RHEL ship shadow-utils useradd, Alpine ships BusyBox adduser. The
 	// provider uses whichever is actually installed.
-	runner, err := command.NewRunner(
-		command.Spec{Name: services.CommandName, Path: cfg.SystemctlPath, Timeout: 10 * time.Second},
-		command.Spec{Name: nginx.CommandName, Path: cfg.NginxPath, Timeout: 15 * time.Second},
-		command.Spec{Name: sites.CommandUseradd, Path: cfg.UseraddPath, Timeout: 15 * time.Second},
-		command.Spec{Name: sites.CommandAdduser, Path: cfg.AdduserPath, Timeout: 15 * time.Second},
-		command.Spec{Name: sites.CommandUserdel, Path: cfg.UserdelPath, Timeout: 15 * time.Second},
-		command.Spec{Name: sites.CommandDeluser, Path: cfg.DeluserPath, Timeout: 15 * time.Second},
-	)
+	specs := []command.Spec{
+		{Name: services.CommandName, Path: cfg.SystemctlPath, Timeout: 10 * time.Second},
+		{Name: nginx.CommandName, Path: cfg.NginxPath, Timeout: 15 * time.Second},
+		{Name: sites.CommandUseradd, Path: cfg.UseraddPath, Timeout: 15 * time.Second},
+		{Name: sites.CommandAdduser, Path: cfg.AdduserPath, Timeout: 15 * time.Second},
+		{Name: sites.CommandUserdel, Path: cfg.UserdelPath, Timeout: 15 * time.Second},
+		{Name: sites.CommandDeluser, Path: cfg.DeluserPath, Timeout: 15 * time.Second},
+	}
+
+	// PHP contributes one allowlist entry per version actually present, found
+	// by a filesystem probe that executes nothing. Every PHP binary the Agent
+	// can run is therefore fixed at startup, and a request naming a version can
+	// only ever reach a path resolved here — never one built from the request.
+	specs = append(specs, php.CommandSpecs("")...)
+	specs = append(specs, php.ManagerSpecs()...)
+
+	runner, err := command.NewRunner(specs...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build command allowlist: %w", err)
 	}
@@ -217,6 +227,23 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("website provisioning ready", "web_group", provisioner.WebGroup())
 	}
 
+	phpDetector := php.NewDetector(php.DetectorOptions{Runner: runner})
+	phpPools := php.NewProvider(php.ProviderOptions{Detector: phpDetector})
+	phpInstaller := php.NewInstaller(runner)
+
+	if !phpDetector.Available() {
+		log.Warn("no PHP version was found: websites can only serve static content",
+			"detail", "install a php-fpm package, or use php.install if a package manager is present")
+	} else {
+		installed := phpDetector.Detect(context.Background())
+		names := make([]string, 0, len(installed))
+		for _, version := range installed {
+			names = append(names, version.Version)
+		}
+		log.Info("php versions detected", "versions", names,
+			"package_manager", phpInstaller.Manager())
+	}
+
 	jobRunner := jobs.NewRunner(jobs.Options{
 		MaxConcurrent: cfg.MaxConcurrentJobs,
 		MaxJobs:       cfg.MaxJobs,
@@ -226,12 +253,16 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	})
 
 	registry := operations.NewRegistry(operations.Dependencies{
-		Collector: collector,
-		Services:  serviceProvider,
-		Sites:     siteManager,
-		Nginx:     nginxProvider,
-		Jobs:      jobRunner,
-		Log:       log,
+		Collector:    collector,
+		Services:     serviceProvider,
+		Sites:        siteManager,
+		Nginx:        nginxProvider,
+		Jobs:         jobRunner,
+		Log:          log,
+		PHP:          phpDetector,
+		PHPPools:     phpPools,
+		PHPInstaller: phpInstaller,
+		WebGroup:     provisioner.WebGroup(),
 	})
 
 	return registry, jobRunner, nil

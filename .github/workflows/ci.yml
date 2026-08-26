@@ -157,6 +157,11 @@ jobs:
       - name: Run Phase 4 website checks
         run: docker compose -f docker-compose.test.yml run --rm websites-integration
 
+      # Phase 5 writes PHP files into a site's document root, which only the
+      # managed host can do, so it runs inside the agent container.
+      - name: Run Phase 5 PHP checks
+        run: docker compose exec -T agent sh /tests/integration/phase5_php.sh
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color

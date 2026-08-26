@@ -101,6 +101,26 @@ func SystemUser(name string) error {
 	return nil
 }
 
+// GroupName checks a group a site's files or sockets are shared with.
+//
+// It applies the same character rules as SystemUser but deliberately not the
+// reserved-name check. The two are asking different questions: SystemUser asks
+// "may a website own this account", where "nginx" must be refused; GroupName
+// asks "may a website's socket be readable by this group", where "nginx" is
+// the only correct answer on most hosts.
+//
+// Using SystemUser here instead rejects exactly the value the caller needs,
+// and does it at the point where a pool is written rather than at startup.
+func GroupName(name string) error {
+	if name == "" {
+		return fmt.Errorf("%w: group name is required", ErrInvalidSystemUser)
+	}
+	if !systemUserPattern.MatchString(name) {
+		return fmt.Errorf("%w: %q is not a valid group name", ErrInvalidSystemUser, name)
+	}
+	return nil
+}
+
 // reservedUsers are accounts a website must never be given.
 var reservedUsers = map[string]struct{}{
 	"root": {}, "daemon": {}, "bin": {}, "sys": {}, "sync": {}, "games": {},

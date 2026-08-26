@@ -255,18 +255,28 @@ Only authorised callers may change it. verified: 401 anonymous, 403 without perm
 
 # PHASE 5 — PHP Manager
 
-- [ ] PHP version detection
-- [ ] PHP version database
-- [ ] PHP installer
-- [ ] PHP-FPM detection
-- [ ] PHP-FPM provider
-- [ ] PHP pool creation
-- [ ] PHP pool deletion
-- [ ] PHP configuration
-- [ ] PHP extensions
-- [ ] OPcache
-- [ ] Website PHP selection
-- [ ] PHP UI
+**Status: COMPLETE** — see [docs/PHASE5.md](docs/PHASE5.md) for scope, decisions, and known limitations.
+
+- [x] PHP version detection
+- [x] PHP version database
+- [x] PHP installer
+- [x] PHP-FPM detection
+- [x] PHP-FPM provider
+- [x] PHP pool creation
+- [x] PHP pool deletion
+- [x] PHP configuration
+- [x] PHP extensions
+- [x] OPcache
+- [x] Website PHP selection
+- [x] PHP UI
+
+Additionally required by the above:
+
+- [x] `php_versions` and `php_pools` schema
+- [x] FastCGI in the nginx vhost, with the path-info execution guard
+- [x] Per-site pool isolation: own account, own socket, own session directory
+- [x] Version-specific socket paths, so a version switch has no downtime
+- [x] Pool cleanup on website deletion
 
 Test:
 
@@ -274,6 +284,16 @@ Test:
 PHP 8.4 website
 PHP 8.3 website
 PHP 8.2 website
+```
+
+Acceptance:
+
+```text
+A website per version, each running it.  verified: 51 integration checks, live FPM
+An upload is never executed as code.     verified: path-info attack returns 404
+A site cannot read its neighbour.        verified: open_basedir denies, per-site accounts
+Switching versions keeps the site up.    verified: version-specific sockets, no 502
+Only authorised callers may change it.   verified: 401 anonymous, 403 without permission
 ```
 
 ---

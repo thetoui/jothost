@@ -245,6 +245,21 @@ created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
 ```
 
+**As implemented in Phase 5.** Migration `0006_php` adds three columns this
+sketch omits — `upload_max_filesize`, `max_execution_time`, and
+`opcache_enabled` — so the settings API_SPEC section 9 documents have somewhere
+to live. They are columns rather than a JSON blob so the CHECK constraints
+apply: these values are written into a configuration file, and the database is
+the last place they can be constrained.
+
+`website_id` is UNIQUE, which is load-bearing: two pools for one site would
+race for the same socket path, and whichever FPM started last would win
+silently. `pool_name` is unique across the host for the same reason.
+
+`socket_path` includes the PHP version. With one path per site, switching a
+site's version fails because the new FPM refuses to start while the old one
+still listens there; see docs/PHASE5.md section 3.1.
+
 ---
 
 # 13. node_versions

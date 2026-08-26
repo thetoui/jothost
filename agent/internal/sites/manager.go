@@ -70,6 +70,9 @@ type CreateRequest struct {
 	DocumentRoot string
 	SystemUser   string
 	MaxBodySize  string
+	// PHPSocket is the FPM pool this site serves .php from. Empty means a
+	// static site and the vhost omits PHP entirely.
+	PHPSocket string
 }
 
 // CreateResult is what provisioning produced.
@@ -155,6 +158,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 		AccessLog:     layout.AccessLog,
 		ErrorLog:      layout.ErrorLog,
 		MaxBodySize:   req.MaxBodySize,
+		PHPSocket:     req.PHPSocket,
 	})
 	if err != nil {
 		return CreateResult{}, err
@@ -396,6 +400,9 @@ type UpdateRequest struct {
 	Aliases      []string
 	DocumentRoot string
 	MaxBodySize  string
+	// PHPSocket is the FPM pool this site serves .php from. Empty rewrites the
+	// vhost as a static site, which is how PHP is turned off.
+	PHPSocket string
 }
 
 // UpdateResult reports what was rewritten.
@@ -446,6 +453,7 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 		AccessLog:     layout.AccessLog,
 		ErrorLog:      layout.ErrorLog,
 		MaxBodySize:   req.MaxBodySize,
+		PHPSocket:     req.PHPSocket,
 	})
 	if err != nil {
 		return UpdateResult{}, err
@@ -458,4 +466,25 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 
 	progress(report, 100, "Website updated")
 	return UpdateResult{Domain: domain, ConfigPath: configPath, Reloaded: true}, nil
+}
+
+// LookupAccount returns a site's system account.
+//
+// PHP pool creation needs the site's uid and gid to own the runtime
+// directories it creates, and an account that does not exist means the site
+// was never provisioned — which is a clearer failure than a pool written for
+// a user FPM will refuse to run as.
+func (m *Manager) LookupAccount(name string) (Account, error) {
+	if m.users == nil {
+		return Account{}, fmt.Errorf("%w: no user management tool is available", ErrUnsupported)
+	}
+
+	account, found, err := m.users.Lookup(name)
+	if err != nil {
+		return Account{}, err
+	}
+	if !found {
+		return Account{}, fmt.Errorf("system account %q does not exist", name)
+	}
+	return account, nil
 }

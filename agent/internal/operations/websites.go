@@ -76,6 +76,15 @@ func (r *Registry) handleWebsiteDelete(ctx context.Context, req protocol.Request
 			"system_user is required when remove_user is set", nil)
 	}
 
+	// The site's FPM pools go first, while its account still exists.
+	//
+	// A pool left behind names a user that is about to be deleted, and FPM
+	// validates its whole pool directory at once: from then on *every* site on
+	// that PHP version fails to configure, because one orphaned file refers to
+	// an account that is gone. Deleting one website would quietly break PHP for
+	// all the others.
+	poolsRemoved := r.removeSitePools(ctx, payload.SystemUser)
+
 	result, err := r.deps.Sites.Delete(ctx, sites.DeleteRequest{
 		Domain:       payload.Domain,
 		DocumentRoot: payload.DocumentRoot,
@@ -86,7 +95,45 @@ func (r *Registry) handleWebsiteDelete(ctx context.Context, req protocol.Request
 	if err != nil {
 		return nil, websiteError(err)
 	}
-	return structToMap(result)
+
+	data, err := structToMap(result)
+	if err != nil {
+		return nil, err
+	}
+	data["pools_removed"] = poolsRemoved
+	return data, nil
+}
+
+// removeSitePools deletes a site's FPM pool from every installed version.
+//
+// Failures are logged rather than returned: the website is being deleted, and
+// refusing to remove it because a pool file would not unlink would leave the
+// user with a site they cannot get rid of. The versions it touched are
+// reloaded so the removal takes effect.
+func (r *Registry) removeSitePools(ctx context.Context, systemUser string) []string {
+	if systemUser == "" || r.deps.PHPPools == nil || !r.deps.PHPPools.Available() {
+		return nil
+	}
+
+	poolName := validate.PHPPoolNameFor(systemUser)
+	if err := validate.PHPPoolName(poolName); err != nil {
+		return nil
+	}
+
+	// An empty keepVersion removes the pool from every version.
+	removed, err := r.deps.PHPPools.RemoveOtherPools(ctx, "", poolName)
+	if err != nil {
+		r.log.Warn("a pool could not be removed while deleting a website",
+			"pool", poolName, "error", err.Error())
+	}
+
+	for _, version := range removed {
+		if err := r.deps.PHPInstaller.ReloadFPM(ctx, version); err != nil {
+			r.log.Warn("pool removed but php-fpm was not reloaded",
+				"version", version, "error", err.Error())
+		}
+	}
+	return removed
 }
 
 // handleWebsiteUpdate rewrites a website's configuration.

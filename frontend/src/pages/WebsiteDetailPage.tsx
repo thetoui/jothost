@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 
 import { StatusPill } from '@/components/StatusPill';
+import { WebsitePHPPanel } from '@/features/php/components/WebsitePHPPanel';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import {
@@ -109,6 +110,8 @@ export function WebsiteDetailPage() {
           <Detail label="PHP" value={site.php_version ?? 'Static site'} />
         </dl>
       </section>
+
+      <WebsitePHPPanel websiteId={site.id} />
 
       <DomainSection websiteId={site.id} />
 

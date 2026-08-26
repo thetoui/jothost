@@ -371,3 +371,47 @@ func (c *Client) JobList(ctx context.Context, requestID string) (JobListResult, 
 	err := c.call(ctx, requestID, protocol.OperationJobList, nil, &result)
 	return result, err
 }
+
+// PHPVersion is one PHP version the host has.
+type PHPVersion struct {
+	Version    string `json:"version"`
+	Full       string `json:"full_version"`
+	BinaryPath string `json:"binary_path"`
+	FPMService string `json:"fpm_service"`
+	PoolDir    string `json:"pool_dir"`
+	ConfigPath string `json:"config_path"`
+	Installed  bool   `json:"installed"`
+}
+
+// PHPVersionsResult is the Agent's PHP inventory.
+type PHPVersionsResult struct {
+	Versions []PHPVersion `json:"versions"`
+	Count    int          `json:"count"`
+	// CanInstall reports whether the host has a package manager. The panel
+	// hides the install control when it does not, rather than offering a
+	// button that always fails.
+	CanInstall     bool   `json:"can_install"`
+	PackageManager string `json:"package_manager"`
+}
+
+// PHPVersions reports the PHP versions installed on the host.
+func (c *Client) PHPVersions(ctx context.Context, requestID string) (PHPVersionsResult, error) {
+	var result PHPVersionsResult
+	err := c.call(ctx, requestID, protocol.OperationPHPVersions, nil, &result)
+	return result, err
+}
+
+// PHPExtensionsResult lists a version's loaded extensions.
+type PHPExtensionsResult struct {
+	Version    string   `json:"version"`
+	Extensions []string `json:"extensions"`
+	Count      int      `json:"count"`
+}
+
+// PHPExtensions reports the extensions a version has loaded.
+func (c *Client) PHPExtensions(ctx context.Context, requestID, version string) (PHPExtensionsResult, error) {
+	var result PHPExtensionsResult
+	err := c.call(ctx, requestID, protocol.OperationPHPExtensions,
+		map[string]any{"version": version}, &result)
+	return result, err
+}

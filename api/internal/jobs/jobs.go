@@ -50,6 +50,11 @@ const (
 	TypeWebsiteCreate = "website.create"
 	TypeWebsiteDelete = "website.delete"
 	TypeWebsiteUpdate = "website.update"
+
+	TypePHPInstall      = "php.install"
+	TypePHPUninstall    = "php.uninstall"
+	TypeWebsitePHPSet   = "website.php.set"
+	TypeWebsitePHPUnset = "website.php.unset"
 )
 
 // Job is one unit of durable work.

@@ -411,6 +411,23 @@ Example:
 }
 ```
 
+**As implemented in Phase 5.** All six endpoints exist. Notes:
+
+- A version is `major.minor` only. A patch level (`8.4.19`) is refused: it is a
+  property of what happens to be installed, not something a user selects, and
+  accepting both spellings would let one version exist as two.
+- Install and remove return **202** with the job realising them; the version is
+  not on the host until that job succeeds.
+- Removing a version websites still run returns **409**. Taking it off the host
+  would break every one of those sites.
+- `GET /websites/:id/php` returns `{"enabled": false}` for a static site rather
+  than 404 — a site without PHP is a valid configuration, not a missing one.
+- `PATCH /websites/:id/php` requires the `version` field. An explicit `null`
+  turns PHP off and makes the site static again.
+
+Listing versions needs `server.view` and installing needs `server.manage`:
+installing changes the whole server, not one site.
+
 ---
 
 # 9. PHP Configuration
@@ -430,6 +447,19 @@ Example:
   "opcache": true
 }
 ```
+
+**As implemented in Phase 5.** Both endpoints exist and use exactly these
+field names. `PATCH` returns **202** with a job: a php.ini value that is
+written but not reloaded is a setting the panel claims is active and is not.
+
+Values are bounded rather than passed through. They are written verbatim into
+an FPM pool file, so each is matched against an anchored pattern — a value
+carrying a newline could otherwise close its directive and append another.
+`memory_limit` accepts `-1` for PHP's "no limit"; sizes and times are capped
+(see `shared/validate`). A rejected value returns **422** and is never stored.
+
+Unset fields keep whatever the pool already has, so changing one setting does
+not silently reset the others.
 
 ---
 

@@ -21,6 +21,7 @@ import (
 	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/api/internal/metrics"
 	"github.com/jothost/panel/api/internal/middleware"
+	phppkg "github.com/jothost/panel/api/internal/php"
 	"github.com/jothost/panel/api/internal/ratelimit"
 	"github.com/jothost/panel/api/internal/rbac"
 	"github.com/jothost/panel/api/internal/secrets"
@@ -49,9 +50,12 @@ type Server struct {
 
 	websites *websites.Handler
 	jobs     *jobs.Handler
+	php      *phppkg.Handler
 	// worker realises queued jobs against the Agent. It is nil when no server
 	// is registered, because there is no host to provision against.
 	worker *jobs.Worker
+	// phpSync keeps the version table matching what the host actually has.
+	phpSync *phppkg.Syncer
 
 	// Router is exported so tests can exercise the full middleware chain
 	// without binding a port.
@@ -173,16 +177,35 @@ func New(opts Options) (*Server, error) {
 		Auth:       authService,
 	})
 
+	phpRepo := phppkg.NewRepository(opts.Pool)
+	phpService := phppkg.NewService(phppkg.ServiceOptions{
+		Repository: phpRepo,
+		Websites:   websiteRepo,
+		Jobs:       jobRepo,
+		Audit:      auditRecorder,
+		Log:        log,
+	})
+	s.php = phppkg.NewHandler(phppkg.HandlerOptions{
+		Service: phpService,
+		Repo:    phpRepo,
+		Auth:    authService,
+	})
+	s.phpSync = phppkg.NewSyncer(phpRepo, agent, log)
+
 	if opts.LocalServerID != "" {
 		// The worker reconciles websites through the service, so a finished
 		// job moves the site to active or failed rather than leaving it in
 		// "creating" forever.
+		// Both reconcilers see every job and ignore the ones that are not
+		// theirs, so the worker does not have to know which is which.
 		s.worker = jobs.NewWorker(jobs.Options{
 			Repository: jobRepo,
 			Dispatcher: agent,
-			Observer:   websiteService,
+			Observer:   jobs.Observers{websiteService, s.phpSync},
 			Log:        log,
-			JobTimeout: cfg.AgentTimeout * 10,
+			// Installing a PHP package downloads and unpacks it, which takes
+			// far longer than any other operation the panel runs.
+			JobTimeout: phpInstallTimeout,
 		})
 	}
 
@@ -227,6 +250,7 @@ func (s *Server) routes() http.Handler {
 	s.dashboard.Routes(mux)
 	s.websites.Routes(mux)
 	s.jobs.Routes(mux)
+	s.php.Routes(mux)
 
 	// Anything unmatched returns the standard error envelope rather than the
 	// net/http plain-text default.
@@ -314,6 +338,13 @@ func (s *Server) checkAgent(ctx context.Context, requestID string) checkResult {
 	return checkResult{Status: statusUp}
 }
 
+// phpInstallTimeout bounds one job end to end.
+//
+// It is the longest any operation the panel runs may take: a PHP package has
+// to be downloaded and unpacked, which is minutes on a slow link, and a
+// shorter bound would fail installs that were going to succeed.
+const phpInstallTimeout = 15 * time.Minute
+
 // Run starts the listener and blocks until ctx is cancelled, then drains
 // in-flight requests within the configured shutdown timeout.
 func (s *Server) Run(ctx context.Context) error {
@@ -338,6 +369,12 @@ func (s *Server) Run(ctx context.Context) error {
 		go s.worker.Run(ctx)
 	} else {
 		s.log.Warn("job processing is disabled: no server is registered")
+	}
+
+	// PHP can be installed or removed outside the panel, so the version table
+	// is refreshed on an interval rather than only at startup.
+	if s.phpSync != nil {
+		go s.phpSync.Run(ctx, phppkg.DefaultSyncInterval)
 	}
 
 	go func() {

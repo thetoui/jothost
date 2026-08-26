@@ -35,15 +35,26 @@ FROM alpine:3.21 AS runtime
 # so the unprivileged API can reach it without world-writable permissions.
 # The GID must match the API image's jothost user.
 #
-# nginx and shadow are installed because this container *is* the managed host
-# in development: the Agent provisions websites here, so the tools it drives
-# have to be present. In production the Agent runs on a real host that already
-# has them. shadow provides useradd/userdel, which BusyBox's adduser cannot
-# fully replace for system accounts.
+# nginx, shadow, and PHP are installed because this container *is* the managed
+# host in development: the Agent provisions websites here, so the tools it
+# drives have to be present. In production the Agent runs on a real host that
+# already has them. shadow provides useradd/userdel, which BusyBox's adduser
+# cannot fully replace for system accounts.
+#
+# Three PHP versions are installed so per-site version selection is exercised
+# against real binaries rather than mocked, which is what TASKS.md Phase 5 asks
+# for. The default www.conf pools are removed: each listens on a TCP port as
+# "nobody" and would run alongside the per-site pools the panel writes.
 RUN apk add --no-cache ca-certificates tzdata nginx shadow \
+      php82-fpm php83-fpm php84-fpm \
+      php82-opcache php83-opcache php84-opcache \
+      php82-session php83-session php84-session \
     && addgroup -g 10001 jothost \
-    && mkdir -p /etc/nginx/conf.d /var/www /run/nginx \
-    && rm -f /etc/nginx/http.d/default.conf
+    && mkdir -p /etc/nginx/conf.d /var/www /run/nginx /run/php-fpm \
+    && rm -f /etc/nginx/http.d/default.conf \
+    && rm -f /etc/php82/php-fpm.d/www.conf \
+             /etc/php83/php-fpm.d/www.conf \
+             /etc/php84/php-fpm.d/www.conf
 
 COPY --from=builder /out/jothost-agent /usr/local/bin/jothost-agent
 COPY docker/nginx/host.conf /etc/nginx/nginx.conf

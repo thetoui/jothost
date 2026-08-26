@@ -11,6 +11,7 @@ import (
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
+	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/shared/protocol"
@@ -57,6 +58,17 @@ type Dependencies struct {
 	Nginx     *nginx.Provider
 	Jobs      *jobs.Runner
 	Log       *slog.Logger
+
+	// PHP reports which versions the host has, PHPPools writes per-site FPM
+	// pools, and PHPInstaller adds and removes versions. Any of them may be
+	// nil on a host without PHP, which handlers report as unsupported rather
+	// than failing obscurely.
+	PHP          *php.Detector
+	PHPPools     *php.Provider
+	PHPInstaller *php.Installer
+	// WebGroup is the group the web server runs as. A pool socket must be
+	// group-owned by it or nginx cannot connect and every PHP request 502s.
+	WebGroup string
 }
 
 // Registry maps allowlisted operations to their handlers.
@@ -95,6 +107,16 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationWebsiteLogs, r.handleWebsiteLogs)
 	r.mustRegister(protocol.OperationNginxValidate, r.handleNginxValidate)
 	r.mustRegister(protocol.OperationNginxReload, r.handleNginxReload)
+
+	r.mustRegister(protocol.OperationPHPVersions, r.handlePHPVersions)
+	r.mustRegister(protocol.OperationPHPInstall, r.handlePHPInstall)
+	r.mustRegister(protocol.OperationPHPUninstall, r.handlePHPUninstall)
+	r.mustRegister(protocol.OperationPHPPoolCreate, r.handlePHPPoolCreate)
+	r.mustRegister(protocol.OperationPHPPoolDelete, r.handlePHPPoolDelete)
+	r.mustRegister(protocol.OperationPHPPoolStatus, r.handlePHPPoolStatus)
+	r.mustRegister(protocol.OperationPHPExtensions, r.handlePHPExtensions)
+	r.mustRegister(protocol.OperationWebsitePHPSet, r.handleWebsitePHPSet)
+	r.mustRegister(protocol.OperationWebsitePHPUnset, r.handleWebsitePHPUnset)
 
 	r.mustRegister(protocol.OperationJobStatus, r.handleJobStatus)
 	r.mustRegister(protocol.OperationJobCancel, r.handleJobCancel)

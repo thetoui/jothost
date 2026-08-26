@@ -20,11 +20,12 @@ describe('Sidebar', () => {
     renderWithProviders(<Sidebar />);
 
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/');
-    // Websites became a real destination in Phase 4.
+    // Websites became a real destination in Phase 4, PHP in Phase 5.
     expect(screen.getByRole('link', { name: 'Websites' })).toHaveAttribute(
       'href',
       '/websites',
     );
+    expect(screen.getByRole('link', { name: 'PHP' })).toHaveAttribute('href', '/php');
     // Future-phase modules are visible but must not be clickable links.
     expect(screen.queryByRole('link', { name: 'Databases' })).not.toBeInTheDocument();
     expect(screen.getByTitle('Databases — not yet implemented')).toBeInTheDocument();

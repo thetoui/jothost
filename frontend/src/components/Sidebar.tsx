@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import {
+  Code2,
   Database,
   FileCode2,
   Files,
@@ -31,7 +32,8 @@ const navItems: NavItem[] = [
   { label: 'Websites', to: '/websites', icon: Globe, enabled: true },
   { label: 'Databases', to: '/databases', icon: Database, enabled: false },
   { label: 'Files', to: '/files', icon: Files, enabled: false },
-  { label: 'Editor', to: '/editor', icon: FileCode2, enabled: false },
+  { label: 'PHP', to: '/php', icon: FileCode2, enabled: true },
+  { label: 'Editor', to: '/editor', icon: Code2, enabled: false },
   { label: 'SSL', to: '/ssl', icon: Lock, enabled: false },
   { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: false },
   { label: 'Account security', to: '/security', icon: UserCog, enabled: true },

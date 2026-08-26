@@ -323,3 +323,55 @@ export interface DomainCreated {
   domain: WebsiteDomain;
   job: Job;
 }
+
+// --------------------------------------------------------------------- php
+
+export type PHPVersionStatus = 'available' | 'installing' | 'removing' | 'failed';
+
+export interface PHPVersion {
+  id: string;
+  version: string;
+  binary_path: string | null;
+  fpm_service: string | null;
+  status: PHPVersionStatus;
+  installed: boolean;
+  /** Websites currently running this version; it cannot be removed above zero. */
+  in_use: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PHPVersionList {
+  versions: PHPVersion[];
+  count: number;
+}
+
+export interface PHPPool {
+  id: string;
+  website_id: string;
+  php_version: string;
+  pool_name: string;
+  socket_path: string;
+  memory_limit: string | null;
+  max_children: number | null;
+  upload_max_filesize: string | null;
+  max_execution_time: number | null;
+  opcache_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A website's PHP state. A static site is `enabled: false`, not an error. */
+export interface WebsitePHP {
+  enabled: boolean;
+  pool?: PHPPool;
+}
+
+export interface PHPConfig {
+  memory_limit: string;
+  upload_max_filesize: string;
+  max_execution_time: number;
+  opcache: boolean;
+  max_children: number;
+  version: string;
+}

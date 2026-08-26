@@ -18,6 +18,7 @@ import (
 	"github.com/jothost/panel/api/internal/config"
 	"github.com/jothost/panel/api/internal/dashboard"
 	"github.com/jothost/panel/api/internal/httpx"
+	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/api/internal/metrics"
 	"github.com/jothost/panel/api/internal/middleware"
 	"github.com/jothost/panel/api/internal/ratelimit"
@@ -27,6 +28,7 @@ import (
 	"github.com/jothost/panel/api/internal/sessions"
 	"github.com/jothost/panel/api/internal/twofactor"
 	"github.com/jothost/panel/api/internal/users"
+	"github.com/jothost/panel/api/internal/websites"
 	"github.com/jothost/panel/shared/version"
 )
 
@@ -44,6 +46,12 @@ type Server struct {
 	metrics   *metrics.Repository
 	dashboard *dashboard.Handler
 	sampler   *metrics.Sampler
+
+	websites *websites.Handler
+	jobs     *jobs.Handler
+	// worker realises queued jobs against the Agent. It is nil when no server
+	// is registered, because there is no host to provision against.
+	worker *jobs.Worker
 
 	// Router is exported so tests can exercise the full middleware chain
 	// without binding a port.
@@ -144,6 +152,40 @@ func New(opts Options) (*Server, error) {
 		DefaultServerID: opts.LocalServerID,
 	})
 
+	jobRepo := jobs.NewRepository(opts.Pool)
+	websiteRepo := websites.NewRepository(opts.Pool)
+
+	websiteService := websites.NewService(websites.ServiceOptions{
+		Repository: websiteRepo,
+		Jobs:       jobRepo,
+		Audit:      auditRecorder,
+		Log:        log,
+		ServerID:   opts.LocalServerID,
+	})
+
+	s.websites = websites.NewHandler(websites.HandlerOptions{
+		Service: websiteService,
+		Repo:    websiteRepo,
+		Auth:    authService,
+	})
+	s.jobs = jobs.NewHandler(jobs.HandlerOptions{
+		Repository: jobRepo,
+		Auth:       authService,
+	})
+
+	if opts.LocalServerID != "" {
+		// The worker reconciles websites through the service, so a finished
+		// job moves the site to active or failed rather than leaving it in
+		// "creating" forever.
+		s.worker = jobs.NewWorker(jobs.Options{
+			Repository: jobRepo,
+			Dispatcher: agent,
+			Observer:   websiteService,
+			Log:        log,
+			JobTimeout: cfg.AgentTimeout * 10,
+		})
+	}
+
 	if opts.LocalServerID != "" {
 		s.sampler = metrics.NewSampler(metrics.SamplerOptions{
 			Agent:     agent,
@@ -183,6 +225,8 @@ func (s *Server) routes() http.Handler {
 
 	auth.NewHandler(s.auth).Routes(mux)
 	s.dashboard.Routes(mux)
+	s.websites.Routes(mux)
+	s.jobs.Routes(mux)
 
 	// Anything unmatched returns the standard error envelope rather than the
 	// net/http plain-text default.
@@ -288,6 +332,14 @@ func (s *Server) Run(ctx context.Context) error {
 		s.log.Warn("metric sampling is disabled: no server is registered")
 	}
 
+	// The job worker is what turns a queued website into a provisioned one.
+	// Without it every site would sit in "creating" indefinitely.
+	if s.worker != nil {
+		go s.worker.Run(ctx)
+	} else {
+		s.log.Warn("job processing is disabled: no server is registered")
+	}
+
 	go func() {
 		s.log.Info("api listening",
 			"addr", s.cfg.HTTPAddr,
@@ -328,6 +380,14 @@ func (s *Server) Run(ctx context.Context) error {
 		case <-samplerDone:
 		case <-time.After(s.cfg.ShutdownTimeout):
 			s.log.Warn("metric sampler did not stop within the shutdown timeout")
+		}
+	}
+
+	// A job in flight is changing the host, so the worker is given the same
+	// grace period to finish it rather than being abandoned mid-operation.
+	if s.worker != nil {
+		if err := s.worker.Wait(s.cfg.ShutdownTimeout); err != nil {
+			s.log.Warn("job worker did not stop within the shutdown timeout")
 		}
 	}
 

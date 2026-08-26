@@ -343,6 +343,33 @@ Create:
 }
 ```
 
+**As implemented in Phase 4.** The request body is `domain` and an optional
+`name`. The other fields are deliberately not accepted yet:
+
+- `document_root` is **computed**, not accepted. A path from a client is a path
+  the Agent would resolve as root; it is derived from the validated domain as
+  `/var/www/<domain>/public`.
+- `php_version` is Phase 5. `ssl_enabled` and `https_redirect` are Phase 6 and
+  are **refused with 400** rather than accepted and ignored — a user who
+  believes their site is encrypted when it is not is worse off than one told
+  the feature is unavailable.
+
+Unknown fields are rejected, so a misspelled key is reported rather than
+silently dropped.
+
+Creation is asynchronous. `POST /websites` returns **201** with both the
+website (in status `creating`) and the job realising it:
+
+```json
+{
+  "website": { "id": "…", "status": "creating", "system_user": "web_example_a1b2c3", "…": "…" },
+  "job": { "id": "…", "type": "website.create", "status": "PENDING", "progress": 0 }
+}
+```
+
+`DELETE /websites/:id` returns **202** with the job; the record survives until
+the Agent confirms the site is gone from the host.
+
 ---
 
 # 7. Domains
@@ -353,6 +380,15 @@ POST /websites/:id/domains
 PATCH /domains/:id
 DELETE /domains/:id
 ```
+
+**As implemented in Phase 4.** `POST` and `DELETE` are implemented and each
+returns the job rewriting the vhost. `PATCH /domains/:id` is not implemented.
+
+Type `alias` and `subdomain` are accepted. Type `redirect` returns **400** for
+now: the Agent can write a redirect vhost but cannot remove a stale one, so
+accepting it would create configuration the panel could not take back. The
+primary domain cannot be detached — it is the site's identity and its vhost's
+`server_name`.
 
 ---
 
@@ -660,11 +696,22 @@ GET /jobs/:id
 POST /jobs/:id/cancel
 ```
 
+**As implemented in Phase 4.** All three REST endpoints exist. `GET /jobs`
+filters on `status`, `resource_type`, `resource_id`, and `limit`. Cancellation
+applies only to a job that has not started: once dispatched, the Agent is
+changing the host, and reporting it cancelled would be a claim the panel cannot
+make good on — that returns **409**.
+
 WebSocket:
 
 ```text
 /ws/jobs/:id
 ```
+
+**Not implemented.** Clients poll `GET /jobs/:id`. Provisioning takes seconds
+and the UI polls only while work is in flight, so a WebSocket would add a
+connection lifecycle, an auth handshake, and a reconnect path for a latency
+improvement nobody would notice. See docs/PHASE4.md §3.3.
 
 Events:
 

@@ -44,6 +44,8 @@ func (r *Registry) handleAgentInfo(_ context.Context, req protocol.Request, _ *j
 			"metrics":  r.deps.Collector.Available(),
 			"services": r.deps.Services.Available(),
 			"jobs":     true,
+			"websites": r.deps.Sites != nil && r.deps.Sites.Capabilities().Nginx,
+			"users":    r.deps.Sites != nil && r.deps.Sites.Capabilities().Users,
 		},
 	}, nil
 }

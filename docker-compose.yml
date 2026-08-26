@@ -61,6 +61,14 @@ services:
       AGENT_AUDIT_LOG: /var/log/jothost/agent-audit.log
       AGENT_MAX_CONCURRENT_JOBS: 4
       AGENT_JOB_RETENTION: 15m
+      # Alpine puts nginx in /usr/sbin and the shadow tools in /usr/sbin.
+      AGENT_NGINX_PATH: /usr/sbin/nginx
+      AGENT_NGINX_SITES_DIR: /etc/nginx/conf.d
+      AGENT_SITE_ROOT: /var/www
+    ports:
+      # Websites the panel creates are served by the nginx this container
+      # manages. This is the managed host's HTTP port, not the panel's.
+      - "${SITES_PORT:-8090}:80"
     volumes:
       # The socket directory is the only channel between API and Agent.
       # No port is published: the Agent must never be reachable over TCP.

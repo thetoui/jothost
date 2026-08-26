@@ -176,7 +176,7 @@ server_id UUID REFERENCES servers(id)
 name VARCHAR(255)
 primary_domain VARCHAR(255) UNIQUE NOT NULL
 document_root TEXT NOT NULL
-system_user VARCHAR(100) NOT NULL
+system_username VARCHAR(100) NOT NULL
 php_version VARCHAR(20)
 status VARCHAR(30) NOT NULL
 ssl_enabled BOOLEAN DEFAULT FALSE
@@ -184,6 +184,14 @@ https_redirect BOOLEAN DEFAULT FALSE
 created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
 ```
+
+**Note on `system_username`.** This field was specified as `system_user`.
+PostgreSQL 16 made `SYSTEM_USER` a reserved keyword (SQL:2023), so that name is
+a syntax error unquoted and, in some contexts, silently resolves to the
+built-in function instead of failing. The column is therefore
+`system_username`, aliased back to `system_user` in every query — the API
+contract and the JSON field keep the specified name. Implemented in migration
+`0005_websites_and_jobs`; see docs/PHASE4.md §3.1.
 
 ---
 

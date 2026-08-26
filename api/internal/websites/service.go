@@ -1,0 +1,463 @@
+package websites
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"log/slog"
+	"path"
+	"strings"
+
+	"github.com/jothost/panel/api/internal/audit"
+	"github.com/jothost/panel/api/internal/jobs"
+	"github.com/jothost/panel/shared/logger"
+	"github.com/jothost/panel/shared/validate"
+)
+
+// Audit action names for website work.
+const (
+	ActionWebsiteCreate = "website.create"
+	ActionWebsiteUpdate = "website.update"
+	ActionWebsiteDelete = "website.delete"
+	ActionDomainCreate  = "domain.create"
+	ActionDomainDelete  = "domain.delete"
+	ResourceTypeWebsite = "website"
+)
+
+// SiteRoot is where website directories live on the managed host.
+//
+// The API computes the document root rather than accepting one: a path from a
+// client is a path the Agent would resolve as root. The Agent validates it
+// again on arrival — this is the first of two checks, not the only one.
+const SiteRoot = "/var/www"
+
+// ContentDir is the directory served within a site's root. It matches the
+// Agent's sites.ContentDir; the two must agree or the vhost points nowhere.
+const ContentDir = "public"
+
+// Errors returned by the service.
+var (
+	// ErrSSLUnsupported is returned for ssl_enabled until Phase 6 issues
+	// certificates. Accepting the flag and silently ignoring it would leave a
+	// user believing their site is encrypted when it is not.
+	ErrSSLUnsupported = errors.New("SSL is not available yet")
+	// ErrInvalidState means the website is not in a state the action allows.
+	ErrInvalidState = errors.New("website is not in a state that allows this")
+	// ErrRedirectUnsupported is returned for redirect domains.
+	//
+	// The Agent can write a redirect vhost but has no way to remove a stale
+	// one, so accepting the type would create configuration the panel could
+	// never take back. Refusing is honest; a redirect that cannot be undone is
+	// worse than one that does not exist yet.
+	ErrRedirectUnsupported = errors.New("redirect domains are not available yet")
+)
+
+// Service coordinates website records with the work that realises them.
+type Service struct {
+	repo     *Repository
+	jobs     *jobs.Repository
+	audit    *audit.Recorder
+	log      *slog.Logger
+	serverID string
+}
+
+// ServiceOptions configure a Service.
+type ServiceOptions struct {
+	Repository *Repository
+	Jobs       *jobs.Repository
+	Audit      *audit.Recorder
+	Log        *slog.Logger
+	// ServerID is the host these websites live on. Phase 4 manages a single
+	// server; the column exists so multi-server does not need a migration.
+	ServerID string
+}
+
+// NewService builds a Service.
+func NewService(opts ServiceOptions) *Service {
+	log := opts.Log
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Service{
+		repo:     opts.Repository,
+		jobs:     opts.Jobs,
+		audit:    opts.Audit,
+		log:      log,
+		serverID: opts.ServerID,
+	}
+}
+
+// CreateRequest is a request to host a new website.
+type CreateRequest struct {
+	Domain     string
+	Name       string
+	SSLEnabled bool
+	// Actor is the user making the request, for the audit trail.
+	Actor     string
+	IPAddress string
+	UserAgent string
+}
+
+// CreateResult is a queued website creation.
+type CreateResult struct {
+	Website Website  `json:"website"`
+	Job     jobs.Job `json:"job"`
+}
+
+// Create records a website and queues the work to provision it.
+//
+// The row is written first and the job second, both before anything touches
+// the host. If the process dies between them the site sits in "creating" with
+// no job, which is visible and recoverable; queuing first would risk
+// provisioning a site the panel has no record of.
+func (s *Service) Create(ctx context.Context, req CreateRequest) (CreateResult, error) {
+	domain := validate.NormalizeDomain(req.Domain)
+	if err := validate.Domain(domain); err != nil {
+		return CreateResult{}, err
+	}
+
+	if req.SSLEnabled {
+		return CreateResult{}, ErrSSLUnsupported
+	}
+
+	systemUser, err := deriveSystemUser(domain)
+	if err != nil {
+		return CreateResult{}, err
+	}
+
+	documentRoot := path.Join(SiteRoot, domain, ContentDir)
+
+	site, err := s.repo.Create(ctx, CreateParams{
+		ServerID:      s.serverID,
+		Name:          strings.TrimSpace(req.Name),
+		PrimaryDomain: domain,
+		DocumentRoot:  documentRoot,
+		SystemUser:    systemUser,
+	})
+	if err != nil {
+		return CreateResult{}, err
+	}
+
+	job, err := s.jobs.Create(ctx, jobs.CreateParams{
+		Type: jobs.TypeWebsiteCreate,
+		Payload: map[string]any{
+			"domain":        domain,
+			"document_root": documentRoot,
+			"system_user":   systemUser,
+		},
+		CreatedBy:    req.Actor,
+		ResourceType: ResourceTypeWebsite,
+		ResourceID:   site.ID,
+	})
+	if err != nil {
+		// The website row exists but nothing will provision it. Marking it
+		// failed is more honest than leaving it "creating" forever.
+		if statusErr := s.repo.SetStatus(ctx, site.ID, StatusFailed); statusErr != nil {
+			s.log.Error("failed to mark unqueued website as failed",
+				"website_id", site.ID, logger.KeyError, statusErr.Error())
+		}
+		return CreateResult{}, err
+	}
+
+	s.record(ctx, req.Actor, ActionWebsiteCreate, site.ID, audit.StatusSuccess,
+		map[string]any{"domain": domain, "job_id": job.ID}, req.IPAddress, req.UserAgent)
+
+	return CreateResult{Website: site, Job: job}, nil
+}
+
+// deriveSystemUser builds the account name a site runs as.
+//
+// The random suffix is what keeps two similar domains from colliding after the
+// name is truncated to useradd's 32-character limit: "averylongdomain.example"
+// and "averylongdomain.test" both truncate to the same base.
+func deriveSystemUser(domain string) (string, error) {
+	suffix := make([]byte, 3)
+	if _, err := rand.Read(suffix); err != nil {
+		return "", fmt.Errorf("generate system user suffix: %w", err)
+	}
+
+	name := validate.SystemUserFor(domain, hex.EncodeToString(suffix))
+	if err := validate.SystemUser(name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+// DeleteRequest is a request to remove a website.
+type DeleteRequest struct {
+	WebsiteID string
+	Actor     string
+	IPAddress string
+	UserAgent string
+}
+
+// Delete queues removal of a website.
+//
+// The row is moved to "deleting" and kept until the Agent confirms the site is
+// gone. Deleting it now would leave the files, the account, and the vhost on
+// the host with nothing in the panel pointing at them.
+func (s *Service) Delete(ctx context.Context, req DeleteRequest) (jobs.Job, error) {
+	site, err := s.repo.Get(ctx, req.WebsiteID)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+
+	if site.Status == StatusDeleting {
+		return jobs.Job{}, fmt.Errorf("%w: it is already being deleted", ErrInvalidState)
+	}
+
+	if err := s.repo.SetStatus(ctx, site.ID, StatusDeleting); err != nil {
+		return jobs.Job{}, err
+	}
+
+	job, err := s.jobs.Create(ctx, jobs.CreateParams{
+		Type: jobs.TypeWebsiteDelete,
+		Payload: map[string]any{
+			"domain":        site.PrimaryDomain,
+			"document_root": site.DocumentRoot,
+			"system_user":   site.SystemUser,
+			// Removing the account is deliberate and separate: a site's files
+			// can be deleted while its user is still referenced elsewhere.
+			"remove_user": true,
+		},
+		CreatedBy:    req.Actor,
+		ResourceType: ResourceTypeWebsite,
+		ResourceID:   site.ID,
+	})
+	if err != nil {
+		// Put the site back so it is not stuck in "deleting" with no job.
+		if statusErr := s.repo.SetStatus(ctx, site.ID, site.Status); statusErr != nil {
+			s.log.Error("failed to restore website status after a queue failure",
+				"website_id", site.ID, logger.KeyError, statusErr.Error())
+		}
+		return jobs.Job{}, err
+	}
+
+	s.record(ctx, req.Actor, ActionWebsiteDelete, site.ID, audit.StatusSuccess,
+		map[string]any{"domain": site.PrimaryDomain, "job_id": job.ID},
+		req.IPAddress, req.UserAgent)
+
+	return job, nil
+}
+
+// AddDomainRequest attaches a hostname to a website.
+type AddDomainRequest struct {
+	WebsiteID  string
+	Domain     string
+	Type       string
+	RedirectTo string
+	Actor      string
+	IPAddress  string
+	UserAgent  string
+}
+
+// AddDomain attaches a hostname and queues a vhost update.
+func (s *Service) AddDomain(ctx context.Context, req AddDomainRequest) (Domain, jobs.Job, error) {
+	site, err := s.repo.Get(ctx, req.WebsiteID)
+	if err != nil {
+		return Domain{}, jobs.Job{}, err
+	}
+
+	domain := validate.NormalizeDomain(req.Domain)
+	if err := validate.Domain(domain); err != nil {
+		return Domain{}, jobs.Job{}, err
+	}
+
+	domainType := req.Type
+	if domainType == "" {
+		domainType = DomainAlias
+	}
+	switch domainType {
+	case DomainAlias, DomainSubdomain:
+	case DomainRedirect:
+		return Domain{}, jobs.Job{}, ErrRedirectUnsupported
+	case DomainPrimary:
+		return Domain{}, jobs.Job{}, fmt.Errorf(
+			"%w: a website already has its primary domain", ErrInvalidState)
+	default:
+		return Domain{}, jobs.Job{}, fmt.Errorf("%w: unknown domain type %q",
+			ErrInvalidState, domainType)
+	}
+
+	redirectTo := strings.TrimSpace(req.RedirectTo)
+	if domainType == DomainRedirect {
+		// The target is rendered into an nginx return directive, so it is
+		// validated as a hostname rather than accepted as free text.
+		redirectTo = validate.NormalizeDomain(redirectTo)
+		if err := validate.Domain(redirectTo); err != nil {
+			return Domain{}, jobs.Job{}, fmt.Errorf("redirect target: %w", err)
+		}
+	} else {
+		redirectTo = ""
+	}
+
+	created, err := s.repo.AddDomain(ctx, AddDomainParams{
+		WebsiteID:  site.ID,
+		Domain:     domain,
+		Type:       domainType,
+		RedirectTo: redirectTo,
+	})
+	if err != nil {
+		return Domain{}, jobs.Job{}, err
+	}
+
+	job, err := s.queueVhostUpdate(ctx, site, req.Actor)
+	if err != nil {
+		return Domain{}, jobs.Job{}, err
+	}
+
+	s.record(ctx, req.Actor, ActionDomainCreate, site.ID, audit.StatusSuccess,
+		map[string]any{"domain": domain, "type": domainType, "job_id": job.ID},
+		req.IPAddress, req.UserAgent)
+
+	return created, job, nil
+}
+
+// RemoveDomainRequest detaches a hostname.
+type RemoveDomainRequest struct {
+	DomainID  string
+	Actor     string
+	IPAddress string
+	UserAgent string
+}
+
+// RemoveDomain detaches a hostname and queues a vhost update.
+func (s *Service) RemoveDomain(ctx context.Context, req RemoveDomainRequest) (jobs.Job, error) {
+	domain, err := s.repo.GetDomain(ctx, req.DomainID)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+
+	site, err := s.repo.Get(ctx, domain.WebsiteID)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+
+	if err := s.repo.DeleteDomain(ctx, req.DomainID); err != nil {
+		return jobs.Job{}, err
+	}
+
+	job, err := s.queueVhostUpdate(ctx, site, req.Actor)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+
+	s.record(ctx, req.Actor, ActionDomainDelete, site.ID, audit.StatusSuccess,
+		map[string]any{"domain": domain.Domain, "job_id": job.ID},
+		req.IPAddress, req.UserAgent)
+
+	return job, nil
+}
+
+// queueVhostUpdate asks the Agent to rewrite a site's nginx configuration.
+//
+// The payload carries the full desired server_name set rather than a delta:
+// the Agent rewrites the vhost from it, so a job that is retried or arrives
+// out of order still converges on the same configuration.
+func (s *Service) queueVhostUpdate(ctx context.Context, site Website, actor string) (jobs.Job, error) {
+	domains, err := s.repo.ListDomains(ctx, site.ID)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+
+	// Redirect domains are refused at the door, so only the primary and the
+	// aliases can be present here.
+	aliases := []string{}
+	for _, domain := range domains {
+		if domain.Type == DomainPrimary {
+			continue
+		}
+		aliases = append(aliases, domain.Domain)
+	}
+
+	return s.jobs.Create(ctx, jobs.CreateParams{
+		Type: jobs.TypeWebsiteUpdate,
+		Payload: map[string]any{
+			"domain":        site.PrimaryDomain,
+			"document_root": site.DocumentRoot,
+			"system_user":   site.SystemUser,
+			"aliases":       aliases,
+		},
+		CreatedBy:    actor,
+		ResourceType: ResourceTypeWebsite,
+		ResourceID:   site.ID,
+	})
+}
+
+// JobFinished reconciles a website with the outcome of its job.
+//
+// This is the only place a site becomes "active": the panel does not claim a
+// site works until the Agent has reported that it does.
+//
+// It satisfies jobs.Observer.
+func (s *Service) JobFinished(ctx context.Context, job jobs.Job, state jobs.State,
+	_ map[string]any, failure string,
+) {
+	if job.ResourceType == nil || *job.ResourceType != ResourceTypeWebsite ||
+		job.ResourceID == nil {
+		return
+	}
+	websiteID := *job.ResourceID
+
+	log := s.log.With("website_id", websiteID, "job_id", job.ID, "type", job.Type)
+
+	switch job.Type {
+	case jobs.TypeWebsiteCreate, jobs.TypeWebsiteUpdate:
+		status := StatusActive
+		if state != jobs.StateSuccess {
+			status = StatusFailed
+		}
+		if err := s.repo.SetStatus(ctx, websiteID, status); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				// The site was deleted while its job ran; nothing to reconcile.
+				return
+			}
+			log.Error("failed to reconcile website status", logger.KeyError, err.Error())
+			return
+		}
+		log.Info("website reconciled", "status", status)
+
+	case jobs.TypeWebsiteDelete:
+		if state != jobs.StateSuccess {
+			// The files may still be on the host. The row stays so the failure
+			// is visible and the delete can be retried, rather than vanishing
+			// and leaving orphaned directories nobody knows about.
+			if err := s.repo.SetStatus(ctx, websiteID, StatusFailed); err != nil &&
+				!errors.Is(err, ErrNotFound) {
+				log.Error("failed to mark website delete as failed",
+					logger.KeyError, err.Error())
+			}
+			log.Warn("website delete failed; the row was kept", "reason", failure)
+			return
+		}
+		if err := s.repo.Delete(ctx, websiteID); err != nil && !errors.Is(err, ErrNotFound) {
+			log.Error("failed to remove website row", logger.KeyError, err.Error())
+			return
+		}
+		log.Info("website removed")
+	}
+}
+
+// record writes an audit event, logging rather than failing the request.
+//
+// The action already happened by the time this runs; returning an error would
+// tell the user their website was not created when it was.
+func (s *Service) record(ctx context.Context, actor, action, resourceID, status string,
+	metadata map[string]any, ip, userAgent string,
+) {
+	if s.audit == nil {
+		return
+	}
+	s.audit.RecordAsync(ctx, audit.Event{
+		UserID:       actor,
+		Action:       action,
+		ResourceType: ResourceTypeWebsite,
+		ResourceID:   resourceID,
+		IPAddress:    ip,
+		UserAgent:    userAgent,
+		Status:       status,
+		Metadata:     metadata,
+	})
+}

@@ -110,6 +110,21 @@ services:
       - jothost_default
     command: ["sh", "/tests/integration/phase3_dashboard.sh"]
 
+  websites-integration:
+    image: alpine:3.21
+    environment:
+      API_BASE_URL: ${INTEGRATION_API_URL:-http://api:8080}
+      # The Agent container runs the nginx that serves created websites; it is
+      # a different host from the panel's own reverse proxy.
+      SITES_BASE_URL: ${INTEGRATION_SITES_URL:-http://agent:80}
+      INTEGRATION_ADMIN_USERNAME: ${INTEGRATION_ADMIN_USERNAME:-integration_admin}
+      INTEGRATION_ADMIN_PASSWORD: ${INTEGRATION_ADMIN_PASSWORD:-integration-admin-pw-9271}
+    volumes:
+      - ./tests:/tests:ro
+    networks:
+      - jothost_default
+    command: ["sh", "/tests/integration/phase4_websites.sh"]
+
   auth-integration:
     image: alpine:3.21
     environment:

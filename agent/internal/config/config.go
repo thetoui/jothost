@@ -57,6 +57,20 @@ type Config struct {
 	// SystemctlPath is the absolute path to systemctl. It is configuration
 	// rather than a PATH lookup so a hostile PATH cannot substitute a program.
 	SystemctlPath string
+
+	// Website provisioning paths and tools. Each is an absolute path rather
+	// than a name resolved through PATH, for the same reason.
+	NginxPath     string
+	NginxSitesDir string
+	SiteRoot      string
+	UseraddPath   string
+	AdduserPath   string
+	UserdelPath   string
+	DeluserPath   string
+	// WebGroup is the group the web server runs as. Site directories are
+	// group-owned by it so the server can read what it serves. Empty probes
+	// the conventional names.
+	WebGroup string
 }
 
 // Load reads and validates Agent configuration.
@@ -84,6 +98,15 @@ func Load() (Config, error) {
 		JobRetention:      getDuration("AGENT_JOB_RETENTION", 15*time.Minute),
 
 		SystemctlPath: getString("AGENT_SYSTEMCTL_PATH", "/usr/bin/systemctl"),
+
+		NginxPath:     getString("AGENT_NGINX_PATH", "/usr/sbin/nginx"),
+		NginxSitesDir: getString("AGENT_NGINX_SITES_DIR", "/etc/nginx/conf.d"),
+		SiteRoot:      getString("AGENT_SITE_ROOT", "/var/www"),
+		UseraddPath:   getString("AGENT_USERADD_PATH", "/usr/sbin/useradd"),
+		AdduserPath:   getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
+		UserdelPath:   getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
+		DeluserPath:   getString("AGENT_DELUSER_PATH", "/usr/sbin/deluser"),
+		WebGroup:      getString("AGENT_WEB_GROUP", ""),
 	}
 
 	var problems []string
@@ -91,6 +114,11 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_PROC_ROOT", cfg.ProcRoot)...)
 	problems = append(problems, validateAbsolute("AGENT_SYS_ROOT", cfg.SysRoot)...)
 	problems = append(problems, validateAbsolute("AGENT_SYSTEMCTL_PATH", cfg.SystemctlPath)...)
+	problems = append(problems, validateAbsolute("AGENT_NGINX_PATH", cfg.NginxPath)...)
+	problems = append(problems, validateAbsolute("AGENT_NGINX_SITES_DIR", cfg.NginxSitesDir)...)
+	problems = append(problems, validateAbsolute("AGENT_SITE_ROOT", cfg.SiteRoot)...)
+	problems = append(problems, validateAbsolute("AGENT_USERADD_PATH", cfg.UseraddPath)...)
+	problems = append(problems, validateAbsolute("AGENT_ADDUSER_PATH", cfg.AdduserPath)...)
 
 	if cfg.AuditLogPath != "" {
 		problems = append(problems, validateAbsolute("AGENT_AUDIT_LOG", cfg.AuditLogPath)...)

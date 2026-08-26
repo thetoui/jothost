@@ -96,8 +96,12 @@ servers="$(get /api/v1/servers "$token")"
 contains "the local server is registered" "$servers" '"hostname"'
 contains "the server carries a status"    "$servers" '"status"'
 
-server_id="$(printf '%s' "$servers" |
-  sed -n 's/.*"servers":\[{"id":"\([0-9a-f-]*\)".*/\1/p')"
+# The id comes from the dashboard, which reports the host this API actually
+# manages. Taking the first row of /servers instead picks whichever sorts
+# first, and a stack rebuilt under a new container hostname registers a new
+# server — so that row can be a retired host with no recent samples.
+server_id="$(get /api/v1/dashboard "$token" |
+  sed -n 's/.*"server":{"id":"\([0-9a-f-]*\)".*/\1/p')"
 
 if [ -n "$server_id" ]; then
   pass "the server has an id"

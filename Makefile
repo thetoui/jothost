@@ -121,6 +121,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-auth
 	$(MAKE) docker-test-agent
 	$(MAKE) docker-test-dashboard
+	$(MAKE) docker-test-websites
 
 .PHONY: docker-test-integration
 docker-test-integration: ## Run integration tests against the running dev stack
@@ -150,6 +151,10 @@ docker-test-agent: ## Run the Phase 2 Host Agent integration checks
 docker-test-dashboard: create-integration-admin ## Run the Phase 3 dashboard integration checks
 	$(COMPOSE_TEST) run --rm dashboard-integration
 
+.PHONY: docker-test-websites
+docker-test-websites: create-integration-admin ## Run the Phase 4 website integration checks
+	$(COMPOSE_TEST) run --rm websites-integration
+
 # create-integration-admin provisions the account the auth checks sign in with.
 # Re-running is harmless: an existing username is reported and ignored.
 .PHONY: create-integration-admin
@@ -171,4 +176,4 @@ migrate-status: ## Show migration state
 	$(COMPOSE) exec api jothost-api migrate status
 
 .PHONY: verify
-verify: lint test docker-test-integration docker-test-auth docker-test-agent docker-test-dashboard ## Everything CI runs
+verify: lint test docker-test-integration docker-test-auth docker-test-agent docker-test-dashboard docker-test-websites ## Everything CI runs

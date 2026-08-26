@@ -175,7 +175,9 @@ func TestDispatchRejectsUnknownOperations(t *testing.T) {
 		"../../bin/sh",
 		"metrics.cpu\nmetrics.cpu",
 		"METRICS.CPU",
-		"website.create", // a real future operation, not yet registered
+		// Plausible but unregistered. "website.create" stood here until Phase 4
+		// made it real, so this names something no phase will implement.
+		"website.reticulate",
 	} {
 		resp := f.dispatch(op, nil)
 		if resp.Status != protocol.StatusFailed {

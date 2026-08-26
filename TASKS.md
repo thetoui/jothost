@@ -207,22 +207,32 @@ Only authorised callers see it.        verified: 401 anonymous, 403 without serv
 
 # PHASE 4 — Website Manager
 
-- [ ] Website database
-- [ ] Domain database
-- [ ] Create website API
-- [ ] Delete website API
-- [ ] Update website API
-- [ ] Nginx provider
-- [ ] Filesystem provider
-- [ ] Site user creation
-- [ ] Permissions
-- [ ] Nginx template
-- [ ] Nginx validation
-- [ ] Nginx reload
-- [ ] Website UI
-- [ ] Domain UI
-- [ ] Website status
-- [ ] Website logs
+**Status: COMPLETE** — see [docs/PHASE4.md](docs/PHASE4.md) for scope, decisions, and known limitations.
+
+- [x] Website database
+- [x] Domain database
+- [x] Create website API
+- [x] Delete website API
+- [x] Update website API
+- [x] Nginx provider
+- [x] Filesystem provider
+- [x] Site user creation
+- [x] Permissions
+- [x] Nginx template
+- [x] Nginx validation
+- [x] Nginx reload
+- [x] Website UI
+- [x] Domain UI
+- [x] Website status
+- [x] Website logs
+
+Additionally required by the above:
+
+- [x] `websites`, `domains`, and `jobs` schema
+- [x] Durable job queue and worker (`FOR UPDATE SKIP LOCKED`)
+- [x] Job API and progress reporting
+- [x] Shared domain and system-user validation (`shared/validate`)
+- [x] nginx running in the agent container so sites are actually served
 
 Integration test:
 
@@ -230,6 +240,15 @@ Integration test:
 Create website
 → request HTTP
 → receive response
+```
+
+Acceptance:
+
+```text
+Create website → HTTP → response.     verified: 41 integration checks, live nginx
+Sites are isolated from each other.    verified: cross-site read denied, dotfiles 403
+A site is never claimed to work early. verified: "creating" until the agent confirms
+Only authorised callers may change it. verified: 401 anonymous, 403 without permission
 ```
 
 ---

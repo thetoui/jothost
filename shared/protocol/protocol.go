@@ -33,6 +33,15 @@ const (
 	OperationServiceList    OperationType = "service.list"
 	OperationServiceStatus  OperationType = "service.status"
 
+	// Website provisioning. These change the host, unlike everything above.
+	OperationWebsiteCreate OperationType = "website.create"
+	OperationWebsiteDelete OperationType = "website.delete"
+	OperationWebsiteUpdate OperationType = "website.update"
+	OperationWebsiteStatus OperationType = "website.status"
+	OperationWebsiteLogs   OperationType = "website.logs"
+	OperationNginxValidate OperationType = "nginx.validate"
+	OperationNginxReload   OperationType = "nginx.reload"
+
 	// Asynchronous execution control.
 	OperationJobStatus OperationType = "job.status"
 	OperationJobCancel OperationType = "job.cancel"
@@ -53,6 +62,13 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationProcessList:    {},
 	OperationServiceList:    {},
 	OperationServiceStatus:  {},
+	OperationWebsiteCreate:  {},
+	OperationWebsiteDelete:  {},
+	OperationWebsiteUpdate:  {},
+	OperationWebsiteStatus:  {},
+	OperationWebsiteLogs:    {},
+	OperationNginxValidate:  {},
+	OperationNginxReload:    {},
 	OperationJobStatus:      {},
 	OperationJobCancel:      {},
 	OperationJobList:        {},

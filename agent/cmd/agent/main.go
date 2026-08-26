@@ -20,8 +20,10 @@ import (
 	"github.com/jothost/panel/agent/internal/command"
 	"github.com/jothost/panel/agent/internal/config"
 	"github.com/jothost/panel/agent/internal/jobs"
+	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/operations"
 	"github.com/jothost/panel/agent/internal/services"
+	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/socket"
 	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/protocol"
@@ -157,11 +159,18 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 
 	// The command allowlist is the complete set of programs this Agent may
 	// ever execute. Adding one is a deliberate, reviewable change.
-	runner, err := command.NewRunner(command.Spec{
-		Name:    services.CommandName,
-		Path:    cfg.SystemctlPath,
-		Timeout: 10 * time.Second,
-	})
+	//
+	// Both account tools are listed because distributions disagree: Debian and
+	// RHEL ship shadow-utils useradd, Alpine ships BusyBox adduser. The
+	// provider uses whichever is actually installed.
+	runner, err := command.NewRunner(
+		command.Spec{Name: services.CommandName, Path: cfg.SystemctlPath, Timeout: 10 * time.Second},
+		command.Spec{Name: nginx.CommandName, Path: cfg.NginxPath, Timeout: 15 * time.Second},
+		command.Spec{Name: sites.CommandUseradd, Path: cfg.UseraddPath, Timeout: 15 * time.Second},
+		command.Spec{Name: sites.CommandAdduser, Path: cfg.AdduserPath, Timeout: 15 * time.Second},
+		command.Spec{Name: sites.CommandUserdel, Path: cfg.UserdelPath, Timeout: 15 * time.Second},
+		command.Spec{Name: sites.CommandDeluser, Path: cfg.DeluserPath, Timeout: 15 * time.Second},
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build command allowlist: %w", err)
 	}
@@ -170,6 +179,42 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	if !serviceProvider.Available() {
 		log.Warn("service management is unavailable: systemctl not found",
 			"path", cfg.SystemctlPath)
+	}
+
+	nginxProvider := nginx.NewProvider(nginx.Options{
+		Runner:   runner,
+		SitesDir: cfg.NginxSitesDir,
+	})
+
+	// A host without nginx cannot serve websites. That is advertised through
+	// agent.info rather than discovered one failed request at a time.
+	provisioner, err := sites.NewProvisioner(cfg.SiteRoot, cfg.WebGroup)
+	if err != nil {
+		return nil, nil, fmt.Errorf("prepare site root: %w", err)
+	}
+
+	siteManager := sites.NewManager(sites.ManagerOptions{
+		Filesystem: provisioner,
+		Users:      sites.NewUserProvider(runner),
+		Nginx:      nginxProvider,
+		Log:        log,
+	})
+
+	capabilities := siteManager.Capabilities()
+	if !capabilities.Nginx {
+		log.Warn("website management is unavailable: nginx not found", "path", cfg.NginxPath)
+	}
+	if !capabilities.Users {
+		log.Warn("website management is unavailable: no user management tool found")
+	}
+	if !provisioner.HasWebGroup() {
+		// A site provisioned without this is created successfully and then
+		// refuses every visitor, which is far harder to diagnose than a
+		// refusal at creation time.
+		log.Warn("website provisioning will fail: no web server group found",
+			"detail", "set AGENT_WEB_GROUP to the group the web server runs as")
+	} else {
+		log.Info("website provisioning ready", "web_group", provisioner.WebGroup())
 	}
 
 	jobRunner := jobs.NewRunner(jobs.Options{
@@ -183,6 +228,8 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	registry := operations.NewRegistry(operations.Dependencies{
 		Collector: collector,
 		Services:  serviceProvider,
+		Sites:     siteManager,
+		Nginx:     nginxProvider,
 		Jobs:      jobRunner,
 		Log:       log,
 	})

@@ -28,7 +28,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard, enabled: true },
   { label: 'Server', to: '/server', icon: Server, enabled: false },
-  { label: 'Websites', to: '/websites', icon: Globe, enabled: false },
+  { label: 'Websites', to: '/websites', icon: Globe, enabled: true },
   { label: 'Databases', to: '/databases', icon: Database, enabled: false },
   { label: 'Files', to: '/files', icon: Files, enabled: false },
   { label: 'Editor', to: '/editor', icon: FileCode2, enabled: false },

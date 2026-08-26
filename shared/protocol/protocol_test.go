@@ -16,7 +16,10 @@ func TestValidateRejectsUnknownOperation(t *testing.T) {
 	// Anything outside the allowlist must be refused, including strings that
 	// look like shell payloads.
 	for _, op := range []OperationType{
-		"website.create",
+		// A plausible-looking name that is not registered. "website.create"
+		// used to stand here and became a real operation in Phase 4, so this
+		// deliberately names something no phase is going to implement.
+		"website.reticulate",
 		"; rm -rf /",
 		"agent.ping; cat /etc/shadow",
 		"AGENT.PING",

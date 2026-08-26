@@ -145,7 +145,7 @@ func (d *Deps) Reset(t *testing.T) {
 	// cannot rewrite history.
 	_, err := d.Pool.Exec(ctx, `
 		TRUNCATE TABLE audit_logs, two_factor_auth, session_token_history, sessions,
-			user_roles, users, system_metrics, servers
+			user_roles, users, system_metrics, domains, websites, jobs, servers
 		RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("reset database: %v", err)

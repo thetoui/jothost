@@ -10,7 +10,9 @@ import (
 
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/jobs"
+	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/services"
+	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/shared/protocol"
 )
 
@@ -51,6 +53,8 @@ func Fail(code, message string, cause error) error {
 type Dependencies struct {
 	Collector *collectors.Collector
 	Services  *services.Provider
+	Sites     *sites.Manager
+	Nginx     *nginx.Provider
 	Jobs      *jobs.Runner
 	Log       *slog.Logger
 }
@@ -83,6 +87,14 @@ func NewRegistry(deps Dependencies) *Registry {
 
 	r.mustRegister(protocol.OperationServiceList, r.handleServiceList)
 	r.mustRegister(protocol.OperationServiceStatus, r.handleServiceStatus)
+
+	r.mustRegister(protocol.OperationWebsiteCreate, r.handleWebsiteCreate)
+	r.mustRegister(protocol.OperationWebsiteDelete, r.handleWebsiteDelete)
+	r.mustRegister(protocol.OperationWebsiteUpdate, r.handleWebsiteUpdate)
+	r.mustRegister(protocol.OperationWebsiteStatus, r.handleWebsiteStatus)
+	r.mustRegister(protocol.OperationWebsiteLogs, r.handleWebsiteLogs)
+	r.mustRegister(protocol.OperationNginxValidate, r.handleNginxValidate)
+	r.mustRegister(protocol.OperationNginxReload, r.handleNginxReload)
 
 	r.mustRegister(protocol.OperationJobStatus, r.handleJobStatus)
 	r.mustRegister(protocol.OperationJobCancel, r.handleJobCancel)

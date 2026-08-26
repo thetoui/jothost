@@ -552,7 +552,7 @@ func TestUnknownOperationIsRejected(t *testing.T) {
 	h := startServer(t, serverOptions{})
 
 	resp := sendRequest(t, h.socketPath, protocol.Request{
-		Operation: "website.create",
+		Operation: "website.reticulate",
 		RequestID: "req_1",
 	})
 	if resp.Status != protocol.StatusFailed {

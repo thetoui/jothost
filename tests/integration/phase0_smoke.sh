@@ -113,9 +113,14 @@ esac
 
 log ""
 log "Agent network exposure"
-# The Agent must be unreachable over TCP on any plausible port.
+# The Agent process must be unreachable over TCP: it speaks only over its Unix
+# socket (ARCHITECTURE.md section 10).
+#
+# Port 80 is deliberately excluded. Since Phase 4 the agent container also runs
+# the nginx that serves hosted websites, which is a separate process. That port
+# belongs to the sites, not to the Agent, and is checked below instead.
 agent_exposed=0
-for port in 80 8080 9000 9090 7000; do
+for port in 8080 9000 9090 7000; do
   code="$(status "http://agent:$port/")"
   if [ "$code" != "000" ] && [ -n "$code" ]; then
     agent_exposed=1
@@ -123,8 +128,25 @@ for port in 80 8080 9000 9090 7000; do
   fi
 done
 if [ "$agent_exposed" -eq 0 ]; then
-  pass "agent exposes no HTTP port"
+  pass "the agent protocol is not exposed over TCP"
 fi
+
+# Port 80 answers, but as a web server for hosted sites: a hostname no site
+# claims must get 404, and the port must not speak the agent protocol.
+sites_root="$(status "http://agent:80/")"
+if [ "$sites_root" = "404" ]; then
+  pass "the site web server refuses an unclaimed hostname"
+else
+  fail "the site web server answered $sites_root for an unclaimed hostname (expected 404)"
+fi
+
+sites_body="$(body "http://agent:80/")"
+case "$sites_body" in
+  *'"operation"'*|*'"request_id"'*)
+    fail "port 80 answered with the agent protocol" ;;
+  *)
+    pass "port 80 does not speak the agent protocol" ;;
+esac
 
 log ""
 log "Panel reverse proxy"

@@ -4,6 +4,8 @@ import { RequireAuth } from '@/features/auth/components/RequireAuth';
 import { AppLayout } from '@/layouts/AppLayout';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { WebsiteDetailPage } from '@/pages/WebsiteDetailPage';
+import { WebsitesPage } from '@/pages/WebsitesPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { SecurityPage } from '@/pages/auth/SecurityPage';
 
@@ -27,6 +29,8 @@ export const router = createBrowserRouter(
           element: <AppLayout />,
           children: [
             { index: true, element: <DashboardPage /> },
+            { path: 'websites', element: <WebsitesPage /> },
+            { path: 'websites/:id', element: <WebsiteDetailPage /> },
             { path: 'security', element: <SecurityPage /> },
             { path: '*', element: <NotFoundPage /> },
           ],

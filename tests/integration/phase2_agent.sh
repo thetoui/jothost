@@ -155,7 +155,9 @@ log "Operation allowlist"
 # non-allowlisted operation never reaches the privileged process at all. The
 # agent-side rejection is covered by the socket tests in
 # agent/internal/socket/server_test.go, which speak raw protocol.
-expect_local_refusal "an unregistered operation is refused"    "website.create"
+# Not "website.create": Phase 4 registered that one. This names something no
+# phase is going to implement.
+expect_local_refusal "an unregistered operation is refused"    "website.reticulate"
 expect_local_refusal "a shell-shaped operation is refused"     "agent.ping; id"
 expect_local_refusal "a traversal-shaped operation is refused" "../../bin/sh"
 expect_local_refusal "a case-mismatched operation is refused"  "METRICS.CPU"

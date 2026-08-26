@@ -34,17 +34,31 @@ FROM alpine:3.21 AS runtime
 # The Agent runs as root, but the socket it creates is group-owned by jothost
 # so the unprivileged API can reach it without world-writable permissions.
 # The GID must match the API image's jothost user.
-RUN apk add --no-cache ca-certificates tzdata \
-    && addgroup -g 10001 jothost
+#
+# nginx and shadow are installed because this container *is* the managed host
+# in development: the Agent provisions websites here, so the tools it drives
+# have to be present. In production the Agent runs on a real host that already
+# has them. shadow provides useradd/userdel, which BusyBox's adduser cannot
+# fully replace for system accounts.
+RUN apk add --no-cache ca-certificates tzdata nginx shadow \
+    && addgroup -g 10001 jothost \
+    && mkdir -p /etc/nginx/conf.d /var/www /run/nginx \
+    && rm -f /etc/nginx/http.d/default.conf
 
 COPY --from=builder /out/jothost-agent /usr/local/bin/jothost-agent
+COPY docker/nginx/host.conf /etc/nginx/nginx.conf
+COPY docker/agent-entrypoint.sh /usr/local/bin/agent-entrypoint
 
-# No EXPOSE: the Agent listens only on a Unix socket, never on TCP
-# (ARCHITECTURE.md section 10).
+RUN chmod +x /usr/local/bin/agent-entrypoint
+
+# The Agent itself still listens only on a Unix socket (ARCHITECTURE.md
+# section 10). Port 80 belongs to the nginx this container manages, which
+# serves the websites the panel creates — not the panel itself.
+EXPOSE 80
 
 # The agent has no HTTP endpoint, so the health check speaks the agent
 # protocol over its own Unix socket.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=5 \
   CMD ["/usr/local/bin/jothost-agent", "-ping"]
 
-ENTRYPOINT ["/usr/local/bin/jothost-agent"]
+ENTRYPOINT ["/usr/local/bin/agent-entrypoint"]

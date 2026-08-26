@@ -239,3 +239,87 @@ export interface MetricSeries {
   to: string;
   points: MetricPoint[];
 }
+
+// ---------------------------------------------------------------- websites
+
+export type WebsiteStatus = 'creating' | 'active' | 'suspended' | 'failed' | 'deleting';
+
+export type DomainType = 'primary' | 'alias' | 'subdomain' | 'redirect';
+
+export interface WebsiteDomain {
+  id: string;
+  website_id: string;
+  domain: string;
+  type: DomainType;
+  status: string;
+  redirect_to: string | null;
+  created_at: string;
+}
+
+export interface Website {
+  id: string;
+  server_id: string;
+  name: string | null;
+  primary_domain: string;
+  document_root: string;
+  system_user: string;
+  php_version: string | null;
+  status: WebsiteStatus;
+  ssl_enabled: boolean;
+  https_redirect: boolean;
+  created_at: string;
+  updated_at: string;
+  domains?: WebsiteDomain[];
+}
+
+export interface WebsiteList {
+  websites: Website[];
+  count: number;
+}
+
+export interface DomainList {
+  domains: WebsiteDomain[];
+  count: number;
+}
+
+// -------------------------------------------------------------------- jobs
+
+export type JobStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+
+export interface Job {
+  id: string;
+  type: string;
+  status: JobStatus;
+  payload?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: string;
+  progress: number;
+  message?: string;
+  created_by: string | null;
+  resource_type: string | null;
+  resource_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface JobList {
+  jobs: Job[];
+  count: number;
+}
+
+/** A queued website creation: the row exists, the site does not yet. */
+export interface WebsiteCreated {
+  website: Website;
+  job: Job;
+}
+
+/** A queued change that only returns the job following it. */
+export interface JobAccepted {
+  job: Job;
+}
+
+export interface DomainCreated {
+  domain: WebsiteDomain;
+  job: Job;
+}

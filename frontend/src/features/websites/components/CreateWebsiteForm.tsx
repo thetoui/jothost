@@ -1,5 +1,9 @@
 import { useState, type FormEvent } from 'react';
+import { Globe } from 'lucide-react';
 
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/Field';
 import { useCreateWebsite } from '@/features/websites/hooks';
 import { domainError, normalizeDomain } from '@/features/websites/status';
 import { ApiError } from '@/services/apiClient';
@@ -48,75 +52,49 @@ export function CreateWebsiteForm({ onCreated, onCancel }: CreateWebsiteFormProp
         ? 'The website could not be created.'
         : null;
 
-  const error = validationError ?? serverError;
-
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      <div>
-        <label htmlFor="website-domain" className="block text-sm font-medium text-slate-700">
-          Domain
-        </label>
-        <input
-          id="website-domain"
-          name="domain"
-          type="text"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="example.com"
-          value={domain}
-          onChange={(event) => setDomain(event.target.value)}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? 'website-form-error' : 'website-domain-hint'}
-          className="mt-1 w-full rounded-md border border-surface-border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-        />
-        <p id="website-domain-hint" className="mt-1 text-xs text-slate-500">
-          The site is served at this name. Files live in /var/www/&lt;domain&gt;/public.
-        </p>
-      </div>
+    <form onSubmit={handleSubmit} noValidate className="space-y-4 pb-2">
+      <TextField
+        id="website-domain"
+        label="Domain"
+        type="text"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="example.com"
+        value={domain}
+        onChange={(event) => setDomain(event.target.value)}
+        error={validationError}
+        hint="Files are served from /var/www/<domain>/public."
+        adornment={<Globe className="h-4 w-4" />}
+      />
 
-      <div>
-        <label htmlFor="website-name" className="block text-sm font-medium text-slate-700">
-          Display name <span className="font-normal text-slate-500">(optional)</span>
-        </label>
-        <input
-          id="website-name"
-          name="name"
-          type="text"
-          autoComplete="off"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          className="mt-1 w-full rounded-md border border-surface-border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-        />
-      </div>
+      <TextField
+        id="website-name"
+        label="Display name"
+        suffix="optional"
+        type="text"
+        autoComplete="off"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        hint="Shown in the panel only. The domain is what visitors use."
+      />
 
-      {error && (
-        <p id="website-form-error" role="alert" className="text-sm text-rose-600">
-          {error}
-        </p>
-      )}
+      {serverError && <Alert tone="danger">{serverError}</Alert>}
 
-      <p className="text-xs text-slate-500">
-        HTTPS is not available yet. New sites are served over HTTP until certificate
+      <Alert tone="info">
+        HTTPS is not available yet, so new sites are served over HTTP until certificate
         management arrives.
-      </p>
+      </Alert>
 
-      <div className="flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={createWebsite.isPending}
-          className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {createWebsite.isPending ? 'Creating…' : 'Create website'}
-        </button>
+      <div className="flex items-center justify-end gap-2 border-t border-surface-border pt-4">
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-surface-muted"
-          >
+          <Button variant="ghost" onClick={onCancel} disabled={createWebsite.isPending}>
             Cancel
-          </button>
+          </Button>
         )}
+        <Button type="submit" variant="primary" loading={createWebsite.isPending}>
+          {createWebsite.isPending ? 'Creating…' : 'Create website'}
+        </Button>
       </div>
     </form>
   );

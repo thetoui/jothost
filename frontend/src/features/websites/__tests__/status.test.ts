@@ -80,6 +80,10 @@ describe('jobStatusPill', () => {
 describe('jobLabel', () => {
   it('names known operations and passes unknown ones through', () => {
     expect(jobLabel('website.create')).toBe('Create website');
+    // Every operation a phase adds needs a label, or the activity list shows
+    // an internal name to the user.
+    expect(jobLabel('website.php.set')).toBe('Change PHP version');
+    expect(jobLabel('php.install')).toBe('Install PHP');
     // An operation added by a later phase must still render something, rather
     // than an empty cell.
     expect(jobLabel('ssl.issue')).toBe('ssl.issue');

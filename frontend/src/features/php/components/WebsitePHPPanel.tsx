@@ -1,5 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { FileCode2, Save } from 'lucide-react';
 
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
+import { SelectField, TextField, Toggle } from '@/components/ui/Field';
+import { Skeleton } from '@/components/ui/Loading';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import {
@@ -14,6 +20,7 @@ import {
   uploadSizeError,
 } from '@/features/php/settings';
 import { ApiError } from '@/services/apiClient';
+import type { PHPPool } from '@/types/api';
 
 interface WebsitePHPPanelProps {
   websiteId: string;
@@ -21,7 +28,7 @@ interface WebsitePHPPanelProps {
 
 /** WebsitePHPPanel selects a website's PHP version and its php.ini values. */
 export function WebsitePHPPanel({ websiteId }: WebsitePHPPanelProps) {
-  const { data: state, isLoading } = useWebsitePHP(websiteId);
+  const { data: state, isPending } = useWebsitePHP(websiteId);
   const { data: versionList } = usePHPVersions();
   const setPHP = useSetWebsitePHP();
 
@@ -37,10 +44,7 @@ export function WebsitePHPPanel({ websiteId }: WebsitePHPPanelProps) {
 
   function handleVersionSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPHP.mutate({
-      websiteId,
-      version: selected === '' ? null : selected,
-    });
+    setPHP.mutate({ websiteId, version: selected === '' ? null : selected });
   }
 
   const versionError =
@@ -51,23 +55,27 @@ export function WebsitePHPPanel({ websiteId }: WebsitePHPPanelProps) {
         : null;
 
   return (
-    <section
-      aria-label="PHP"
-      className="rounded-lg border border-surface-border bg-surface shadow-sm"
-    >
-      <h2 className="border-b border-surface-border px-4 py-3 text-sm font-semibold text-slate-900">
-        PHP
-      </h2>
+    <Card>
+      <CardHeader
+        title="PHP"
+        description={
+          state?.enabled ? `Running PHP ${current} in its own pool` : 'This site serves static content'
+        }
+        icon={<TintedIcon tone={state?.enabled ? 'brand' : 'neutral'} icon={<FileCode2 className="h-4 w-4" />} />}
+      />
 
-      {isLoading ? (
-        <p className="px-4 py-4 text-sm text-slate-500">Loading…</p>
+      {isPending ? (
+        <CardBody className="space-y-3">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-9 w-56" />
+        </CardBody>
       ) : (
-        <div className="space-y-4 p-4">
+        <CardBody className="space-y-5">
           {available.length === 0 ? (
-            <p className="text-sm text-slate-500">
+            <Alert tone="info">
               No PHP version is installed on this server, so this site serves static content
               only.
-            </p>
+            </Alert>
           ) : (
             <RequirePermission
               permission={Permission.WebsiteUpdate}
@@ -79,37 +87,34 @@ export function WebsitePHPPanel({ websiteId }: WebsitePHPPanelProps) {
                 </p>
               }
             >
-              <form onSubmit={handleVersionSubmit} className="space-y-2">
-                <label htmlFor="php-select" className="block text-sm font-medium text-slate-700">
-                  Version
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    id="php-select"
-                    value={selected}
-                    onChange={(event) => setSelected(event.target.value)}
-                    className="rounded-md border border-surface-border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  >
-                    <option value="">None — static site</option>
-                    {available.map((version) => (
-                      <option key={version.id} value={version.version}>
-                        PHP {version.version}
-                      </option>
-                    ))}
-                  </select>
-                  <button
+              <form onSubmit={handleVersionSubmit} className="space-y-3">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="w-56">
+                    <SelectField
+                      id="php-select"
+                      label="Version"
+                      value={selected}
+                      onChange={(event) => setSelected(event.target.value)}
+                    >
+                      <option value="">None — static site</option>
+                      {available.map((version) => (
+                        <option key={version.id} value={version.version}>
+                          PHP {version.version}
+                        </option>
+                      ))}
+                    </SelectField>
+                  </div>
+                  <Button
                     type="submit"
-                    disabled={setPHP.isPending || selected === current}
-                    className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    variant="primary"
+                    loading={setPHP.isPending}
+                    disabled={selected === current}
                   >
                     {setPHP.isPending ? 'Applying…' : 'Apply'}
-                  </button>
+                  </Button>
                 </div>
-                {versionError && (
-                  <p role="alert" className="text-sm text-rose-600">
-                    {versionError}
-                  </p>
-                )}
+
+                {versionError && <Alert tone="danger">{versionError}</Alert>}
               </form>
             </RequirePermission>
           )}
@@ -119,19 +124,14 @@ export function WebsitePHPPanel({ websiteId }: WebsitePHPPanelProps) {
               <ConfigForm websiteId={websiteId} pool={state.pool} />
             </RequirePermission>
           )}
-        </div>
+        </CardBody>
       )}
-    </section>
+    </Card>
   );
 }
 
-interface ConfigFormProps {
-  websiteId: string;
-  pool: NonNullable<import('@/types/api').WebsitePHP['pool']>;
-}
-
 /** ConfigForm edits a site's php.ini values. */
-function ConfigForm({ websiteId, pool }: ConfigFormProps) {
+function ConfigForm({ websiteId, pool }: { websiteId: string; pool: PHPPool }) {
   const setConfig = useSetPHPConfig(websiteId);
 
   const [memoryLimit, setMemoryLimit] = useState(pool.memory_limit ?? '256M');
@@ -139,6 +139,7 @@ function ConfigForm({ websiteId, pool }: ConfigFormProps) {
   const [executionTime, setExecutionTime] = useState(String(pool.max_execution_time ?? 30));
   const [opcache, setOpcache] = useState(pool.opcache_enabled);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -151,16 +152,20 @@ function ConfigForm({ websiteId, pool }: ConfigFormProps) {
 
     if (problem) {
       setValidationError(problem);
+      setSaved(false);
       return;
     }
     setValidationError(null);
 
-    setConfig.mutate({
-      memory_limit: memoryLimit.trim(),
-      upload_max_filesize: uploadSize.trim(),
-      max_execution_time: seconds,
-      opcache,
-    });
+    setConfig.mutate(
+      {
+        memory_limit: memoryLimit.trim(),
+        upload_max_filesize: uploadSize.trim(),
+        max_execution_time: seconds,
+        opcache,
+      },
+      { onSuccess: () => setSaved(true) },
+    );
   }
 
   const serverError =
@@ -172,87 +177,59 @@ function ConfigForm({ websiteId, pool }: ConfigFormProps) {
   const error = validationError ?? serverError;
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-3 border-t border-surface-border pt-4">
-      <h3 className="text-sm font-medium text-slate-900">Configuration</h3>
+    <form onSubmit={handleSubmit} noValidate className="space-y-4 border-t border-surface-border pt-5">
+      <h3 className="text-sm font-semibold text-slate-900">Configuration</h3>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field
+      <div className="grid gap-4 sm:grid-cols-3">
+        <TextField
           id="php-memory"
           label="Memory limit"
           value={memoryLimit}
-          onChange={setMemoryLimit}
-          hint="For example 256M, or -1 for no limit."
+          onChange={(event) => setMemoryLimit(event.target.value)}
+          hint="e.g. 256M, or -1"
         />
-        <Field
+        <TextField
           id="php-upload"
-          label="Max upload size"
+          label="Max upload"
           value={uploadSize}
-          onChange={setUploadSize}
-          hint="For example 64M."
+          onChange={(event) => setUploadSize(event.target.value)}
+          hint="e.g. 64M"
         />
-        <Field
+        <TextField
           id="php-exec"
-          label="Max execution time"
+          label="Max execution"
           value={executionTime}
-          onChange={setExecutionTime}
-          hint="Seconds. 0 means no limit."
+          onChange={(event) => setExecutionTime(event.target.value)}
+          hint="Seconds. 0 is unlimited."
         />
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-slate-700">
-        <input
-          type="checkbox"
-          checked={opcache}
-          onChange={(event) => setOpcache(event.target.checked)}
-          className="h-4 w-4 rounded border-surface-border text-brand-600 focus:ring-brand-500"
-        />
-        Enable OPcache
-      </label>
+      <Toggle
+        id="php-opcache"
+        label="Enable OPcache"
+        description="Caches compiled scripts. Recommended for production sites."
+        checked={opcache}
+        onChange={(value) => {
+          setOpcache(value);
+          setSaved(false);
+        }}
+      />
 
-      {error && (
-        <p role="alert" className="text-sm text-rose-600">
-          {error}
-        </p>
+      {error && <Alert tone="danger">{error}</Alert>}
+      {saved && !error && !setConfig.isPending && (
+        <Alert tone="success">
+          Saved. The pool reloads in the background; requests in flight are not dropped.
+        </Alert>
       )}
 
-      <button
+      <Button
         type="submit"
-        disabled={setConfig.isPending}
-        className="rounded-md border border-surface-border px-3 py-2 text-sm font-medium text-slate-700 hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60"
+        variant="secondary"
+        loading={setConfig.isPending}
+        icon={<Save aria-hidden="true" className="h-4 w-4" />}
       >
         {setConfig.isPending ? 'Saving…' : 'Save configuration'}
-      </button>
+      </Button>
     </form>
-  );
-}
-
-interface FieldProps {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  hint: string;
-}
-
-function Field({ id, label, value, onChange, hint }: FieldProps) {
-  return (
-    <div>
-      <label htmlFor={id} className="block text-sm font-medium text-slate-700">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="text"
-        autoComplete="off"
-        spellCheck={false}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-describedby={`${id}-hint`}
-        className="mt-1 w-full rounded-md border border-surface-border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-      />
-      <p id={`${id}-hint`} className="mt-1 text-xs text-slate-500">
-        {hint}
-      </p>
-    </div>
   );
 }

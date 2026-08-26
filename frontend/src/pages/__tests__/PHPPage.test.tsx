@@ -114,7 +114,7 @@ describe('PHPPage', () => {
     renderWithProviders(<PHPPage />);
 
     await screen.findByText('PHP 8.3');
-    expect(screen.queryByLabelText('Install a version')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Version')).not.toBeInTheDocument();
   });
 
   it('queues an install', async () => {
@@ -132,7 +132,7 @@ describe('PHPPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<PHPPage />);
 
-    await user.type(await screen.findByLabelText('Install a version'), '8.3');
+    await user.type(await screen.findByLabelText('Version'), '8.3');
     await user.click(screen.getByRole('button', { name: 'Install' }));
 
     const posted = vi
@@ -162,7 +162,7 @@ describe('PHPPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<PHPPage />);
 
-    await user.type(await screen.findByLabelText('Install a version'), '9.9');
+    await user.type(await screen.findByLabelText('Version'), '9.9');
     await user.click(screen.getByRole('button', { name: 'Install' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('is not available');

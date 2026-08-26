@@ -38,6 +38,10 @@ const jobLabels: Record<string, string> = {
   'website.create': 'Create website',
   'website.update': 'Update configuration',
   'website.delete': 'Delete website',
+  'website.php.set': 'Change PHP version',
+  'website.php.unset': 'Disable PHP',
+  'php.install': 'Install PHP',
+  'php.uninstall': 'Remove PHP',
 };
 
 export function jobLabel(type: string): string {

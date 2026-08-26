@@ -1,12 +1,29 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import {
+  ArrowLeft,
+  ExternalLink,
+  Folder,
+  Globe,
+  History,
+  Lock,
+  Plus,
+  Trash2,
+  UserRound,
+} from 'lucide-react';
 
 import { StatusPill } from '@/components/StatusPill';
-import { WebsitePHPPanel } from '@/features/php/components/WebsitePHPPanel';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { EmptyState, ProgressBar, Skeleton, SkeletonRows } from '@/components/ui/Loading';
+import { TextField } from '@/components/ui/Field';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
+import { WebsitePHPPanel } from '@/features/php/components/WebsitePHPPanel';
 import {
+  isJobRunning,
   useAddDomain,
   useDeleteWebsite,
   useRemoveDomain,
@@ -21,131 +38,194 @@ import {
   websiteStatusPill,
 } from '@/features/websites/status';
 import { ApiError } from '@/services/apiClient';
+import type { Job } from '@/types/api';
 
 /** WebsiteDetailPage shows one site, its domains, and its recent work. */
 export function WebsiteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const { data: site, isLoading, isError, error } = useWebsite(id);
+  const { data: site, isPending, isError, error } = useWebsite(id);
   const { data: jobList } = useWebsiteJobs(id);
   const deleteWebsite = useDeleteWebsite();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  if (isLoading) {
-    return <p className="text-sm text-slate-500">Loading website…</p>;
+  if (isPending) {
+    return <DetailSkeleton />;
   }
 
   if (isError || !site) {
     return (
       <div className="space-y-4">
         <BackLink />
-        <p role="alert" className="text-sm text-rose-600">
-          {error instanceof Error ? error.message : 'This website could not be loaded.'}
-        </p>
+        <Alert tone="danger" title="This website could not be loaded">
+          {error instanceof Error ? error.message : 'It may have been removed.'}
+        </Alert>
       </div>
     );
   }
 
   const pill = websiteStatusPill(site.status);
+  const settling = site.status === 'creating' || site.status === 'deleting';
   const jobs = jobList?.jobs ?? [];
 
-  function handleDelete() {
-    if (!site) {
-      return;
-    }
-    // Deleting a site removes its files and its system account. That cannot be
-    // undone from the panel, so it is confirmed before it is queued.
-    const confirmed = window.confirm(
-      `Delete ${site.primary_domain}? Its files, system account, and web server ` +
-        `configuration are removed from the host. This cannot be undone.`,
-    );
-    if (!confirmed) {
-      return;
-    }
-    deleteWebsite.mutate(site.id, {
-      onSuccess: () => navigate('/websites'),
-    });
-  }
+  const deleteError =
+    deleteWebsite.error instanceof ApiError
+      ? deleteWebsite.error.message
+      : deleteWebsite.error
+        ? 'The website could not be deleted.'
+        : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <BackLink />
 
       <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-slate-900">{site.primary_domain}</h1>
-            <StatusPill label={pill.label} tone={pill.tone} />
+        <div className="flex min-w-0 items-start gap-3">
+          <TintedIcon
+            tone={site.status === 'failed' ? 'danger' : settling ? 'warn' : 'brand'}
+            icon={<Globe className="h-4 w-4" />}
+          />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="truncate text-xl font-semibold text-slate-900">
+                {site.primary_domain}
+              </h1>
+              <StatusPill label={pill.label} tone={pill.tone} dot pulse={settling} />
+            </div>
+            {site.name && <p className="mt-0.5 text-sm text-slate-500">{site.name}</p>}
           </div>
-          {site.name && <p className="mt-1 text-sm text-slate-500">{site.name}</p>}
         </div>
 
-        <RequirePermission permission={Permission.WebsiteDelete}>
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={deleteWebsite.isPending || site.status === 'deleting'}
-            className="rounded-md border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => window.open(`http://${site.primary_domain}`, '_blank', 'noreferrer')}
+            icon={<ExternalLink aria-hidden="true" className="h-4 w-4" />}
           >
-            {site.status === 'deleting' ? 'Deleting…' : 'Delete website'}
-          </button>
-        </RequirePermission>
+            Open site
+          </Button>
+          <RequirePermission permission={Permission.WebsiteDelete}>
+            <Button
+              variant="danger"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={site.status === 'deleting'}
+              icon={<Trash2 aria-hidden="true" className="h-4 w-4" />}
+            >
+              {site.status === 'deleting' ? 'Deleting…' : 'Delete'}
+            </Button>
+          </RequirePermission>
+        </div>
       </header>
 
       {site.status === 'failed' && (
-        <p role="alert" className="rounded-md bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          The last operation on this website did not finish. Check the activity below for
-          what went wrong.
-        </p>
+        <Alert tone="danger" title="The last operation did not finish">
+          Check the activity below for what went wrong, then retry the change.
+        </Alert>
       )}
 
-      <section
-        aria-label="Details"
-        className="rounded-lg border border-surface-border bg-surface p-4 shadow-sm"
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div className="space-y-5 lg:col-span-2">
+          <Card>
+            <CardHeader title="Hosting" />
+            <CardBody className="grid gap-4 sm:grid-cols-2">
+              <Detail
+                label="Document root"
+                value={site.document_root}
+                mono
+                icon={<Folder className="h-3.5 w-3.5" />}
+              />
+              <Detail
+                label="System user"
+                value={site.system_user}
+                mono
+                icon={<UserRound className="h-3.5 w-3.5" />}
+              />
+              <Detail
+                label="HTTPS"
+                value={site.ssl_enabled ? 'Enabled' : 'Not configured'}
+                icon={<Lock className="h-3.5 w-3.5" />}
+              />
+              <Detail
+                label="Created"
+                value={new Date(site.created_at).toLocaleDateString()}
+                icon={<History className="h-3.5 w-3.5" />}
+              />
+            </CardBody>
+          </Card>
+
+          <WebsitePHPPanel websiteId={site.id} />
+          <DomainSection websiteId={site.id} />
+        </div>
+
+        <ActivityCard jobs={jobs} />
+      </div>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={() =>
+          deleteWebsite.mutate(site.id, {
+            onSuccess: () => {
+              setConfirmingDelete(false);
+              navigate('/websites');
+            },
+          })
+        }
+        title="Delete this website?"
+        description="This cannot be undone from the panel."
+        confirmLabel="Delete website"
+        destructive
+        loading={deleteWebsite.isPending}
+        error={deleteError}
       >
-        <dl className="grid gap-4 sm:grid-cols-2">
-          <Detail label="Document root" value={site.document_root} mono />
-          <Detail label="System user" value={site.system_user} mono />
-          <Detail label="HTTPS" value={site.ssl_enabled ? 'Enabled' : 'Not configured'} />
-          <Detail label="PHP" value={site.php_version ?? 'Static site'} />
-        </dl>
-      </section>
+        <p className="mb-2">
+          <span className="font-medium text-slate-900">{site.primary_domain}</span> and everything
+          belonging to it is removed from the host:
+        </p>
+        <ul className="ml-4 list-disc space-y-1 text-slate-600">
+          <li>
+            its files under <span className="font-mono text-xs">{site.document_root}</span>
+          </li>
+          <li>
+            its system account <span className="font-mono text-xs">{site.system_user}</span>
+          </li>
+          <li>its web server configuration and any PHP pool</li>
+        </ul>
+      </ConfirmDialog>
+    </div>
+  );
+}
 
-      <WebsitePHPPanel websiteId={site.id} />
-
-      <DomainSection websiteId={site.id} />
-
-      <section
-        aria-label="Activity"
-        className="rounded-lg border border-surface-border bg-surface shadow-sm"
-      >
-        <h2 className="border-b border-surface-border px-4 py-3 text-sm font-semibold text-slate-900">
-          Activity
-        </h2>
-        {jobs.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-slate-500">Nothing has run for this site yet.</p>
-        ) : (
-          <ul className="divide-y divide-surface-border">
-            {jobs.map((job) => {
-              const jobPill = jobStatusPill(job.status);
-              return (
-                <li key={job.id} className="px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-slate-900">
-                      {jobLabel(job.type)}
-                    </span>
-                    <StatusPill label={jobPill.label} tone={jobPill.tone} />
-                  </div>
-                  {job.message && <p className="mt-1 text-xs text-slate-500">{job.message}</p>}
-                  {job.error && (
-                    <p className="mt-1 text-xs text-rose-600">{job.error}</p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+function DetailSkeleton() {
+  return (
+    <div className="space-y-5">
+      <Skeleton className="h-4 w-28" />
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-8 w-8 rounded-md" />
+        <Skeleton className="h-6 w-56" />
+      </div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div className="space-y-5 lg:col-span-2">
+          <Card>
+            <CardHeader title={<Skeleton className="h-3.5 w-20" />} />
+            <CardBody className="grid gap-4 sm:grid-cols-2">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="space-y-2">
+                  <Skeleton className="h-2.5 w-24" />
+                  <Skeleton className="h-3.5 w-40" />
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+          <Card>
+            <SkeletonRows rows={2} />
+          </Card>
+        </div>
+        <Card>
+          <SkeletonRows rows={3} />
+        </Card>
+      </div>
     </div>
   );
 }
@@ -154,7 +234,7 @@ function BackLink() {
   return (
     <Link
       to="/websites"
-      className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900"
     >
       <ArrowLeft aria-hidden="true" className="h-4 w-4" />
       All websites
@@ -162,14 +242,77 @@ function BackLink() {
   );
 }
 
-function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+interface DetailProps {
+  label: string;
+  value: string;
+  mono?: boolean;
+  icon?: React.ReactNode;
+}
+
+function Detail({ label, value, mono, icon }: DetailProps) {
   return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className={`mt-1 text-sm text-slate-900 ${mono ? 'font-mono text-xs' : ''}`}>
+    <div className="min-w-0">
+      <dt className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+        {icon}
+        {label}
+      </dt>
+      <dd className={`mt-1 truncate text-sm text-slate-900 ${mono ? 'font-mono text-xs' : ''}`}>
         {value}
       </dd>
     </div>
+  );
+}
+
+/** ActivityCard lists the work run against this site, newest first. */
+function ActivityCard({ jobs }: { jobs: Job[] }) {
+  return (
+    <Card className="h-fit">
+      <CardHeader
+        title="Activity"
+        icon={<TintedIcon icon={<History className="h-4 w-4" />} />}
+      />
+
+      {jobs.length === 0 ? (
+        <EmptyState
+          icon={<History className="h-6 w-6" />}
+          title="Nothing has run yet"
+          description="Changes to this site will appear here."
+        />
+      ) : (
+        <ul className="divide-y divide-surface-border">
+          {jobs.map((job) => {
+            const pill = jobStatusPill(job.status);
+            const running = isJobRunning(job);
+
+            return (
+              <li key={job.id} className="px-5 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-900">{jobLabel(job.type)}</span>
+                  <StatusPill label={pill.label} tone={pill.tone} dot pulse={running} />
+                </div>
+
+                {running && (
+                  <ProgressBar
+                    // Progress is only meaningful once the host has reported
+                    // some; before that an indeterminate bar is the honest
+                    // shape, rather than a bar pinned at zero.
+                    {...(job.progress > 0 ? { value: job.progress } : {})}
+                    label={`${jobLabel(job.type)} progress`}
+                    className="mt-2"
+                  />
+                )}
+
+                {job.message && <p className="mt-1.5 text-xs text-slate-500">{job.message}</p>}
+                {job.error && <p className="mt-1.5 text-xs text-danger-600">{job.error}</p>}
+                <p className="mt-1 text-xs text-slate-400">
+                  {new Date(job.created_at).toLocaleString()}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
   );
 }
 
@@ -181,6 +324,7 @@ function DomainSection({ websiteId }: { websiteId: string }) {
 
   const [value, setValue] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<{ id: string; domain: string } | null>(null);
 
   const domains = site?.domains ?? [];
 
@@ -206,39 +350,41 @@ function DomainSection({ websiteId }: { websiteId: string }) {
       : addDomain.error
         ? 'The domain could not be added.'
         : null;
-  const error = validationError ?? serverError;
 
   return (
-    <section
-      aria-label="Domains"
-      className="rounded-lg border border-surface-border bg-surface shadow-sm"
-    >
-      <h2 className="border-b border-surface-border px-4 py-3 text-sm font-semibold text-slate-900">
-        Domains
-      </h2>
+    <Card>
+      <CardHeader
+        title="Domains"
+        description="Every name this site answers to."
+        icon={<TintedIcon icon={<Globe className="h-4 w-4" />} />}
+      />
 
       <ul className="divide-y divide-surface-border">
         {domains.map((domain) => (
-          <li key={domain.id} className="flex items-center justify-between gap-2 px-4 py-3">
-            <div>
-              <span className="text-sm text-slate-900">{domain.domain}</span>
-              <span className="ml-2 text-xs text-slate-500">{domain.type}</span>
+          <li key={domain.id} className="flex items-center justify-between gap-3 px-5 py-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="truncate text-sm text-slate-900">{domain.domain}</span>
+              <StatusPill
+                label={domain.type}
+                tone={domain.type === 'primary' ? 'info' : 'neutral'}
+              />
               {domain.redirect_to && (
-                <span className="ml-2 text-xs text-slate-500">→ {domain.redirect_to}</span>
+                <span className="truncate text-xs text-slate-500">→ {domain.redirect_to}</span>
               )}
             </div>
-            {/* The primary domain is the site's identity; removing it would
-                leave a vhost with no server_name, so it offers no control. */}
+
+            {/* The primary domain is the site's identity and its vhost's
+                server_name, so it offers no removal control at all. */}
             {domain.type !== 'primary' && (
               <RequirePermission permission={Permission.WebsiteUpdate}>
-                <button
-                  type="button"
-                  onClick={() => removeDomain.mutate(domain.id)}
-                  disabled={removeDomain.isPending}
-                  className="text-xs font-medium text-rose-700 hover:underline disabled:opacity-60"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRemoving({ id: domain.id, domain: domain.domain })}
+                  className="text-danger-600 hover:bg-danger-50 hover:text-danger-700"
                 >
                   Remove
-                </button>
+                </Button>
               </RequirePermission>
             )}
           </li>
@@ -246,38 +392,59 @@ function DomainSection({ websiteId }: { websiteId: string }) {
       </ul>
 
       <RequirePermission permission={Permission.WebsiteUpdate}>
-        <form onSubmit={handleSubmit} noValidate className="border-t border-surface-border p-4">
-          <label htmlFor="alias-domain" className="block text-sm font-medium text-slate-700">
-            Add an alias
-          </label>
-          <div className="mt-1 flex flex-wrap gap-2">
-            <input
-              id="alias-domain"
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="www.example.com"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? 'alias-error' : undefined}
-              className="min-w-56 flex-1 rounded-md border border-surface-border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            />
-            <button
+        <form onSubmit={handleSubmit} noValidate className="border-t border-surface-border p-5">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-56 flex-1">
+              <TextField
+                id="alias-domain"
+                label="Add an alias"
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="www.example.com"
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                error={validationError}
+              />
+            </div>
+            <Button
               type="submit"
-              disabled={addDomain.isPending}
-              className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+              variant="secondary"
+              loading={addDomain.isPending}
+              className={validationError ? 'mb-5' : undefined}
+              icon={<Plus aria-hidden="true" className="h-4 w-4" />}
             >
-              {addDomain.isPending ? 'Adding…' : 'Add'}
-            </button>
+              Add
+            </Button>
           </div>
-          {error && (
-            <p id="alias-error" role="alert" className="mt-2 text-sm text-rose-600">
-              {error}
-            </p>
+
+          {serverError && (
+            <Alert tone="danger" className="mt-3">
+              {serverError}
+            </Alert>
           )}
         </form>
       </RequirePermission>
-    </section>
+
+      <ConfirmDialog
+        open={removing !== null}
+        onClose={() => setRemoving(null)}
+        onConfirm={() => {
+          if (removing) {
+            removeDomain.mutate(removing.id, { onSuccess: () => setRemoving(null) });
+          }
+        }}
+        title="Remove this domain?"
+        description="The site stops answering to it once the web server reloads."
+        confirmLabel="Remove domain"
+        destructive
+        loading={removeDomain.isPending}
+      >
+        <p>
+          <span className="font-mono text-xs text-slate-900">{removing?.domain}</span> is detached
+          from this website. Its content is not affected.
+        </p>
+      </ConfirmDialog>
+    </Card>
   );
 }

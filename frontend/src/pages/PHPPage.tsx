@@ -1,105 +1,184 @@
 import { useState, type FormEvent } from 'react';
-import { FileCode2 } from 'lucide-react';
+import { Download, FileCode2, Trash2 } from 'lucide-react';
 
 import { StatusPill } from '@/components/StatusPill';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { EmptyState, ProgressBar, SkeletonRows } from '@/components/ui/Loading';
+import { TextField } from '@/components/ui/Field';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { useInstallPHP, usePHPVersions, useUninstallPHP } from '@/features/php/hooks';
 import { versionStatusPill } from '@/features/php/settings';
 import { ApiError } from '@/services/apiClient';
+import type { PHPVersion } from '@/types/api';
 
 /** PHPPage lists the PHP versions this server has and manages them. */
 export function PHPPage() {
-  const { data, isLoading, isError, error } = usePHPVersions();
+  const { data, isPending, isError, error } = usePHPVersions();
   const versions = data?.versions ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <header>
         <h1 className="text-xl font-semibold text-slate-900">PHP</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Versions installed on this server. Each website chooses one, and runs it in its
-          own pool under its own account.
+          Versions installed on this server. Each website chooses one and runs it in its own
+          pool, under its own account.
         </p>
       </header>
 
-      <RequirePermission permission={Permission.ServerManage}>
-        <InstallForm />
-      </RequirePermission>
-
       {isError && (
-        <p role="alert" className="text-sm text-rose-600">
-          {error instanceof Error ? error.message : 'The PHP versions could not be loaded.'}
-        </p>
+        <Alert tone="danger" title="The PHP versions could not be loaded">
+          {error instanceof Error ? error.message : 'Try again in a moment.'}
+        </Alert>
       )}
 
-      {isLoading && <p className="text-sm text-slate-500">Loading PHP versions…</p>}
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader
+              title="Installed versions"
+              description={
+                versions.length > 0
+                  ? `${versions.filter((v) => v.installed).length} available on this host`
+                  : undefined
+              }
+              icon={<TintedIcon tone="brand" icon={<FileCode2 className="h-4 w-4" />} />}
+            />
 
-      {!isLoading && versions.length === 0 && !isError && (
-        <div className="rounded-lg border border-dashed border-surface-border p-8 text-center">
-          <FileCode2 aria-hidden="true" className="mx-auto h-8 w-8 text-slate-300" />
-          <p className="mt-2 text-sm font-medium text-slate-900">No PHP is installed</p>
-          <p className="mt-1 text-sm text-slate-500">
-            Websites can serve static content until a version is installed.
-          </p>
+            {isPending && <SkeletonRows rows={3} />}
+
+            {!isPending && versions.length === 0 && !isError && (
+              <EmptyState
+                icon={<FileCode2 className="h-6 w-6" />}
+                title="No PHP is installed"
+                description="Websites can serve static content until a version is installed."
+              />
+            )}
+
+            {versions.length > 0 && (
+              <ul className="divide-y divide-surface-border">
+                {versions.map((version) => (
+                  <VersionRow key={version.id} version={version} />
+                ))}
+              </ul>
+            )}
+          </Card>
         </div>
-      )}
 
-      {versions.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-surface-border bg-surface shadow-sm">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Installed PHP versions</caption>
-            <thead className="border-b border-surface-border bg-surface-muted text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th scope="col" className="px-4 py-2 font-medium">
-                  Version
-                </th>
-                <th scope="col" className="px-4 py-2 font-medium">
-                  Status
-                </th>
-                <th scope="col" className="px-4 py-2 font-medium">
-                  Websites
-                </th>
-                <th scope="col" className="px-4 py-2 font-medium">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-border">
-              {versions.map((version) => {
-                const pill = versionStatusPill(version.status, version.installed);
-                return (
-                  <tr key={version.id} className="hover:bg-surface-muted">
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      PHP {version.version}
-                      {version.fpm_service && (
-                        <p className="font-mono text-xs font-normal text-slate-500">
-                          {version.fpm_service}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusPill label={pill.label} tone={pill.tone} />
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{version.in_use}</td>
-                    <td className="px-4 py-3 text-right">
-                      <RequirePermission permission={Permission.ServerManage}>
-                        <RemoveButton version={version.version} inUse={version.in_use} />
-                      </RequirePermission>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+        <RequirePermission
+          permission={Permission.ServerManage}
+          fallback={
+            <Card className="h-fit">
+              <CardHeader title="Installing versions" />
+              <CardBody>
+                <p className="text-sm text-slate-500">
+                  Installing or removing a PHP version changes the whole server, so it needs the
+                  server management permission.
+                </p>
+              </CardBody>
+            </Card>
+          }
+        >
+          <InstallCard />
+        </RequirePermission>
+      </div>
     </div>
   );
 }
 
-/** InstallForm queues installation of a version. */
-function InstallForm() {
+/** VersionRow is one PHP version and what can be done with it. */
+function VersionRow({ version }: { version: PHPVersion }) {
+  const [confirming, setConfirming] = useState(false);
+  const uninstall = useUninstallPHP();
+  const pill = versionStatusPill(version.status, version.installed);
+  const settling = version.status === 'installing' || version.status === 'removing';
+
+  const error =
+    uninstall.error instanceof ApiError
+      ? uninstall.error.message
+      : uninstall.error
+        ? 'That version could not be removed.'
+        : null;
+
+  return (
+    <li className="px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <TintedIcon
+            tone={version.status === 'failed' ? 'danger' : version.installed ? 'ok' : 'neutral'}
+            icon={<FileCode2 className="h-4 w-4" />}
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900">PHP {version.version}</p>
+            {version.fpm_service && (
+              <p className="truncate font-mono text-xs text-slate-500">{version.fpm_service}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <StatusPill label={pill.label} tone={pill.tone} dot pulse={settling} />
+
+          {version.in_use > 0 ? (
+            // Removing a version websites still run would take every one of
+            // them offline, so the row says why instead of offering an action
+            // the API will refuse.
+            <span className="text-xs text-slate-500">
+              In use by {version.in_use} website{version.in_use === 1 ? '' : 's'}
+            </span>
+          ) : (
+            <RequirePermission permission={Permission.ServerManage}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirming(true)}
+                disabled={settling}
+                className="text-danger-600 hover:bg-danger-50 hover:text-danger-700"
+                icon={<Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
+              >
+                Remove
+              </Button>
+            </RequirePermission>
+          )}
+        </div>
+      </div>
+
+      {settling && (
+        <ProgressBar
+          label={`PHP ${version.version} is ${version.status}`}
+          tone={version.status === 'removing' ? 'danger' : 'brand'}
+          className="mt-2.5"
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={() =>
+          uninstall.mutate(version.version, { onSuccess: () => setConfirming(false) })
+        }
+        title={`Remove PHP ${version.version}?`}
+        description="The package is removed from the server."
+        confirmLabel="Remove version"
+        destructive
+        loading={uninstall.isPending}
+        error={error}
+      >
+        <p>
+          No website currently runs PHP {version.version}, so nothing goes offline. Reinstalling
+          it later downloads the package again.
+        </p>
+      </ConfirmDialog>
+    </li>
+  );
+}
+
+/** InstallCard queues installation of a version. */
+function InstallCard() {
   const [version, setVersion] = useState('');
   const install = useInstallPHP();
 
@@ -120,73 +199,42 @@ function InstallForm() {
         : null;
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      noValidate
-      className="rounded-lg border border-surface-border bg-surface p-4 shadow-sm"
-    >
-      <label htmlFor="php-version" className="block text-sm font-medium text-slate-700">
-        Install a version
-      </label>
-      <div className="mt-1 flex flex-wrap gap-2">
-        <input
-          id="php-version"
-          type="text"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="8.3"
-          value={version}
-          onChange={(event) => setVersion(event.target.value)}
-          aria-describedby={message ? 'php-install-error' : 'php-install-hint'}
-          className="w-32 rounded-md border border-surface-border px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-        />
-        <button
-          type="submit"
-          disabled={install.isPending}
-          className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {install.isPending ? 'Queuing…' : 'Install'}
-        </button>
-      </div>
-      <p id="php-install-hint" className="mt-1 text-xs text-slate-500">
-        A major.minor release, such as 8.3. Installation runs in the background and can take
-        several minutes.
-      </p>
-      {message && (
-        <p id="php-install-error" role="alert" className="mt-2 text-sm text-rose-600">
-          {message}
-        </p>
-      )}
-    </form>
-  );
-}
+    <Card className="h-fit">
+      <CardHeader
+        title="Install a version"
+        icon={<TintedIcon tone="brand" icon={<Download className="h-4 w-4" />} />}
+      />
+      <CardBody>
+        <form onSubmit={handleSubmit} noValidate className="space-y-3">
+          <TextField
+            id="php-version"
+            label="Version"
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="8.3"
+            value={version}
+            onChange={(event) => setVersion(event.target.value)}
+            error={message}
+            hint="A major.minor release, such as 8.3."
+          />
 
-/** RemoveButton queues removal of a version that nothing uses. */
-function RemoveButton({ version, inUse }: { version: string; inUse: number }) {
-  const uninstall = useUninstallPHP();
+          <Button
+            type="submit"
+            variant="primary"
+            loading={install.isPending}
+            className="w-full"
+            icon={<Download aria-hidden="true" className="h-4 w-4" />}
+          >
+            {install.isPending ? 'Queuing…' : 'Install'}
+          </Button>
 
-  if (inUse > 0) {
-    // Removing it would take every one of those sites offline, so the control
-    // says why rather than offering an action that will be refused.
-    return (
-      <span className="text-xs text-slate-500">
-        In use by {inUse} website{inUse === 1 ? '' : 's'}
-      </span>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (window.confirm(`Remove PHP ${version} from this server?`)) {
-          uninstall.mutate(version);
-        }
-      }}
-      disabled={uninstall.isPending}
-      className="text-xs font-medium text-rose-700 hover:underline disabled:opacity-60"
-    >
-      Remove
-    </button>
+          <p className="text-xs text-slate-500">
+            Installation runs in the background and can take several minutes. Existing sites keep
+            serving throughout.
+          </p>
+        </form>
+      </CardBody>
+    </Card>
   );
 }

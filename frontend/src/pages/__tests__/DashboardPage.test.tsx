@@ -181,9 +181,27 @@ describe('DashboardPage', () => {
 
     await screen.findByRole('heading', { name: 'web01' });
 
-    expect(screen.getByText('Debian GNU/Linux 12')).toBeInTheDocument();
+    // Scoped to the Server panel: the headline tiles also carry the OS and the
+    // uptime, so an unscoped query now matches in two places by design.
+    const serverPanel = within(screen.getByRole('region', { name: 'Server' }));
+    expect(serverPanel.getByText('Debian GNU/Linux 12')).toBeInTheDocument();
     // 90000 seconds is one day and one hour.
-    expect(screen.getByText('1d 1h')).toBeInTheDocument();
+    expect(serverPanel.getByText('1d 1h')).toBeInTheDocument();
+  });
+
+  // The headline row is the first thing read, so it must carry the figures
+  // rather than only repeating what the panels below already say.
+  it('summarises the host in the headline tiles', async () => {
+    mockDashboard(snapshot());
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByRole('heading', { name: 'web01' });
+
+    for (const label of ['CPU', 'Memory', 'Disk', 'Uptime']) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    }
+    // The fullest filesystem is the one worth showing, not the root.
+    expect(screen.getAllByText('/').length).toBeGreaterThan(0);
   });
 
   it('reports a healthy host as having no alerts', async () => {

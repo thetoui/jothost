@@ -19,6 +19,7 @@ import (
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/command"
 	"github.com/jothost/panel/agent/internal/config"
+	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/operations"
@@ -261,6 +262,23 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 			"detail", "install certbot to issue publicly trusted certificates")
 	}
 
+	// The file manager is confined to the site root. A panel whose file
+	// manager can reach / is a root shell with a friendlier interface, so the
+	// root is the one thing here that is not configurable per operation.
+	//
+	// The logs directory inside each site is excluded from writes: it is
+	// written by nginx as it serves, and letting the file manager rewrite a
+	// live log is how an audit trail stops being one.
+	fileManager := files.NewManager(files.ManagerOptions{
+		Roots: []string{cfg.SiteRoot},
+	})
+	if !fileManager.Available() {
+		log.Warn("file management is unavailable: the site root could not be resolved",
+			"site_root", cfg.SiteRoot)
+	} else {
+		log.Info("file management ready", "roots", fileManager.Roots())
+	}
+
 	jobRunner := jobs.NewRunner(jobs.Options{
 		MaxConcurrent: cfg.MaxConcurrentJobs,
 		MaxJobs:       cfg.MaxJobs,
@@ -281,6 +299,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		PHPInstaller: phpInstaller,
 		WebGroup:     provisioner.WebGroup(),
 		SSL:          sslManager,
+		Files:        fileManager,
 	})
 
 	return registry, jobRunner, nil

@@ -512,6 +512,22 @@ POST /files/unzip
 
 Every path must be validated server-side.
 
+**Implemented in Phase 7** — see [docs/PHASE7.md](docs/PHASE7.md).
+
+Paths travel as query parameters on the read verbs and in the JSON body on the
+write verbs. `POST /files/folder` and `POST /files/file` take a directory
+(`path`) and a `name`, which is always a single segment.
+
+`PATCH /files` renames (`name`) or changes permissions (`mode`, optionally
+`recursive`). `DELETE /files` needs `recursive=true` for a non-empty directory.
+
+The Agent's socket caps a message at 1 MiB, so uploads and downloads are chunked
+between the API and the Agent, and directory listings are paged (`offset`,
+`limit`, with `total` and `truncated` in the response). Neither the API nor the
+Agent ever holds a whole file.
+
+Reads require `file.read`; every mutation requires `file.write`.
+
 ---
 
 # 13. Code Editor

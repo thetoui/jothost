@@ -62,6 +62,22 @@ const (
 	OperationSSLStatus       OperationType = "ssl.status"
 	OperationSSLCapabilities OperationType = "ssl.capabilities"
 
+	// File manager. Every one of these carries a caller-supplied path, so
+	// every handler resolves it through pathsec before touching the disk.
+	OperationFileList    OperationType = "file.list"
+	OperationFileStat    OperationType = "file.stat"
+	OperationFileRead    OperationType = "file.read"
+	OperationFileWrite   OperationType = "file.write"
+	OperationFileMkdir   OperationType = "file.mkdir"
+	OperationFileCreate  OperationType = "file.create"
+	OperationFileDelete  OperationType = "file.delete"
+	OperationFileCopy    OperationType = "file.copy"
+	OperationFileMove    OperationType = "file.move"
+	OperationFileChmod   OperationType = "file.chmod"
+	OperationFileArchive OperationType = "file.archive"
+	OperationFileExtract OperationType = "file.extract"
+	OperationFileSearch  OperationType = "file.search"
+
 	// Asynchronous execution control.
 	OperationJobStatus OperationType = "job.status"
 	OperationJobCancel OperationType = "job.cancel"
@@ -103,6 +119,19 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationSSLRevoke:       {},
 	OperationSSLStatus:       {},
 	OperationSSLCapabilities: {},
+	OperationFileList:        {},
+	OperationFileStat:        {},
+	OperationFileRead:        {},
+	OperationFileWrite:       {},
+	OperationFileMkdir:       {},
+	OperationFileCreate:      {},
+	OperationFileDelete:      {},
+	OperationFileCopy:        {},
+	OperationFileMove:        {},
+	OperationFileChmod:       {},
+	OperationFileArchive:     {},
+	OperationFileExtract:     {},
+	OperationFileSearch:      {},
 	OperationJobStatus:       {},
 	OperationJobCancel:       {},
 	OperationJobList:         {},

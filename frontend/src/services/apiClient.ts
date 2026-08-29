@@ -172,3 +172,106 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     return rawRequest<T>(path, options);
   }
 }
+
+/**
+ * requestBlob fetches a binary response, such as a file download.
+ *
+ * The response is a stream rather than a JSON envelope, so it cannot go through
+ * request(). What it keeps is the part that matters: the token still travels in
+ * the Authorization header, never in the URL, where a download link would end
+ * up in the browser's history and the web server's access log.
+ */
+export async function requestBlob(path: string, signal?: AbortSignal): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  const token = getAccessToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const init: RequestInit = { method: 'GET', headers, credentials: 'same-origin' };
+  if (signal) {
+    init.signal = signal;
+  }
+
+  const response = await globalThis.fetch(`${API_BASE_URL}${path}`, init);
+  if (!response.ok) {
+    let detail: ApiErrorDetail = UNKNOWN_ERROR;
+    try {
+      const envelope = (await response.json()) as ApiEnvelope<unknown>;
+      detail = envelope.error ?? UNKNOWN_ERROR;
+    } catch {
+      // A failed download may not produce a JSON body at all.
+    }
+    throw new ApiError(detail, response.status, '');
+  }
+
+  return response.blob();
+}
+
+/** UploadProgress reports how far an upload has got. */
+export interface UploadProgress {
+  loaded: number;
+  total: number;
+}
+
+/**
+ * uploadFile sends one file as multipart/form-data, reporting progress.
+ *
+ * XMLHttpRequest rather than fetch: fetch cannot report upload progress, and a
+ * file manager that shows nothing while a large file uploads is indistinguishable
+ * from one that has hung.
+ */
+export function uploadFile<T>(
+  path: string,
+  file: File,
+  onProgress?: (progress: UploadProgress) => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE_URL}${path}`);
+    xhr.withCredentials = false;
+
+    const token = getAccessToken();
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+    // Content-Type is deliberately not set: the browser has to add the
+    // multipart boundary, and setting it by hand produces a body the server
+    // cannot parse.
+
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          onProgress({ loaded: event.loaded, total: event.total });
+        }
+      });
+    }
+
+    xhr.addEventListener('load', () => {
+      let envelope: ApiEnvelope<T> | null = null;
+      try {
+        envelope = JSON.parse(xhr.responseText) as ApiEnvelope<T>;
+      } catch {
+        envelope = null;
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300 && envelope?.success) {
+        resolve(envelope.data as T);
+        return;
+      }
+      reject(new ApiError(envelope?.error ?? UNKNOWN_ERROR, xhr.status, envelope?.request_id ?? ''));
+    });
+
+    xhr.addEventListener('error', () => {
+      reject(new ApiError(UNKNOWN_ERROR, 0, ''));
+    });
+    xhr.addEventListener('abort', () => {
+      reject(new ApiError(UNKNOWN_ERROR, 0, ''));
+    });
+
+    xhr.send(form);
+  });
+}

@@ -335,27 +335,29 @@ Weak TLS is refused.                       verified: TLS 1.1 rejected, 1.3 negot
 
 # PHASE 7 — File Manager
 
-- [ ] Directory browser
-- [ ] File browser
-- [ ] Upload
-- [ ] Download
-- [ ] Rename
-- [ ] Delete
-- [ ] Copy
-- [ ] Move
-- [ ] New file
-- [ ] New folder
-- [ ] ZIP
-- [ ] UnZIP
-- [ ] Permissions
-- [ ] Search
+**Status: COMPLETE** — see [docs/PHASE7.md](docs/PHASE7.md) for scope, decisions, and known limitations.
+
+- [x] Directory browser
+- [x] File browser
+- [x] Upload
+- [x] Download
+- [x] Rename
+- [x] Delete
+- [x] Copy
+- [x] Move
+- [x] New file
+- [x] New folder
+- [x] ZIP
+- [x] UnZIP
+- [x] Permissions
+- [x] Search
 
 Security:
 
-- [ ] Path traversal test
-- [ ] Symlink escape test
-- [ ] Permission test
-- [ ] Unauthorized access test
+- [x] Path traversal test
+- [x] Symlink escape test
+- [x] Permission test
+- [x] Unauthorized access test
 
 ---
 

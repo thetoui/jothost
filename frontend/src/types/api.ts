@@ -427,3 +427,66 @@ export interface SSLProviders {
   /** Explains a reduced set, e.g. when the agent could not be reached. */
   detail?: string;
 }
+
+// ------------------------------------------------------------------- files
+
+/** What a directory entry is. Symlinks are their own kind, never followed. */
+export type FileEntryType = 'file' | 'directory' | 'symlink' | 'other';
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  type: FileEntryType;
+  size: number;
+  /** Octal permission string such as "0644". */
+  mode: string;
+  modified: string;
+  owner: string;
+  group: string;
+  uid: number;
+  gid: number;
+  /** A symlink's destination. Absent for everything else. */
+  target?: string;
+  /** Whether a symlink points somewhere the panel is allowed to follow. */
+  target_inside_root?: boolean;
+  /** Small enough to open in an editor rather than only download. */
+  editable: boolean;
+}
+
+/**
+ * One page of a directory.
+ *
+ * Listings are paged because a single Agent response has to fit its socket's
+ * 1 MiB limit, and a document root can hold far more entries than that.
+ */
+export interface FileListing {
+  path: string;
+  /** Empty at the root, which has no parent the caller may navigate to. */
+  parent: string;
+  entries: FileEntry[];
+  total: number;
+  offset: number;
+  limit: number;
+  truncated: boolean;
+}
+
+export interface FileMatch {
+  entry: FileEntry;
+  line?: string;
+  line_number?: number;
+}
+
+export interface FileSearchResult {
+  path: string;
+  query: string;
+  matches: FileMatch[];
+  /** The search stopped at a limit rather than at the end of the tree. */
+  truncated: boolean;
+  scanned: number;
+}
+
+export interface FileArchiveResult {
+  path: string;
+  entries: number;
+  size: number;
+}

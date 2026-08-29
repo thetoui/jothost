@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 
 	"github.com/jothost/panel/agent/internal/collectors"
+	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/php"
@@ -76,6 +77,10 @@ type Dependencies struct {
 	// SSL issues and renews certificates. Nil on a host where certificate
 	// management is not wired up, which handlers report as unsupported.
 	SSL *ssl.Manager
+
+	// Files serves the file manager. Nil, or configured with no roots, means
+	// file management is unavailable rather than unrestricted.
+	Files *files.Manager
 }
 
 // Registry maps allowlisted operations to their handlers.
@@ -130,6 +135,20 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationSSLRevoke, r.handleSSLRevoke)
 	r.mustRegister(protocol.OperationSSLStatus, r.handleSSLStatus)
 	r.mustRegister(protocol.OperationSSLCapabilities, r.handleSSLCapabilities)
+
+	r.mustRegister(protocol.OperationFileList, r.handleFileList)
+	r.mustRegister(protocol.OperationFileStat, r.handleFileStat)
+	r.mustRegister(protocol.OperationFileRead, r.handleFileRead)
+	r.mustRegister(protocol.OperationFileWrite, r.handleFileWrite)
+	r.mustRegister(protocol.OperationFileMkdir, r.handleFileMkdir)
+	r.mustRegister(protocol.OperationFileCreate, r.handleFileCreate)
+	r.mustRegister(protocol.OperationFileDelete, r.handleFileDelete)
+	r.mustRegister(protocol.OperationFileCopy, r.handleFileCopy)
+	r.mustRegister(protocol.OperationFileMove, r.handleFileMove)
+	r.mustRegister(protocol.OperationFileChmod, r.handleFileChmod)
+	r.mustRegister(protocol.OperationFileArchive, r.handleFileArchive)
+	r.mustRegister(protocol.OperationFileExtract, r.handleFileExtract)
+	r.mustRegister(protocol.OperationFileSearch, r.handleFileSearch)
 
 	r.mustRegister(protocol.OperationJobStatus, r.handleJobStatus)
 	r.mustRegister(protocol.OperationJobCancel, r.handleJobCancel)

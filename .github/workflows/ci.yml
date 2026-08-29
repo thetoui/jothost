@@ -167,6 +167,12 @@ jobs:
       - name: Run Phase 6 SSL checks
         run: docker compose exec -T agent sh /tests/integration/phase6_ssl.sh
 
+      # Phase 7 verifies every file operation on disk after the API reports it,
+      # which only the managed host can see, so it runs inside the agent
+      # container.
+      - name: Run Phase 7 file manager checks
+        run: docker compose exec -T agent sh /tests/integration/phase7_files.sh
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color

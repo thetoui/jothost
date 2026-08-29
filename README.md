@@ -164,6 +164,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE4.md](docs/PHASE4.md) | Phase 4 scope, decisions, and known limitations |
 | [docs/PHASE5.md](docs/PHASE5.md) | Phase 5 scope, decisions, and known limitations |
 | [docs/PHASE6.md](docs/PHASE6.md) | Phase 6 scope, decisions, and known limitations |
+| [docs/PHASE7.md](docs/PHASE7.md) | Phase 7 scope, decisions, and known limitations |
 
 ---
 

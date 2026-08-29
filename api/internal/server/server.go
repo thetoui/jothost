@@ -17,6 +17,7 @@ import (
 	"github.com/jothost/panel/api/internal/auth"
 	"github.com/jothost/panel/api/internal/config"
 	"github.com/jothost/panel/api/internal/dashboard"
+	filespkg "github.com/jothost/panel/api/internal/files"
 	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/api/internal/metrics"
@@ -53,6 +54,7 @@ type Server struct {
 	jobs     *jobs.Handler
 	php      *phppkg.Handler
 	ssl      *sslpkg.Handler
+	files    *filespkg.Handler
 	// worker realises queued jobs against the Agent. It is nil when no server
 	// is registered, because there is no host to provision against.
 	worker *jobs.Worker
@@ -219,6 +221,17 @@ func New(opts Options) (*Server, error) {
 	})
 	s.renewer = sslpkg.NewRenewer(sslRepo, websiteRepo, sslService, log)
 
+	// The file manager holds no state of its own: every operation is a request
+	// to the Agent, which owns the disk (CLAUDE.md section 7).
+	s.files = filespkg.NewHandler(filespkg.HandlerOptions{
+		Service: filespkg.NewService(filespkg.ServiceOptions{
+			Agent: agent,
+			Audit: auditRecorder,
+		}),
+		Agent: agent,
+		Auth:  authService,
+	})
+
 	if opts.LocalServerID != "" {
 		// The worker reconciles websites through the service, so a finished
 		// job moves the site to active or failed rather than leaving it in
@@ -313,6 +326,7 @@ func (s *Server) routes() http.Handler {
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)
 	s.ssl.Routes(mux)
+	s.files.Routes(mux)
 
 	// Anything unmatched returns the standard error envelope rather than the
 	// net/http plain-text default.

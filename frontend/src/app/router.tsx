@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import { RequireAuth } from '@/features/auth/components/RequireAuth';
 import { AppLayout } from '@/layouts/AppLayout';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { FilesPage } from '@/pages/FilesPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PHPPage } from '@/pages/PHPPage';
 import { SSLPage } from '@/pages/SSLPage';
@@ -33,6 +34,7 @@ export const router = createBrowserRouter(
             { index: true, element: <DashboardPage /> },
             { path: 'websites', element: <WebsitesPage /> },
             { path: 'websites/:id', element: <WebsiteDetailPage /> },
+            { path: 'files', element: <FilesPage /> },
             { path: 'php', element: <PHPPage /> },
             { path: 'ssl', element: <SSLPage /> },
             { path: 'security', element: <SecurityPage /> },

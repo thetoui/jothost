@@ -84,8 +84,10 @@ describe('jobLabel', () => {
     // an internal name to the user.
     expect(jobLabel('website.php.set')).toBe('Change PHP version');
     expect(jobLabel('php.install')).toBe('Install PHP');
+    expect(jobLabel('ssl.issue')).toBe('Issue certificate');
     // An operation added by a later phase must still render something, rather
-    // than an empty cell.
-    expect(jobLabel('ssl.issue')).toBe('ssl.issue');
+    // than an empty cell. "ssl.issue" stood here until Phase 6 made it real,
+    // so this names something no phase is going to implement.
+    expect(jobLabel('backup.reticulate')).toBe('backup.reticulate');
   });
 });

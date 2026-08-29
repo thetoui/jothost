@@ -214,3 +214,184 @@ func phpLocation(t *testing.T, rendered string) string {
 	}
 	return rendered[start : start+end]
 }
+
+// -------------------------------------------------------------------- HTTPS
+
+func sslSite() nginx.SiteConfig {
+	site := staticSite()
+	site.SSL = &nginx.SSLConfig{
+		CertificatePath: "/etc/jothost/ssl/example.test/fullchain.pem",
+		PrivateKeyPath:  "/etc/jothost/ssl/example.test/privkey.pem",
+		RedirectToHTTPS: true,
+		ChallengeRoot:   "/var/www/.acme-challenge",
+	}
+	return site
+}
+
+// This is the most important test in the SSL work.
+//
+// The ACME challenge is fetched over plain HTTP by the certificate authority,
+// which does not follow a redirect to a certificate it has not issued yet. If
+// the redirect catches the challenge path, issuance fails now and renewal fails
+// silently sixty days later — when the site goes down on expiry.
+func TestChallengePathIsNotRedirected(t *testing.T) {
+	rendered, err := nginx.Render(sslSite())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	challenge := strings.Index(rendered, "location ^~ /.well-known/acme-challenge/")
+	if challenge < 0 {
+		t.Fatalf("no ACME challenge block was rendered:\n%s", rendered)
+	}
+
+	redirect := strings.Index(rendered, "return 301 https://")
+	if redirect < 0 {
+		t.Fatalf("no HTTPS redirect was rendered:\n%s", rendered)
+	}
+
+	// nginx matches the most specific prefix first, but ordering also has to
+	// read correctly to anyone auditing the file.
+	if challenge > redirect {
+		t.Fatalf("the challenge block comes after the redirect:\n%s", rendered)
+	}
+}
+
+// The challenge lives under /.well-known/, which matches `location ~ /\.` —
+// the dotfile deny rule. Only the `^~` prefix form takes precedence over a
+// regex location and stops the deny rule from being consulted at all.
+func TestChallengePathUsesAPrefixMatchToBeatTheDotfileRule(t *testing.T) {
+	rendered, err := nginx.Render(sslSite())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	if !strings.Contains(rendered, "location ^~ /.well-known/acme-challenge/") {
+		t.Fatalf("the challenge block is not a `^~` prefix location:\n%s", rendered)
+	}
+	// The dotfile rule must still be there for everything else.
+	if !strings.Contains(rendered, `location ~ /\.`) {
+		t.Fatalf("the dotfile deny rule is missing:\n%s", rendered)
+	}
+}
+
+func TestHTTPSBlockUsesModernTLSOnly(t *testing.T) {
+	rendered, err := nginx.Render(sslSite())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	if !strings.Contains(rendered, "ssl_protocols TLSv1.2 TLSv1.3;") {
+		t.Fatalf("TLS protocols are not restricted to 1.2 and 1.3:\n%s", rendered)
+	}
+	// Deprecated and prohibited for anything handling card data.
+	for _, deprecated := range []string{"TLSv1.0", "TLSv1.1", "SSLv3"} {
+		if strings.Contains(rendered, deprecated) {
+			t.Fatalf("%s is offered:\n%s", deprecated, rendered)
+		}
+	}
+	// Forward secrecy and AEAD only.
+	if strings.Contains(rendered, "ssl_ciphers") && !strings.Contains(rendered, "ECDHE") {
+		t.Fatalf("the cipher list has no forward-secret suites:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "Strict-Transport-Security") {
+		t.Fatalf("HSTS is not set:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "ssl_session_tickets off") {
+		t.Fatalf("session tickets are on, which undermines forward secrecy:\n%s", rendered)
+	}
+}
+
+func TestHTTPSBlockNamesTheCertificate(t *testing.T) {
+	rendered, err := nginx.Render(sslSite())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	if !strings.Contains(rendered, "ssl_certificate /etc/jothost/ssl/example.test/fullchain.pem;") {
+		t.Fatalf("the certificate path is missing:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "ssl_certificate_key /etc/jothost/ssl/example.test/privkey.pem;") {
+		t.Fatalf("the private key path is missing:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "listen 443 ssl;") {
+		t.Fatalf("the site does not listen on 443:\n%s", rendered)
+	}
+}
+
+// A vhost naming a certificate that is not there stops nginx from starting at
+// all, which takes down every other site on the host.
+func TestSiteWithoutSSLHasNoHTTPSBlock(t *testing.T) {
+	rendered, err := nginx.Render(staticSite())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	for _, directive := range []string{"listen 443", "ssl_certificate", "ssl_protocols"} {
+		if strings.Contains(rendered, directive) {
+			t.Fatalf("a site with no certificate emitted %q:\n%s", directive, rendered)
+		}
+	}
+}
+
+// Without the redirect the site must still serve its content over HTTP rather
+// than only offering HTTPS.
+func TestHTTPSWithoutRedirectStillServesOverHTTP(t *testing.T) {
+	site := sslSite()
+	site.SSL.RedirectToHTTPS = false
+
+	rendered, err := nginx.Render(site)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(rendered, "return 301 https://") {
+		t.Fatalf("a redirect was rendered when none was asked for:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "listen 443 ssl;") {
+		t.Fatalf("the HTTPS block is missing:\n%s", rendered)
+	}
+}
+
+// An ssl_certificate line is read by a root process and names the file that is
+// the site's identity.
+func TestRenderRejectsInjectionInCertificatePaths(t *testing.T) {
+	for _, path := range []string{
+		"/etc/ssl/cert.pem;\n    root /etc;",
+		"/etc/ssl/cert.pem}\nserver{",
+		"/etc/ssl/../../etc/shadow",
+		"relative.pem",
+		"",
+	} {
+		site := sslSite()
+		site.SSL.CertificatePath = path
+		if _, err := nginx.Render(site); err == nil {
+			t.Fatalf("certificate path %q must be rejected", path)
+		}
+
+		site = sslSite()
+		site.SSL.PrivateKeyPath = path
+		if _, err := nginx.Render(site); err == nil {
+			t.Fatalf("private key path %q must be rejected", path)
+		}
+	}
+}
+
+// A PHP application behind HTTPS has to know it is behind HTTPS, or it builds
+// http:// URLs and sets cookies without the secure flag.
+func TestHTTPSPHPBlockAnnouncesHTTPS(t *testing.T) {
+	site := sslSite()
+	site.PHPSocket = "/run/php-fpm/web_example-83.sock"
+
+	rendered, err := nginx.Render(site)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(rendered, "fastcgi_param HTTPS on;") {
+		t.Fatalf("the HTTPS FastCGI parameter is missing:\n%s", rendered)
+	}
+	// The execution guard must be present in the HTTPS block too, not only the
+	// HTTP one.
+	if strings.Count(rendered, "try_files $uri =404;") < 1 {
+		t.Fatalf("the PHP execution guard is missing from the HTTPS block:\n%s", rendered)
+	}
+}

@@ -361,6 +361,21 @@ created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
 ```
 
+**As implemented in Phase 6.** Migration `0007_ssl` adds three columns this
+sketch omits: `fingerprint` and `issuer`, read back from the certificate itself
+so a renewal that produced the same file can be told from one that replaced it,
+and `last_renewal_attempt`, without which a failing certificate is retried on
+every sweep — which for Let's Encrypt means walking into a rate limit.
+
+`website_id` is UNIQUE. Two certificates for one site would make the vhost's
+`ssl_certificate` directive ambiguous, and nginx would silently use whichever
+was written last.
+
+`status` is constrained to the full lifecycle rather than a boolean: a
+certificate is issuing, valid, expiring, expired, revoked, or failed, and
+conflating any of those with valid is how a panel reports HTTPS working the day
+after it stopped.
+
 ---
 
 # 20. dns_records

@@ -5,6 +5,7 @@ import { AppLayout } from '@/layouts/AppLayout';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PHPPage } from '@/pages/PHPPage';
+import { SSLPage } from '@/pages/SSLPage';
 import { WebsiteDetailPage } from '@/pages/WebsiteDetailPage';
 import { WebsitesPage } from '@/pages/WebsitesPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -33,6 +34,7 @@ export const router = createBrowserRouter(
             { path: 'websites', element: <WebsitesPage /> },
             { path: 'websites/:id', element: <WebsiteDetailPage /> },
             { path: 'php', element: <PHPPage /> },
+            { path: 'ssl', element: <SSLPage /> },
             { path: 'security', element: <SecurityPage /> },
             { path: '*', element: <NotFoundPage /> },
           ],

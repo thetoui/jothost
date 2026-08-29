@@ -55,6 +55,10 @@ const (
 	TypePHPUninstall    = "php.uninstall"
 	TypeWebsitePHPSet   = "website.php.set"
 	TypeWebsitePHPUnset = "website.php.unset"
+
+	TypeSSLIssue  = "ssl.issue"
+	TypeSSLRenew  = "ssl.renew"
+	TypeSSLRevoke = "ssl.revoke"
 )
 
 // Job is one unit of durable work.

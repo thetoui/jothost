@@ -69,6 +69,9 @@ services:
       # Websites the panel creates are served by the nginx this container
       # manages. This is the managed host's HTTP port, not the panel's.
       - "${SITES_PORT:-8090}:80"
+      # HTTPS for the sites the panel creates, so the certificate a site is
+      # issued can actually be handshaken with from the host.
+      - "${SITES_TLS_PORT:-8443}:443"
     volumes:
       # The socket directory is the only channel between API and Agent.
       # No port is published: the Agent must never be reachable over TCP.

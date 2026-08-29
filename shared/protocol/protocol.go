@@ -56,6 +56,12 @@ const (
 	OperationWebsitePHPSet   OperationType = "website.php.set"
 	OperationWebsitePHPUnset OperationType = "website.php.unset"
 
+	OperationSSLIssue        OperationType = "ssl.issue"
+	OperationSSLRenew        OperationType = "ssl.renew"
+	OperationSSLRevoke       OperationType = "ssl.revoke"
+	OperationSSLStatus       OperationType = "ssl.status"
+	OperationSSLCapabilities OperationType = "ssl.capabilities"
+
 	// Asynchronous execution control.
 	OperationJobStatus OperationType = "job.status"
 	OperationJobCancel OperationType = "job.cancel"
@@ -92,6 +98,11 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationPHPExtensions:   {},
 	OperationWebsitePHPSet:   {},
 	OperationWebsitePHPUnset: {},
+	OperationSSLIssue:        {},
+	OperationSSLRenew:        {},
+	OperationSSLRevoke:       {},
+	OperationSSLStatus:       {},
+	OperationSSLCapabilities: {},
 	OperationJobStatus:       {},
 	OperationJobCancel:       {},
 	OperationJobList:         {},

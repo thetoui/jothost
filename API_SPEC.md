@@ -567,6 +567,25 @@ POST /websites/:id/ssl/revoke
 PATCH /websites/:id/ssl
 ```
 
+**As implemented in Phase 6.** All six exist, plus `GET /ssl/providers`, which
+reports what the host can issue so the panel can hide an option that would
+always fail.
+
+Two providers are offered: `letsencrypt` (certbot over ACME, needs public DNS)
+and `selfsigned` (always available, for hosts without it). Issue, renew, and
+revoke each return **202** with the job realising them — a certificate does not
+exist until the host says so.
+
+`PATCH /websites/:id/ssl` takes `auto_renew` and `https_redirect`. Changing the
+redirect returns **202** with a job, because the redirect *is* the vhost and the
+host has to be rewritten; changing only `auto_renew` returns **200**, because
+nothing on the host reads it.
+
+`GET /websites/:id/ssl` returns `{"enabled": false}` for a site on plain HTTP
+rather than 404 — HTTP is a valid configuration, not a missing one.
+
+Issuing and revoking need `ssl.manage`; listing needs only `website.view`.
+
 ---
 
 # 17. DNS

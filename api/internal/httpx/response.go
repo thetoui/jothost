@@ -57,8 +57,25 @@ func Created(w http.ResponseWriter, r *http.Request, data any) {
 
 // Error writes a failure envelope derived from err. Unknown errors are
 // reported as a generic internal error so that internal detail never leaks.
+//
+// The internal cause is logged rather than discarded. Without that, a 500 tells
+// the client nothing (by design) and the operator nothing (by accident), which
+// leaves a fault with no way in at all.
 func Error(w http.ResponseWriter, r *http.Request, err error) {
 	apiErr := AsAPIError(err)
+
+	if apiErr.Status >= http.StatusInternalServerError && apiErr.Internal != nil {
+		slog.Default().Error("request failed",
+			"request_id", RequestIDFromContext(r.Context()),
+			"method", r.Method,
+			"path", r.URL.Path,
+			"code", apiErr.Code,
+			// The cause, not the response: this is the half the client is
+			// deliberately not shown.
+			"error", apiErr.Internal.Error(),
+		)
+	}
+
 	WriteJSON(w, r, apiErr.Status, Envelope{
 		Success: false,
 		Error:   &ErrorDetail{Code: apiErr.Code, Message: apiErr.Message},

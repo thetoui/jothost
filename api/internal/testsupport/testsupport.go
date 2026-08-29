@@ -144,7 +144,7 @@ func (d *Deps) Reset(t *testing.T) {
 	// which is what makes a clean slate possible while the API itself still
 	// cannot rewrite history.
 	_, err := d.Pool.Exec(ctx, `
-		TRUNCATE TABLE php_pools, php_versions, audit_logs, two_factor_auth, session_token_history, sessions,
+		TRUNCATE TABLE ssl_certificates, php_pools, php_versions, audit_logs, two_factor_auth, session_token_history, sessions,
 			user_roles, users, system_metrics, domains, websites, jobs, servers
 		RESTART IDENTITY CASCADE`)
 	if err != nil {

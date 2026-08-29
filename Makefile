@@ -123,6 +123,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-dashboard
 	$(MAKE) docker-test-websites
 	$(MAKE) docker-test-php
+	$(MAKE) docker-test-ssl
 
 .PHONY: docker-test-integration
 docker-test-integration: ## Run integration tests against the running dev stack
@@ -162,6 +163,12 @@ docker-test-websites: create-integration-admin ## Run the Phase 4 website integr
 docker-test-php: create-integration-admin ## Run the Phase 5 PHP integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase5_php.sh
 
+# The Phase 6 checks inspect private key permissions on disk, which only the
+# managed host can do, so they run inside the agent container.
+.PHONY: docker-test-ssl
+docker-test-ssl: create-integration-admin ## Run the Phase 6 SSL integration checks
+	$(COMPOSE) exec -T agent sh /tests/integration/phase6_ssl.sh
+
 # create-integration-admin provisions the account the auth checks sign in with.
 # Re-running is harmless: an existing username is reported and ignored.
 .PHONY: create-integration-admin
@@ -183,4 +190,4 @@ migrate-status: ## Show migration state
 	$(COMPOSE) exec api jothost-api migrate status
 
 .PHONY: verify
-verify: lint test docker-test-integration docker-test-auth docker-test-agent docker-test-dashboard docker-test-websites docker-test-php ## Everything CI runs
+verify: lint test docker-test-integration docker-test-auth docker-test-agent docker-test-dashboard docker-test-websites docker-test-php docker-test-ssl ## Everything CI runs

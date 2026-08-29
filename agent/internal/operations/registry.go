@@ -6,7 +6,9 @@ package operations
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"runtime/debug"
 
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/jobs"
@@ -14,6 +16,7 @@ import (
 	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
+	"github.com/jothost/panel/agent/internal/ssl"
 	"github.com/jothost/panel/shared/protocol"
 )
 
@@ -69,6 +72,10 @@ type Dependencies struct {
 	// WebGroup is the group the web server runs as. A pool socket must be
 	// group-owned by it or nginx cannot connect and every PHP request 502s.
 	WebGroup string
+
+	// SSL issues and renews certificates. Nil on a host where certificate
+	// management is not wired up, which handlers report as unsupported.
+	SSL *ssl.Manager
 }
 
 // Registry maps allowlisted operations to their handlers.
@@ -117,6 +124,12 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationPHPExtensions, r.handlePHPExtensions)
 	r.mustRegister(protocol.OperationWebsitePHPSet, r.handleWebsitePHPSet)
 	r.mustRegister(protocol.OperationWebsitePHPUnset, r.handleWebsitePHPUnset)
+
+	r.mustRegister(protocol.OperationSSLIssue, r.handleSSLIssue)
+	r.mustRegister(protocol.OperationSSLRenew, r.handleSSLRenew)
+	r.mustRegister(protocol.OperationSSLRevoke, r.handleSSLRevoke)
+	r.mustRegister(protocol.OperationSSLStatus, r.handleSSLStatus)
+	r.mustRegister(protocol.OperationSSLCapabilities, r.handleSSLCapabilities)
 
 	r.mustRegister(protocol.OperationJobStatus, r.handleJobStatus)
 	r.mustRegister(protocol.OperationJobCancel, r.handleJobCancel)
@@ -174,18 +187,49 @@ func (r *Registry) Dispatch(ctx context.Context, req protocol.Request) protocol.
 		return r.dispatchAsync(req, handler)
 	}
 
-	data, err := handler(ctx, req, nil)
+	data, err := r.invoke(ctx, req, handler, nil)
 	if err != nil {
 		return r.errorResponse(req, err)
 	}
 	return protocol.NewSuccess(req.RequestID, data)
 }
 
+// invoke runs a handler and turns a panic into an error.
+//
+// Without this, a nil dereference anywhere in any handler takes down the whole
+// Agent — and the Agent is the only thing that can manage every site on the
+// host, so one bad request would leave an operator unable to touch any of
+// them until someone noticed and restarted it. A single failed operation is a
+// far better outcome than a dead daemon.
+//
+// The recovered value is logged with its stack and never returned: a panic
+// message can carry internal state, and the caller gets the same generic
+// internal error it would get for any other unexpected failure.
+func (r *Registry) invoke(ctx context.Context, req protocol.Request, handler Handler,
+	reporter *jobs.Reporter,
+) (data map[string]any, err error) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		r.log.Error("operation handler panicked",
+			"operation", string(req.Operation),
+			"request_id", req.RequestID,
+			"panic", fmt.Sprint(recovered),
+			"stack", string(debug.Stack()),
+		)
+		err = Fail(protocol.CodeInternal, "The operation failed unexpectedly", nil)
+	}()
+
+	return handler(ctx, req, reporter)
+}
+
 // dispatchAsync submits an operation to the job runner.
 func (r *Registry) dispatchAsync(req protocol.Request, handler Handler) protocol.Response {
 	jobID, err := r.deps.Jobs.Submit(req.Operation, req.RequestID,
 		func(ctx context.Context, reporter *jobs.Reporter) (map[string]any, error) {
-			return handler(ctx, req, reporter)
+			return r.invoke(ctx, req, handler, reporter)
 		})
 	if err != nil {
 		if errors.Is(err, jobs.ErrQueueFull) {

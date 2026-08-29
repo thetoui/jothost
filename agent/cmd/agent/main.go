@@ -26,6 +26,7 @@ import (
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/socket"
+	"github.com/jothost/panel/agent/internal/ssl"
 	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/protocol"
 	"github.com/jothost/panel/shared/version"
@@ -179,6 +180,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	// only ever reach a path resolved here — never one built from the request.
 	specs = append(specs, php.CommandSpecs("")...)
 	specs = append(specs, php.ManagerSpecs()...)
+	specs = append(specs, ssl.CertbotSpec()...)
 
 	runner, err := command.NewRunner(specs...)
 	if err != nil {
@@ -244,6 +246,21 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 			"package_manager", phpInstaller.Manager())
 	}
 
+	sslManager := ssl.NewManager(ssl.ManagerOptions{
+		Store:   ssl.NewStore(""),
+		Certbot: ssl.NewCertbot(runner, ""),
+		Log:     log,
+	})
+
+	sslCapabilities := sslManager.Capabilities()
+	if !sslCapabilities.LetsEncrypt {
+		// Not an error: a host with no public DNS cannot use ACME at all, and
+		// self-signed certificates still work. The panel hides the option
+		// rather than offering one that always fails.
+		log.Info("certbot is not installed: only self-signed certificates are available",
+			"detail", "install certbot to issue publicly trusted certificates")
+	}
+
 	jobRunner := jobs.NewRunner(jobs.Options{
 		MaxConcurrent: cfg.MaxConcurrentJobs,
 		MaxJobs:       cfg.MaxJobs,
@@ -263,6 +280,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		PHPPools:     phpPools,
 		PHPInstaller: phpInstaller,
 		WebGroup:     provisioner.WebGroup(),
+		SSL:          sslManager,
 	})
 
 	return registry, jobRunner, nil

@@ -415,3 +415,42 @@ func (c *Client) PHPExtensions(ctx context.Context, requestID, version string) (
 		map[string]any{"version": version}, &result)
 	return result, err
 }
+
+// SSLCapabilities reports which certificate providers a host can use.
+type SSLCapabilities struct {
+	// SelfSigned needs nothing but the Agent itself.
+	SelfSigned bool `json:"selfsigned"`
+	// LetsEncrypt needs certbot, public DNS, and a reachable challenge path.
+	LetsEncrypt bool `json:"letsencrypt"`
+}
+
+// SSLProviders reports which certificate providers this host can use.
+func (c *Client) SSLProviders(ctx context.Context, requestID string) (SSLCapabilities, error) {
+	var result SSLCapabilities
+	err := c.call(ctx, requestID, protocol.OperationSSLCapabilities, nil, &result)
+	return result, err
+}
+
+// SSLCertificate is a certificate as the Agent found it on disk.
+type SSLCertificate struct {
+	Domain       string   `json:"domain"`
+	Domains      []string `json:"domains"`
+	Provider     string   `json:"provider"`
+	CertPath     string   `json:"certificate_path"`
+	KeyPath      string   `json:"private_key_path"`
+	Issuer       string   `json:"issuer"`
+	Fingerprint  string   `json:"fingerprint"`
+	IssuedAt     string   `json:"issued_at"`
+	ExpiresAt    string   `json:"expires_at"`
+	SelfSigned   bool     `json:"self_signed"`
+	Present      bool     `json:"present"`
+	NeedsRenewal bool     `json:"needs_renewal"`
+}
+
+// SSLStatus reports the certificate currently on disk for a domain.
+func (c *Client) SSLStatus(ctx context.Context, requestID, domain string) (SSLCertificate, error) {
+	var result SSLCertificate
+	err := c.call(ctx, requestID, protocol.OperationSSLStatus,
+		map[string]any{"domain": domain}, &result)
+	return result, err
+}

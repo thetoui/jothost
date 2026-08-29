@@ -51,6 +51,10 @@ func run(args []string) error {
 		Level:   cfg.LogLevel,
 		Output:  os.Stdout,
 	})
+	// Packages that cannot reasonably take a logger — httpx, which is called
+	// from every handler — write through the default, so it has to be the
+	// configured one rather than Go's unconfigured stderr logger.
+	slog.SetDefault(log)
 
 	command := "serve"
 	if len(args) > 0 {

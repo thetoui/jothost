@@ -14,6 +14,21 @@ import (
 	"github.com/jothost/panel/shared/validate"
 )
 
+// SSLConfig is the certificate a site serves HTTPS with.
+type SSLConfig struct {
+	// CertificatePath and PrivateKeyPath are absolute paths nginx reads as
+	// root, before it drops privileges to its worker user.
+	CertificatePath string
+	PrivateKeyPath  string
+	// RedirectToHTTPS sends plain HTTP to the secure site. The ACME challenge
+	// path is always excluded from it; see acmeChallengeBlock.
+	RedirectToHTTPS bool
+	// ChallengeRoot is the webroot the ACME challenge is served from. Empty
+	// omits the challenge block, which is correct for a self-signed site that
+	// will never speak to a certificate authority.
+	ChallengeRoot string
+}
+
 // SiteConfig is everything the vhost template needs.
 type SiteConfig struct {
 	// PrimaryDomain is the canonical name. It becomes the first server_name.
@@ -32,6 +47,10 @@ type SiteConfig struct {
 	// a static site, and the PHP block is omitted entirely rather than pointing
 	// at a socket that does not exist.
 	PHPSocket string
+	// SSL is the site's certificate. Nil means HTTP only, and the HTTPS server
+	// block is omitted rather than pointing at a certificate that is not there
+	// — which nginx refuses to start with, taking every other site down too.
+	SSL *SSLConfig
 }
 
 // Redirect is a domain that redirects elsewhere rather than serving content.
@@ -40,7 +59,7 @@ type Redirect struct {
 	Target string
 }
 
-// siteTemplate is the vhost for a site, with or without PHP.
+// siteTemplate is the vhost for a site.
 //
 // The PHP block is the most dangerous configuration this panel writes, and the
 // two guards in it are not optional:
@@ -63,7 +82,15 @@ server {
     listen [::]:80;
 
     server_name {{ .PrimaryDomain }}{{ range .Aliases }} {{ . }}{{ end }};
-
+{{ if and .SSL .SSL.ChallengeRoot }}` + acmeChallengeBlock + `{{ end }}
+{{- if and .SSL .SSL.RedirectToHTTPS }}
+    # Everything except the challenge path above goes to HTTPS. 301 rather
+    # than 302: enabling HTTPS is a decision, not a temporary measure.
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+{{- else }}
     root {{ .DocumentRoot }};
     index {{ if .PHPSocket }}index.php {{ end }}index.html index.htm;
 
@@ -121,7 +148,8 @@ server {
         fastcgi_buffer_size 32k;
     }
 {{ end }}}
-`))
+{{- end }}
+{{- if .SSL }}` + sslServerBlock + `{{ end }}`))
 
 // redirectTemplate sends one domain to another.
 var redirectTemplate = template.Must(template.New("redirect").Parse(`# Managed by JotHost Panel. Manual edits are overwritten.
@@ -168,6 +196,11 @@ func Render(cfg SiteConfig) (string, error) {
 			return "", fmt.Errorf("php socket: %w", err)
 		}
 	}
+	if cfg.SSL != nil {
+		if err := validateSSL(cfg.SSL); err != nil {
+			return "", err
+		}
+	}
 	if cfg.MaxBodySize == "" {
 		cfg.MaxBodySize = defaultMaxBodySize
 	}
@@ -180,6 +213,26 @@ func Render(cfg SiteConfig) (string, error) {
 		return "", fmt.Errorf("render site config: %w", err)
 	}
 	return out.String(), nil
+}
+
+// validateSSL checks the certificate paths before they reach the template.
+//
+// A path that could close a directive is refused here rather than trusted: an
+// ssl_certificate line is read by a root process, and the file it names is the
+// site's identity.
+func validateSSL(cfg *SSLConfig) error {
+	if err := validatePath(cfg.CertificatePath); err != nil {
+		return fmt.Errorf("certificate path: %w", err)
+	}
+	if err := validatePath(cfg.PrivateKeyPath); err != nil {
+		return fmt.Errorf("private key path: %w", err)
+	}
+	if cfg.ChallengeRoot != "" {
+		if err := validatePath(cfg.ChallengeRoot); err != nil {
+			return fmt.Errorf("challenge root: %w", err)
+		}
+	}
+	return nil
 }
 
 // RenderRedirect produces the vhost for a redirecting domain.

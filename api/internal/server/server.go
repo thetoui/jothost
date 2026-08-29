@@ -27,6 +27,7 @@ import (
 	"github.com/jothost/panel/api/internal/secrets"
 	"github.com/jothost/panel/api/internal/servers"
 	"github.com/jothost/panel/api/internal/sessions"
+	sslpkg "github.com/jothost/panel/api/internal/ssl"
 	"github.com/jothost/panel/api/internal/twofactor"
 	"github.com/jothost/panel/api/internal/users"
 	"github.com/jothost/panel/api/internal/websites"
@@ -51,11 +52,16 @@ type Server struct {
 	websites *websites.Handler
 	jobs     *jobs.Handler
 	php      *phppkg.Handler
+	ssl      *sslpkg.Handler
 	// worker realises queued jobs against the Agent. It is nil when no server
 	// is registered, because there is no host to provision against.
 	worker *jobs.Worker
 	// phpSync keeps the version table matching what the host actually has.
 	phpSync *phppkg.Syncer
+	// renewer keeps certificates from expiring. Nil when no server is
+	// registered, like the worker.
+	renewer *sslpkg.Renewer
+	sslRepo *sslpkg.Repository
 
 	// Router is exported so tests can exercise the full middleware chain
 	// without binding a port.
@@ -146,6 +152,9 @@ func New(opts Options) (*Server, error) {
 		// whether a unit happens to be running.
 		Dependencies:    []string{"postgres", "redis"},
 		CheckDependency: s.checkDependencyHealth,
+		// Injected as a function so the dashboard package does not depend on
+		// ssl, which depends on websites — which would close a cycle.
+		ExpiringCertificates: s.expiringCertificates,
 	})
 
 	s.dashboard = dashboard.NewHandler(dashboard.HandlerOptions{
@@ -192,6 +201,24 @@ func New(opts Options) (*Server, error) {
 	})
 	s.phpSync = phppkg.NewSyncer(phpRepo, agent, log)
 
+	sslRepo := sslpkg.NewRepository(opts.Pool)
+	s.sslRepo = sslRepo
+	sslService := sslpkg.NewService(sslpkg.ServiceOptions{
+		Repository: sslRepo,
+		Websites:   websiteRepo,
+		PHP:        phpRepo,
+		Jobs:       jobRepo,
+		Audit:      auditRecorder,
+		Log:        log,
+	})
+	s.ssl = sslpkg.NewHandler(sslpkg.HandlerOptions{
+		Service: sslService,
+		Repo:    sslRepo,
+		Agent:   agent,
+		Auth:    authService,
+	})
+	s.renewer = sslpkg.NewRenewer(sslRepo, websiteRepo, sslService, log)
+
 	if opts.LocalServerID != "" {
 		// The worker reconciles websites through the service, so a finished
 		// job moves the site to active or failed rather than leaving it in
@@ -201,7 +228,7 @@ func New(opts Options) (*Server, error) {
 		s.worker = jobs.NewWorker(jobs.Options{
 			Repository: jobRepo,
 			Dispatcher: agent,
-			Observer:   jobs.Observers{websiteService, s.phpSync},
+			Observer:   jobs.Observers{websiteService, s.phpSync, s.renewer},
 			Log:        log,
 			// Installing a PHP package downloads and unpacks it, which takes
 			// far longer than any other operation the panel runs.
@@ -234,6 +261,40 @@ func New(opts Options) (*Server, error) {
 	return s, nil
 }
 
+// expiringCertificates reports certificates worth an operator's attention.
+//
+// A failure is logged and treated as "nothing expiring": the dashboard is what
+// an operator opens when something is already wrong, and it must not fail to
+// render because one query did.
+func (s *Server) expiringCertificates(ctx context.Context) []dashboard.ExpiringCertificate {
+	if s.sslRepo == nil {
+		return nil
+	}
+
+	certificates, err := s.sslRepo.List(ctx)
+	if err != nil {
+		s.log.Error("failed to read certificates for the dashboard", "error", err.Error())
+		return nil
+	}
+
+	now := time.Now()
+	expiring := make([]dashboard.ExpiringCertificate, 0, 2)
+	for _, certificate := range certificates {
+		if certificate.Status != sslpkg.StatusExpiring && certificate.Status != sslpkg.StatusExpired {
+			continue
+		}
+		days := certificate.DaysRemaining(now)
+		if days == nil {
+			continue
+		}
+		expiring = append(expiring, dashboard.ExpiringCertificate{
+			Domain:        certificate.PrimaryDomain,
+			DaysRemaining: *days,
+		})
+	}
+	return expiring
+}
+
 // routes builds the middleware chain and route table.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
@@ -251,6 +312,7 @@ func (s *Server) routes() http.Handler {
 	s.websites.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)
+	s.ssl.Routes(mux)
 
 	// Anything unmatched returns the standard error envelope rather than the
 	// net/http plain-text default.
@@ -375,6 +437,13 @@ func (s *Server) Run(ctx context.Context) error {
 	// is refreshed on an interval rather than only at startup.
 	if s.phpSync != nil {
 		go s.phpSync.Run(ctx, phppkg.DefaultSyncInterval)
+	}
+
+	// An unattended certificate expires in 90 days and the failure is total:
+	// every visitor gets a browser warning at once. The sweep is what makes
+	// the difference between issuing certificates and keeping sites working.
+	if s.renewer != nil {
+		go s.renewer.Run(ctx, sslpkg.SweepInterval)
 	}
 
 	go func() {

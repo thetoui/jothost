@@ -162,6 +162,11 @@ jobs:
       - name: Run Phase 5 PHP checks
         run: docker compose exec -T agent sh /tests/integration/phase5_php.sh
 
+      # Phase 6 inspects private key permissions on disk, which only the
+      # managed host can do, so it runs inside the agent container.
+      - name: Run Phase 6 SSL checks
+        run: docker compose exec -T agent sh /tests/integration/phase6_ssl.sh
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color

@@ -85,6 +85,11 @@ func (r *Registry) handleWebsiteDelete(ctx context.Context, req protocol.Request
 	// all the others.
 	poolsRemoved := r.removeSitePools(ctx, payload.SystemUser)
 
+	// The certificate goes with the site too. A private key left behind is a
+	// key nobody owns, for a name nothing serves, and it would be picked up
+	// again by a later site that happened to reuse the domain.
+	certificateRemoved := r.removeSiteCertificate(payload.Domain)
+
 	result, err := r.deps.Sites.Delete(ctx, sites.DeleteRequest{
 		Domain:       payload.Domain,
 		DocumentRoot: payload.DocumentRoot,
@@ -101,7 +106,27 @@ func (r *Registry) handleWebsiteDelete(ctx context.Context, req protocol.Request
 		return nil, err
 	}
 	data["pools_removed"] = poolsRemoved
+	data["certificate_removed"] = certificateRemoved
 	return data, nil
+}
+
+// removeSiteCertificate deletes a site's certificate material.
+//
+// The certificate is not revoked, only removed: revocation is a statement to a
+// certificate authority that the key was compromised, which deleting a website
+// is not. It is logged rather than fatal, because refusing to delete a website
+// over a leftover file would leave the user with a site they cannot remove.
+func (r *Registry) removeSiteCertificate(domain string) bool {
+	if domain == "" || r.deps.SSL == nil {
+		return false
+	}
+
+	if err := r.deps.SSL.Remove(domain); err != nil {
+		r.log.Warn("website deleted but its certificate could not be removed",
+			"domain", domain, "error", err.Error())
+		return false
+	}
+	return true
 }
 
 // removeSitePools deletes a site's FPM pool from every installed version.

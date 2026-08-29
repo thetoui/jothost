@@ -73,6 +73,10 @@ type CreateRequest struct {
 	// PHPSocket is the FPM pool this site serves .php from. Empty means a
 	// static site and the vhost omits PHP entirely.
 	PHPSocket string
+	// SSL is the certificate this site serves HTTPS with. Nil means HTTP only;
+	// the HTTPS block is omitted rather than naming a certificate that is not
+	// there, which nginx refuses to start with — taking every other site down.
+	SSL *nginx.SSLConfig
 }
 
 // CreateResult is what provisioning produced.
@@ -159,6 +163,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 		ErrorLog:      layout.ErrorLog,
 		MaxBodySize:   req.MaxBodySize,
 		PHPSocket:     req.PHPSocket,
+		SSL:           req.SSL,
 	})
 	if err != nil {
 		return CreateResult{}, err
@@ -403,6 +408,9 @@ type UpdateRequest struct {
 	// PHPSocket is the FPM pool this site serves .php from. Empty rewrites the
 	// vhost as a static site, which is how PHP is turned off.
 	PHPSocket string
+	// SSL is the certificate this site serves HTTPS with. Nil rewrites the
+	// vhost as HTTP only, which is how a certificate is withdrawn.
+	SSL *nginx.SSLConfig
 }
 
 // UpdateResult reports what was rewritten.
@@ -454,6 +462,7 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 		ErrorLog:      layout.ErrorLog,
 		MaxBodySize:   req.MaxBodySize,
 		PHPSocket:     req.PHPSocket,
+		SSL:           req.SSL,
 	})
 	if err != nil {
 		return UpdateResult{}, err

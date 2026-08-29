@@ -300,15 +300,36 @@ Only authorised callers may change it.   verified: 401 anonymous, 403 without pe
 
 # PHASE 6 — SSL
 
-- [ ] Certbot provider
-- [ ] Certificate detection
-- [ ] Issue certificate
-- [ ] Renew certificate
-- [ ] Revoke certificate
-- [ ] Auto renewal
-- [ ] HTTPS redirect
-- [ ] SSL dashboard
-- [ ] Expiration alerts
+**Status: COMPLETE** — see [docs/PHASE6.md](docs/PHASE6.md) for scope, decisions, and known limitations.
+
+- [x] Certbot provider
+- [x] Certificate detection
+- [x] Issue certificate
+- [x] Renew certificate
+- [x] Revoke certificate
+- [x] Auto renewal
+- [x] HTTPS redirect
+- [x] SSL dashboard
+- [x] Expiration alerts
+
+Additionally required by the above:
+
+- [x] `ssl_certificates` schema
+- [x] A self-signed provider, so the serving path is testable without public DNS
+- [x] HTTPS vhost with modern TLS, HSTS, and forward secrecy only
+- [x] An ACME challenge path that survives the HTTPS redirect
+- [x] Private keys written root-only, verified rather than assumed
+- [x] Certificate cleanup when a website is deleted
+
+Acceptance:
+
+```text
+An issued site completes a TLS handshake.  verified: 44 integration checks, live nginx
+HTTP redirects to HTTPS.                   verified: 301 to the secure origin
+Renewal keeps working after the redirect.  verified: challenge served over plain HTTP
+A private key is readable only by root.    verified: mode 600, root-owned, outside /var/www
+Weak TLS is refused.                       verified: TLS 1.1 rejected, 1.3 negotiated
+```
 
 ---
 

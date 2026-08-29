@@ -45,12 +45,19 @@ FROM alpine:3.21 AS runtime
 # against real binaries rather than mocked, which is what TASKS.md Phase 5 asks
 # for. The default www.conf pools are removed: each listens on a TCP port as
 # "nobody" and would run alongside the per-site pools the panel writes.
+#
+# certbot is installed so its code path is exercised as far as it can be here.
+# It cannot actually issue in this container: ACME needs public DNS and a
+# reachable challenge, and a private network has neither. Self-signed
+# certificates are what the tests drive end to end (docs/PHASE6.md section 3.1).
 RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       php82-fpm php83-fpm php84-fpm \
       php82-opcache php83-opcache php84-opcache \
       php82-session php83-session php84-session \
+      certbot \
     && addgroup -g 10001 jothost \
     && mkdir -p /etc/nginx/conf.d /var/www /run/nginx /run/php-fpm \
+                /etc/jothost/ssl /var/www/.acme-challenge/.well-known/acme-challenge \
     && rm -f /etc/nginx/http.d/default.conf \
     && rm -f /etc/php82/php-fpm.d/www.conf \
              /etc/php83/php-fpm.d/www.conf \
@@ -63,9 +70,9 @@ COPY docker/agent-entrypoint.sh /usr/local/bin/agent-entrypoint
 RUN chmod +x /usr/local/bin/agent-entrypoint
 
 # The Agent itself still listens only on a Unix socket (ARCHITECTURE.md
-# section 10). Port 80 belongs to the nginx this container manages, which
-# serves the websites the panel creates — not the panel itself.
-EXPOSE 80
+# section 10). Ports 80 and 443 belong to the nginx this container manages,
+# which serves the websites the panel creates — not the panel itself.
+EXPOSE 80 443
 
 # The agent has no HTTP endpoint, so the health check speaks the agent
 # protocol over its own Unix socket.

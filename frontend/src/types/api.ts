@@ -375,3 +375,55 @@ export interface PHPConfig {
   max_children: number;
   version: string;
 }
+
+// --------------------------------------------------------------------- ssl
+
+export type SSLProvider = 'letsencrypt' | 'selfsigned';
+
+export type SSLStatus =
+  | 'pending'
+  | 'issuing'
+  | 'valid'
+  | 'expiring'
+  | 'expired'
+  | 'revoked'
+  | 'failed';
+
+export interface SSLCertificate {
+  id: string;
+  website_id: string;
+  /** Present on the list endpoint, which joins the website. */
+  primary_domain: string;
+  provider: SSLProvider;
+  domains: string[];
+  issuer: string | null;
+  fingerprint: string | null;
+  issued_at: string | null;
+  expires_at: string | null;
+  auto_renew: boolean;
+  status: SSLStatus;
+  last_error: string | null;
+  certificate_path: string | null;
+  /** Computed by the API so every client agrees on what "12 days" means. */
+  days_remaining: number | null;
+}
+
+export interface SSLCertificateList {
+  certificates: SSLCertificate[];
+  count: number;
+  /** Certificates expiring or already expired. */
+  needing_attention: number;
+}
+
+/** A website's certificate state. No certificate is `enabled: false`. */
+export interface WebsiteSSL {
+  enabled: boolean;
+  certificate?: SSLCertificate;
+}
+
+export interface SSLProviders {
+  selfsigned: boolean;
+  letsencrypt: boolean;
+  /** Explains a reduced set, e.g. when the agent could not be reached. */
+  detail?: string;
+}

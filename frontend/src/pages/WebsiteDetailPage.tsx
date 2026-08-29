@@ -22,6 +22,7 @@ import { TextField } from '@/components/ui/Field';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { WebsitePHPPanel } from '@/features/php/components/WebsitePHPPanel';
+import { WebsiteSSLPanel } from '@/features/ssl/components/WebsiteSSLPanel';
 import {
   isJobRunning,
   useAddDomain,
@@ -143,7 +144,13 @@ export function WebsiteDetailPage() {
               />
               <Detail
                 label="HTTPS"
-                value={site.ssl_enabled ? 'Enabled' : 'Not configured'}
+                value={
+                  site.ssl_enabled
+                    ? site.https_redirect
+                      ? 'Enabled, HTTP redirected'
+                      : 'Enabled'
+                    : 'Not configured'
+                }
                 icon={<Lock className="h-3.5 w-3.5" />}
               />
               <Detail
@@ -154,6 +161,7 @@ export function WebsiteDetailPage() {
             </CardBody>
           </Card>
 
+          <WebsiteSSLPanel websiteId={site.id} domain={site.primary_domain} />
           <WebsitePHPPanel websiteId={site.id} />
           <DomainSection websiteId={site.id} />
         </div>

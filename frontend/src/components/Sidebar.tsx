@@ -47,7 +47,7 @@ const navGroups: NavGroup[] = [
       { label: 'Websites', to: '/websites', icon: Globe, enabled: true },
       { label: 'PHP', to: '/php', icon: FileCode2, enabled: true },
       { label: 'Databases', to: '/databases', icon: Database, enabled: false },
-      { label: 'SSL', to: '/ssl', icon: Lock, enabled: false },
+      { label: 'SSL', to: '/ssl', icon: Lock, enabled: true },
     ],
   },
   {

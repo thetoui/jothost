@@ -42,6 +42,9 @@ const jobLabels: Record<string, string> = {
   'website.php.unset': 'Disable PHP',
   'php.install': 'Install PHP',
   'php.uninstall': 'Remove PHP',
+  'ssl.issue': 'Issue certificate',
+  'ssl.renew': 'Renew certificate',
+  'ssl.revoke': 'Revoke certificate',
 };
 
 export function jobLabel(type: string): string {

@@ -9,6 +9,7 @@ package dashboard
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -132,6 +133,9 @@ type Service struct {
 	checkDependency func(ctx context.Context, name string) bool
 	dependencies    []string
 	now             func() time.Time
+	// expiringCerts reports certificates near expiry, injected for the same
+	// reason as checkDependency: to keep this package from depending on ssl.
+	expiringCerts func(ctx context.Context) []ExpiringCertificate
 }
 
 // Options configures a Service.
@@ -144,6 +148,19 @@ type Options struct {
 	Dependencies    []string
 	CheckDependency func(ctx context.Context, name string) bool
 	Now             func() time.Time
+	// ExpiringCertificates reports certificates near or past expiry.
+	//
+	// A function rather than a repository so the dashboard does not depend on
+	// the ssl package, which depends on websites, which would make this a
+	// cycle. Nil simply produces no certificate alerts.
+	ExpiringCertificates func(ctx context.Context) []ExpiringCertificate
+}
+
+// ExpiringCertificate is a certificate the dashboard should warn about.
+type ExpiringCertificate struct {
+	Domain string
+	// DaysRemaining is negative once the certificate has expired.
+	DaysRemaining int
 }
 
 // NewService builds a Service.
@@ -156,6 +173,7 @@ func NewService(opts Options) *Service {
 	}
 
 	return &Service{
+		expiringCerts:   opts.ExpiringCertificates,
 		agent:           opts.Agent,
 		servers:         opts.Servers,
 		log:             opts.Log,
@@ -221,7 +239,7 @@ func (s *Service) Snapshot(ctx context.Context, serverID, requestID string) (Sna
 
 	wg.Wait()
 
-	snapshot.Alerts = s.buildAlerts(snapshot)
+	snapshot.Alerts = s.buildAlerts(ctx, snapshot)
 	return snapshot, nil
 }
 
@@ -310,7 +328,7 @@ func runningStatus(running bool) string {
 //
 // Alerts are computed from the reading that produced them rather than stored,
 // so they cannot go stale or disagree with the panel beside them.
-func (s *Service) buildAlerts(snapshot Snapshot) []Alert {
+func (s *Service) buildAlerts(ctx context.Context, snapshot Snapshot) []Alert {
 	alerts := []Alert{}
 
 	if snapshot.Disk.Available && snapshot.Disk.Data != nil {
@@ -375,6 +393,15 @@ func (s *Service) buildAlerts(snapshot Snapshot) []Alert {
 		}
 	}
 
+	// A certificate that lapses takes a site down for every visitor at once,
+	// and unlike a full disk it gives no warning of its own — so the warning
+	// has to come from here.
+	if s.expiringCerts != nil {
+		for _, certificate := range s.expiringCerts(ctx) {
+			alerts = append(alerts, certificateAlert(certificate))
+		}
+	}
+
 	// An unreachable Agent is the alert that explains every empty panel, so it
 	// is stated plainly rather than left for the operator to infer.
 	if !snapshot.System.Available && !snapshot.System.Unsupported {
@@ -386,6 +413,40 @@ func (s *Service) buildAlerts(snapshot Snapshot) []Alert {
 	}
 
 	return alerts
+}
+
+// certificateAlert renders one expiring or expired certificate.
+//
+// An expired certificate is critical rather than a warning: the site is already
+// showing every visitor a security warning, which is indistinguishable from an
+// attack and which most people will not click through.
+func certificateAlert(certificate ExpiringCertificate) Alert {
+	if certificate.DaysRemaining < 0 {
+		return Alert{
+			Severity: SeverityCritical,
+			Category: "ssl",
+			Message: fmt.Sprintf("The certificate for %s expired %s ago",
+				certificate.Domain, plural(-certificate.DaysRemaining, "day")),
+		}
+	}
+
+	severity := SeverityWarning
+	if certificate.DaysRemaining <= 7 {
+		severity = SeverityCritical
+	}
+	return Alert{
+		Severity: severity,
+		Category: "ssl",
+		Message: fmt.Sprintf("The certificate for %s expires in %s",
+			certificate.Domain, plural(certificate.DaysRemaining, "day")),
+	}
+}
+
+func plural(count int, noun string) string {
+	if count == 1 {
+		return fmt.Sprintf("1 %s", noun)
+	}
+	return fmt.Sprintf("%d %ss", count, noun)
 }
 
 // classify reports the severity a value breaches, if any.

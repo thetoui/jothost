@@ -108,12 +108,31 @@ func (r *Registry) handlePHPUninstall(ctx context.Context, req protocol.Request,
 	if err := validate.PHPVersion(version); err != nil {
 		return nil, Fail(protocol.CodeInvalidPayload, "version must be a major.minor release such as 8.3", err)
 	}
+	// A version the host does not have is already in the state the caller
+	// asked for, so this reconciles rather than fails (CLAUDE.md section 17).
+	//
+	// It matters most for a version whose installation failed. The package
+	// manager refuses to remove a package it never installed, so reporting
+	// that as an error left the failed version pinned in the panel: the only
+	// action that could clear it was the one that would not run.
+	//
+	// This is settled before the package manager is consulted, because whether
+	// the host has one has no bearing on a version it does not have.
+	progressReport := reporterFunc(reporter)
+	if r.deps.PHP != nil {
+		_, err := r.deps.PHP.Lookup(ctx, version)
+		if errors.Is(err, php.ErrVersionNotInstalled) {
+			report(progressReport, 100, "PHP "+version+" is not installed on this host")
+			return map[string]any{"version": version, "removed": false}, nil
+		}
+	}
+
 	if r.deps.PHPInstaller == nil || !r.deps.PHPInstaller.Available() {
 		return nil, Fail(protocol.CodeUnsupported,
 			"this host has no supported package manager, so PHP cannot be removed", nil)
 	}
 
-	if err := r.deps.PHPInstaller.Remove(ctx, version, reporterFunc(reporter)); err != nil {
+	if err := r.deps.PHPInstaller.Remove(ctx, version, progressReport); err != nil {
 		return nil, phpError(err)
 	}
 	return map[string]any{"version": version, "removed": true}, nil

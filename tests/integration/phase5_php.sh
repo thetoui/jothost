@@ -465,6 +465,36 @@ else
   fail "PHP $last is used by no website, so the refusal could not be checked"
 fi
 
+# Removing a version the host does not have must reconcile, not fail.
+#
+# The package manager refuses to remove a package it never installed, so this
+# used to fail — which left a version whose installation had failed pinned in
+# the panel, because the only action that could clear it was the one that would
+# not run. 8.5 is safe to ask for here precisely because it is not installed:
+# nothing is taken off the machine running the test.
+absent="8.5"
+if printf '%s' "$versions" | grep -q "\"version\":\"$absent\",\"binary_path\":\"/"; then
+  log "  SKIP  PHP $absent is installed here, so its removal is not a no-op"
+else
+  removal="$(api DELETE "/api/v1/php/versions/$absent")"
+  job="$(printf '%s' "$removal" | sed -n 's/.*"job":{"id":"\([0-9a-f-]*\)".*/\1/p')"
+  if [ -z "$job" ]; then
+    fail "removing an absent version was not accepted: $(printf '%s' "$removal" | head -c 200)"
+  else
+    state="$(await_job "$job")"
+    if [ "$state" = "SUCCESS" ]; then
+      pass "removing a version that is not installed succeeds"
+    else
+      fail "removing an absent version ended $state"
+    fi
+
+    # And it settles: a finished removal must not leave the panel showing one
+    # still in progress.
+    after="$(api GET "/api/v1/php/versions/$absent")"
+    not_contains "the removed version is not left mid-operation" "$after" '"status":"removing"'
+  fi
+fi
+
 # --------------------------------------------------------------- turning off
 
 log ""

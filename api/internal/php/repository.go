@@ -146,10 +146,25 @@ func (r *Repository) SyncVersions(ctx context.Context, detected []DetectedVersio
 
 	// Anything not reported is no longer on the host. The row stays so a site
 	// referencing it still has something to point at.
+	//
+	// A removal that has finished is settled here too. A version whose install
+	// failed is already installed = FALSE, so keying only off that flag left it
+	// stuck in "removing" for good once it had been removed: the sync that
+	// should have settled it skipped the one row that needed settling, and the
+	// panel went on showing an operation that had already finished.
+	//
+	// "installing" and "failed" are deliberately left alone. The first is still
+	// in flight, and the second is the record of why a version is not here,
+	// which is the operator's to clear by removing it.
 	_, err = tx.Exec(ctx, `
 		UPDATE php_versions
-		SET installed = FALSE, binary_path = NULL, updated_at = now()
-		WHERE installed = TRUE AND NOT (version = ANY($1::text[]))`, present)
+		SET installed   = FALSE,
+		    binary_path = NULL,
+		    fpm_service = NULL,
+		    status      = CASE WHEN status = 'removing' THEN 'available' ELSE status END,
+		    updated_at  = now()
+		WHERE NOT (version = ANY($1::text[]))
+		  AND (installed = TRUE OR status = 'removing')`, present)
 	if err != nil {
 		return fmt.Errorf("mark removed php versions: %w", err)
 	}

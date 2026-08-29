@@ -142,6 +142,82 @@ func TestSyncVersionsMarksRemovedVersionsUninstalled(t *testing.T) {
 	}
 }
 
+// A removal that finished must not leave the panel showing one in progress.
+//
+// A version whose install failed is already installed = FALSE, so a sync keyed
+// only on that flag skipped it — and "removing" became permanent for exactly
+// the row that most needed settling.
+func TestSyncVersionsSettlesAFinishedRemoval(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	if err := f.repo.SetVersionStatus(ctx, "8.5", php.StatusRemoving); err != nil {
+		t.Fatalf("set removing: %v", err)
+	}
+
+	// The host does not report 8.5, so the removal is done.
+	if err := f.repo.SyncVersions(ctx, nil); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	version, err := f.repo.GetVersion(ctx, "8.5")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if version.Status != php.StatusAvailable {
+		t.Fatalf("status = %q, want %q once the removal has finished",
+			version.Status, php.StatusAvailable)
+	}
+	if version.Installed {
+		t.Fatal("a removed version is still marked installed")
+	}
+}
+
+// A failure is the record of why a version is not on the host. Clearing it on
+// the next sweep would erase the only explanation the operator has.
+func TestSyncVersionsKeepsAFailedVersionFailed(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	if err := f.repo.SetVersionStatus(ctx, "8.5", php.StatusFailed); err != nil {
+		t.Fatalf("set failed: %v", err)
+	}
+	if err := f.repo.SyncVersions(ctx, nil); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	version, err := f.repo.GetVersion(ctx, "8.5")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if version.Status != php.StatusFailed {
+		t.Fatalf("status = %q, want it to stay %q", version.Status, php.StatusFailed)
+	}
+}
+
+// An install still running must not be reported as settled by a sync that
+// happens to fire while it is in flight.
+func TestSyncVersionsLeavesAnInstallInFlight(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	if err := f.repo.SetVersionStatus(ctx, "8.5", php.StatusInstalling); err != nil {
+		t.Fatalf("set installing: %v", err)
+	}
+	if err := f.repo.SyncVersions(ctx, nil); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	version, err := f.repo.GetVersion(ctx, "8.5")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if version.Status != php.StatusInstalling {
+		t.Fatalf("status = %q, want it to stay %q while the install runs",
+			version.Status, php.StatusInstalling)
+	}
+}
+
 func TestListVersionsOrdersNumerically(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

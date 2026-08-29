@@ -251,6 +251,29 @@ Regression check: the Phase 5 suite now probes a site continuously across a
 switch and fails if a single request is dropped. Verified to fail against the
 previous code (6 of 199 dropped) and pass against the fix (233 of 233 served).
 
+### 4.5 A version that never installed could not be removed
+
+Reported from the panel: removing PHP 8.5 failed. 8.5 had been offered, an
+install had been attempted, and the install had failed — leaving a row marked
+not installed.
+
+Removal then ran `apk del php85-fpm`, which exits non-zero with "No such
+package". So the version sat in the panel permanently: the only action that
+could clear it was the one that refused to run.
+
+Removing a version the host does not have is now a reconciliation rather than a
+failure (CLAUDE.md §17) — the end state asked for is already true, and the
+result says `removed: false` rather than claiming work that did not happen. It
+is settled before the package manager is consulted, because whether the host has
+one has no bearing on a version it does not have.
+
+That exposed a second half. `SyncVersions` cleared the state of versions the
+Agent no longer reports, but only `WHERE installed = TRUE` — and a version whose
+install failed is already `installed = FALSE`. The sync skipped the one row that
+needed settling, so a finished removal stayed on screen as "removing" for good.
+It now settles that too, while deliberately leaving `installing` (still in
+flight) and `failed` (the record of why a version is absent) alone.
+
 ---
 
 ## 5. Testing
@@ -263,7 +286,7 @@ previous code (6 of 199 dropped) and pass against the fix (233 of 233 served).
 | `api/internal/php` | Detection sync, removed versions, settings merge, uninstall refusal while in use, version switching |
 | `api/internal/server` | Route authorisation, RBAC per verb, validation at the edge, `null` vs absent |
 | `frontend` | Setting validation, status presentation, permission-gated controls |
-| `tests/integration/phase5_php.sh` | 53 black-box checks against live FPM, including continuous availability across a version switch |
+| `tests/integration/phase5_php.sh` | 56 black-box checks against live FPM, including continuous availability across a version switch and removal of a version that is not installed |
 
 The integration suite runs **inside the agent container**, which is the managed
 host in development: the execution checks write a probe script into a site's

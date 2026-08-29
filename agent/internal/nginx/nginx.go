@@ -34,6 +34,9 @@ type Provider struct {
 	runner *command.Runner
 	// sitesDir holds one file per website.
 	sitesDir string
+	// procRoot is where worker processes are observed, so a drain can be
+	// waited for. Configurable so tests need no real nginx.
+	procRoot string
 }
 
 // Options configures a Provider.
@@ -42,6 +45,8 @@ type Options struct {
 	// SitesDir defaults to /etc/nginx/conf.d. It is configurable so tests can
 	// write to a temporary tree instead of the real one.
 	SitesDir string
+	// ProcRoot defaults to /proc.
+	ProcRoot string
 }
 
 // DefaultSitesDir is where generated vhosts live.
@@ -53,7 +58,15 @@ func NewProvider(opts Options) *Provider {
 	if sitesDir == "" {
 		sitesDir = DefaultSitesDir
 	}
-	return &Provider{runner: opts.Runner, sitesDir: filepath.Clean(sitesDir)}
+	procRoot := opts.ProcRoot
+	if procRoot == "" {
+		procRoot = DefaultProcRoot
+	}
+	return &Provider{
+		runner:   opts.Runner,
+		sitesDir: filepath.Clean(sitesDir),
+		procRoot: filepath.Clean(procRoot),
+	}
 }
 
 // Available reports whether nginx can be used.

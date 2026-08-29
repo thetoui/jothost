@@ -216,6 +216,41 @@ when a pid is reused.
 off was rejected as a missing field. The field is now `json.RawMessage`, which
 can tell them apart.
 
+### 4.4 A switch dropped requests while nginx drained
+
+Found later, by switching a site's version nine times in a row while asking it
+for a page continuously. Every switch landed on the right version and the site
+was never down — but 6 to 11 requests out of about 120 returned 502 in a single
+window each time, and the site's error log named the cause:
+
+```text
+connect() to unix:/run/php-fpm/web_..._-82.sock failed (2: No such file or
+directory)
+```
+
+Every one named the socket of the version being switched **away** from, after
+the vhost had already been repointed.
+
+An nginx reload is graceful. The workers started under the old vhost keep
+accepting and serving requests until their connections end, and they are still
+passing to the old socket. `RemovePool` unlinks that socket, and it ran the
+moment `nginx -s reload` returned — pulling the upstream out from under workers
+that were still serving through it.
+
+The ordering was already careful about not removing the old pool too early; what
+it did not account for is that "nginx has reloaded" and "nginx has finished with
+the old configuration" are not the same moment. The Agent now records which
+worker processes were serving before the reload and waits for them to exit
+before removing the pool, bounded at ten seconds so one slow request cannot hold
+a job open indefinitely. A host whose process table cannot be read logs that and
+proceeds as before, because failing a switch over it would be worse.
+
+The same wait applies to turning PHP off, which had the identical race.
+
+Regression check: the Phase 5 suite now probes a site continuously across a
+switch and fails if a single request is dropped. Verified to fail against the
+previous code (6 of 199 dropped) and pass against the fix (233 of 233 served).
+
 ---
 
 ## 5. Testing
@@ -224,11 +259,11 @@ can tell them apart.
 |---|---|
 | `shared/validate` | Version format, size and time bounds, injection in every setting, `GroupName` vs `SystemUser` |
 | `agent/internal/php` | Layout probing for both distributions, numeric version ordering, pool rendering, injection in paths and settings, refusal without a web group |
-| `agent/internal/nginx` | The execution guard, guard ordering, `SCRIPT_FILENAME` derivation, absent path-info splitting, `.php` denial on static sites |
+| `agent/internal/nginx` | The execution guard, guard ordering, `SCRIPT_FILENAME` derivation, absent path-info splitting, `.php` denial on static sites, worker drain detection (master excluded, pid reuse, timeout, cancellation) |
 | `api/internal/php` | Detection sync, removed versions, settings merge, uninstall refusal while in use, version switching |
 | `api/internal/server` | Route authorisation, RBAC per verb, validation at the edge, `null` vs absent |
 | `frontend` | Setting validation, status presentation, permission-gated controls |
-| `tests/integration/phase5_php.sh` | 51 black-box checks against live FPM |
+| `tests/integration/phase5_php.sh` | 53 black-box checks against live FPM, including continuous availability across a version switch |
 
 The integration suite runs **inside the agent container**, which is the managed
 host in development: the execution checks write a probe script into a site's

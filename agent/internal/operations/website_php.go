@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jothost/panel/agent/internal/jobs"
+	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/shared/protocol"
@@ -139,6 +140,7 @@ func (r *Registry) handleWebsitePHPSet(ctx context.Context, req protocol.Request
 	}
 
 	report(progressReport, 85, "Pointing the website at PHP")
+	workersBefore := r.nginxWorkers()
 	result, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
 		Domain:       payload.Domain,
 		Aliases:      payload.Aliases,
@@ -154,6 +156,18 @@ func (r *Registry) handleWebsitePHPSet(ctx context.Context, req protocol.Request
 	// versions removed. Doing it earlier would take the site down for the
 	// length of the switch; doing it not at all leaves an idle pool holding a
 	// socket, which is what stops the next switch back from starting.
+	//
+	// The wait is what makes the switch seamless. An nginx reload is graceful:
+	// the workers started under the old vhost keep accepting and serving
+	// requests until their connections end, and they are still passing to the
+	// old socket. Removing that pool the moment the reload returns unlinks
+	// their upstream underneath them, which is a burst of 502s on a site that
+	// was never actually down.
+	report(progressReport, 92, "Waiting for nginx to finish serving the old configuration")
+	if result.Reloaded {
+		r.awaitNginxDrain(ctx, workersBefore)
+	}
+
 	report(progressReport, 95, "Removing pools for other versions")
 	if stale, err := r.deps.PHPPools.RemoveOtherPools(ctx, version, poolName); err != nil {
 		r.log.Warn("a pool for a previous php version could not be removed",
@@ -201,6 +215,7 @@ func (r *Registry) handleWebsitePHPUnset(ctx context.Context, req protocol.Reque
 	report(progressReport, 30, "Rewriting the website as static")
 
 	// No socket in the request, so the rendered vhost omits the PHP block.
+	workersBefore := r.nginxWorkers()
 	result, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
 		Domain:       payload.Domain,
 		Aliases:      payload.Aliases,
@@ -209,6 +224,12 @@ func (r *Registry) handleWebsitePHPUnset(ctx context.Context, req protocol.Reque
 	}, nil)
 	if err != nil {
 		return nil, websiteError(err)
+	}
+
+	// The vhost no longer mentions the pool, but the workers serving under the
+	// previous one still do, so the pool outlives them by design.
+	if result.Reloaded {
+		r.awaitNginxDrain(ctx, workersBefore)
 	}
 
 	report(progressReport, 70, "Removing the PHP-FPM pool")
@@ -239,6 +260,41 @@ func (r *Registry) handleWebsitePHPUnset(ctx context.Context, req protocol.Reque
 		"reloaded":     result.Reloaded,
 		"pool_removed": removed,
 	}, nil
+}
+
+// nginxWorkers records which nginx workers are serving right now, so the
+// caller can tell later which ones belong to the configuration it replaced.
+//
+// A host where the workers cannot be observed returns nothing, which makes the
+// wait a no-op rather than an error: not being able to drain gracefully is a
+// reason to fall back to the previous behaviour, not to fail a switch.
+func (r *Registry) nginxWorkers() []int {
+	if r.deps.Nginx == nil {
+		return nil
+	}
+	workers, err := r.deps.Nginx.WorkerPIDs()
+	if err != nil {
+		r.log.Warn("could not read nginx workers; a pool may be removed while they drain",
+			"error", err.Error())
+		return nil
+	}
+	return workers
+}
+
+// awaitNginxDrain waits for the workers that were serving the previous vhost.
+//
+// Timing out is reported but not fatal. The alternative is holding a job open
+// for as long as the slowest request on the site takes, and a switch that
+// never finishes is a worse failure than a handful of requests that do.
+func (r *Registry) awaitNginxDrain(ctx context.Context, previous []int) {
+	if r.deps.Nginx == nil || len(previous) == 0 {
+		return
+	}
+	remaining := r.deps.Nginx.WaitForWorkers(ctx, previous, nginx.DrainTimeout)
+	if len(remaining) > 0 {
+		r.log.Warn("nginx workers were still serving the old configuration; removing the pool anyway",
+			"workers", len(remaining), "waited", nginx.DrainTimeout.String())
+	}
 }
 
 // startOrReload makes a version's FPM pick up a pool change.

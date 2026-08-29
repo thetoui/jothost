@@ -368,6 +368,51 @@ if [ -n "${switch_id:-}" ]; then
   # One pool per site: the website_id column is unique, so a switch replaces
   # rather than adding a second pool racing for the same socket.
   expect_status "the site is still served" 200 "$(site_status "$switch_domain")"
+
+  # A switch that lands correctly can still drop requests while it happens.
+  #
+  # An nginx reload is graceful: the workers started under the old vhost keep
+  # serving until their connections end, and they are still passing to the old
+  # socket. Removing that pool the moment the reload returns unlinked their
+  # upstream underneath them, which showed up as a burst of 502s on a site that
+  # was never actually down. The site is probed continuously across a switch
+  # here so that regression cannot come back unnoticed.
+  rm -f /tmp/phase5_switch_done /tmp/phase5_switch_codes
+  : > /tmp/phase5_switch_codes
+  (
+    while [ ! -f /tmp/phase5_switch_done ]; do
+      printf '%s\n' "$(site_status "$switch_domain" "/probe.php")" \
+        >> /tmp/phase5_switch_codes
+    done
+  ) &
+  probe_pid=$!
+
+  response="$(api PATCH "/api/v1/websites/$switch_id/php" "{\"version\":\"$first\"}")"
+  job="$(printf '%s' "$response" | sed -n 's/.*"job":{"id":"\([0-9a-f-]*\)".*/\1/p')"
+  state="$(await_job "$job")"
+
+  touch /tmp/phase5_switch_done
+  wait "$probe_pid" 2>/dev/null || true
+
+  probes="$(wc -l < /tmp/phase5_switch_codes | tr -d ' ')"
+  dropped="$(grep -v '^200$' /tmp/phase5_switch_codes | wc -l | tr -d ' ')"
+  seen="$(sort -u /tmp/phase5_switch_codes | tr '\n' ' ')"
+  rm -f /tmp/phase5_switch_done /tmp/phase5_switch_codes
+
+  if [ "$state" != "SUCCESS" ]; then
+    fail "switching back to $first ended $state"
+  elif [ "$probes" -lt 5 ]; then
+    fail "the switch was not probed enough times to judge it ($probes probes)"
+  elif [ "$dropped" = "0" ]; then
+    pass "the site served every one of $probes requests during a switch"
+  else
+    fail "$dropped of $probes requests were dropped during a switch (codes seen: $seen)"
+  fi
+
+  # And it really did switch back, so the check above was not measuring a
+  # request that never changed anything.
+  php_state="$(api GET "/api/v1/websites/$switch_id/php")"
+  contains "the seamless switch landed on $first" "$php_state" "\"php_version\":\"$first\""
 fi
 
 # --------------------------------------------------------------- php.ini

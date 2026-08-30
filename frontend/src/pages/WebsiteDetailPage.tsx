@@ -23,6 +23,7 @@ import { RequirePermission } from '@/features/auth/components/RequirePermission'
 import { Permission } from '@/features/auth/permissions';
 import { WebsitePHPPanel } from '@/features/php/components/WebsitePHPPanel';
 import { WebsiteSSLPanel } from '@/features/ssl/components/WebsiteSSLPanel';
+import { SubdomainPanel } from '@/features/websites/components/SubdomainPanel';
 import {
   isJobRunning,
   useAddDomain,
@@ -163,6 +164,10 @@ export function WebsiteDetailPage() {
 
           <WebsiteSSLPanel websiteId={site.id} domain={site.primary_domain} />
           <WebsitePHPPanel websiteId={site.id} />
+          {/* A subdomain is a site of its own, so it belongs on the parent's
+              page as a list of sites rather than as another kind of name. A
+              subdomain has none of its own: one level is the whole model. */}
+          {!site.parent_website_id && <SubdomainPanel site={site} />}
           <DomainSection websiteId={site.id} />
         </div>
 

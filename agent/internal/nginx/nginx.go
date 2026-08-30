@@ -81,13 +81,25 @@ func (p *Provider) SitesDir() string { return p.sitesDir }
 //
 // The domain is validated before it becomes part of a path, so a value
 // containing a slash or "…" can never place the file outside sitesDir.
+//
+// A wildcard name is written to a file with the asterisk replaced. The
+// character is legal in a server_name and legal in a filename, but every tool
+// that later touches this directory — a shell loop over *.conf, a backup, an
+// rsync — would expand it against whatever else is there. The name in the file
+// is still the wildcard; only the filename is literal.
 func (p *Provider) configPath(domain string) (string, error) {
 	normalized := validate.NormalizeDomain(domain)
-	if err := validate.Domain(normalized); err != nil {
+	if err := validate.ServerName(normalized); err != nil {
 		return "", err
 	}
 
-	path := filepath.Join(p.sitesDir, normalized+".conf")
+	filename := normalized
+	if validate.IsWildcard(filename) {
+		filename = WildcardConfigPrefix +
+			strings.TrimPrefix(filename, validate.WildcardPrefix)
+	}
+
+	path := filepath.Join(p.sitesDir, filename+".conf")
 	if filepath.Dir(path) != p.sitesDir {
 		// Unreachable given the validation above; kept because the cost of
 		// being wrong here is writing a root-owned config anywhere on disk.
@@ -117,6 +129,13 @@ func (p *Provider) WriteRedirect(ctx context.Context, redirect Redirect) (string
 	}
 	return p.install(ctx, redirect.Domain, rendered)
 }
+
+// WildcardConfigPrefix names the vhost file of a wildcard site.
+//
+// The leading underscore also sorts it before ordinary names, which matches
+// how nginx treats it: an exact server_name always wins over a wildcard,
+// whatever order the files are included in.
+const WildcardConfigPrefix = "_wildcard."
 
 // ProxyMapName is the file holding the map every proxied site needs.
 //

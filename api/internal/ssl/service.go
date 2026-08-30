@@ -367,35 +367,29 @@ func (s *Service) certificateNames(ctx context.Context, site websites.Website) (
 
 // agentPayload builds the fields every certificate operation needs.
 //
-// The site's PHP socket is included because the Agent rewrites the whole vhost:
-// omitting it would silently turn PHP off for the site as a side effect of
-// issuing a certificate.
+// It starts from the site's complete serving state rather than assembling a
+// payload here, because the Agent rewrites the whole vhost from what it is
+// given: a field left out is a feature switched off. Issuing a certificate
+// used to drop the reverse proxy of a Node site for exactly that reason, and
+// the same shape of bug is available for every feature added later.
+//
+// The names are the exception. A certificate operation decides which names it
+// covers — a renewal covers what the existing certificate covers, which is not
+// necessarily today's alias list — so those are set here, over the top.
 func (s *Service) agentPayload(ctx context.Context, site websites.Website, names []string) (map[string]any, error) {
+	payload, err := s.websites.VhostPayload(ctx, site)
+	if err != nil {
+		return nil, err
+	}
+
 	aliases := make([]string, 0, len(names))
 	for _, name := range names {
 		if name != validate.NormalizeDomain(site.PrimaryDomain) {
 			aliases = append(aliases, name)
 		}
 	}
-
-	payload := map[string]any{
-		"website_id":    site.ID,
-		"domain":        site.PrimaryDomain,
-		"domains":       names,
-		"aliases":       aliases,
-		"document_root": site.DocumentRoot,
-	}
-
-	pool, err := s.php.GetPool(ctx, site.ID)
-	switch {
-	case err == nil:
-		payload["php_socket"] = pool.SocketPath
-	case errors.Is(err, php.ErrPoolNotFound):
-		// A static site; the vhost is rewritten without a PHP block, which is
-		// what it already had.
-	default:
-		return nil, err
-	}
+	payload["domains"] = names
+	payload["aliases"] = aliases
 
 	return payload, nil
 }

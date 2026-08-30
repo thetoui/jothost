@@ -390,6 +390,83 @@ accepting it would create configuration the panel could not take back. The
 primary domain cannot be detached — it is the site's identity and its vhost's
 `server_name`.
 
+A domain of type `subdomain` here is an extra name served by *this* site — an
+alias whose hostname happens to sit beneath the site's domain. A subdomain in
+the Plesk sense, with its own document root and vhost, is section 7.1.
+
+Adding or removing a name rewrites the site's whole vhost from its complete
+current state — its PHP socket, its certificate, its application port included.
+It used to send only the names, which turned each of those off as a side effect
+(docs/PHASE4.1.md §4).
+
+---
+
+# 7.1 Subdomains
+
+```http
+GET    /websites/:id/subdomains
+POST   /websites/:id/subdomains
+DELETE /subdomains/:id
+```
+
+**As implemented in Phase 4.1.**
+
+A subdomain is a website in its own right — its own document root, vhost, logs,
+certificate, PHP, files, databases and Node application — recorded as a website
+row with a parent rather than in a table of its own. Every endpoint that takes
+a website id therefore works on one, `GET /websites/:id` included.
+
+`POST` takes a **label**, not a hostname:
+
+```json
+{
+  "name": "shop",
+  "document_root_mode": "nested",
+  "php_pool_mode": "inherit",
+  "system_user_mode": "inherit"
+}
+```
+
+The full name is derived from the parent's own record, so a caller cannot
+create a site under a domain the parent does not own — it never supplies that
+half. The label may contain dots (`dev.shop`), which is how a name several
+levels down is created; `*` creates a wildcard that catches every name beneath
+the parent no other site claims. All three modes are optional and default to
+the values above.
+
+It returns **201** with the website and the job provisioning it, the same shape
+as `POST /websites`.
+
+Refusals worth naming:
+
+- a subdomain of a subdomain → **400**. One level is the whole model; a dotted
+  label reaches the same hostname under the top-level site.
+- `system_user_mode: "dedicated"` with `php_pool_mode: "inherit"` → **409**.
+  The parent's pool runs as the parent's user, so PHP would run as one account
+  over files owned by another: every write fails and it reads as a broken
+  application.
+- a parent that is still being created → **409**. There is no directory for a
+  nested subdomain to live in yet.
+- a name already hosted → **409**, because a name is served by one site.
+
+`DELETE /subdomains/:id` returns **202** with the job. It is separate from
+`DELETE /websites/:id` because the two differ on the one question that matters:
+whether the system account goes with the site. A subdomain that shares its
+parent's account never takes it — doing so would leave the parent's files owned
+by a user that no longer exists and the parent serving 403 to every visitor.
+Passing a top-level website here returns **400**.
+
+`DELETE /websites/:id` on a site that still has subdomains returns **409** and
+names them. The database would cascade the rows, but the rows are not the
+sites: each has a vhost on the host and nothing would be queued to remove it.
+
+`GET /websites?include_subdomains=true` adds them to the websites listing,
+which leaves them out by default so the sites page shows sites rather than
+everything nested under them.
+
+Reading needs `website.view`, creating `website.create`, removing
+`website.delete`: a subdomain is a website, so it takes a website's authority.
+
 ---
 
 # 8. PHP

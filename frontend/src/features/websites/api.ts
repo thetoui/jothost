@@ -1,11 +1,15 @@
 import { request } from '@/services/apiClient';
 import type {
+  DocumentRootMode,
   DomainCreated,
   DomainList,
   DomainType,
   Job,
   JobAccepted,
   JobList,
+  PHPPoolMode,
+  SubdomainList,
+  SystemUserMode,
   Website,
   WebsiteCreated,
   WebsiteList,
@@ -14,6 +18,18 @@ import type {
 export interface CreateWebsiteInput {
   domain: string;
   name?: string;
+}
+
+export interface CreateSubdomainInput {
+  parentId: string;
+  /**
+   * The label beneath the parent, not a full hostname: "shop", "dev.shop", or
+   * "*". The API derives the full name from the parent's own domain.
+   */
+  name: string;
+  documentRootMode: DocumentRootMode;
+  phpPoolMode: PHPPoolMode;
+  systemUserMode: SystemUserMode;
 }
 
 export interface AddDomainInput {
@@ -39,6 +55,26 @@ export const websitesApi = {
 
   remove: (id: string) =>
     request<JobAccepted>(`/websites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  subdomains: (websiteId: string, signal?: AbortSignal) =>
+    request<SubdomainList>(
+      `/websites/${encodeURIComponent(websiteId)}/subdomains`,
+      signal ? { signal } : {},
+    ),
+
+  createSubdomain: (input: CreateSubdomainInput) =>
+    request<WebsiteCreated>(`/websites/${encodeURIComponent(input.parentId)}/subdomains`, {
+      method: 'POST',
+      body: {
+        name: input.name,
+        document_root_mode: input.documentRootMode,
+        php_pool_mode: input.phpPoolMode,
+        system_user_mode: input.systemUserMode,
+      },
+    }),
+
+  removeSubdomain: (id: string) =>
+    request<JobAccepted>(`/subdomains/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   domains: (websiteId: string, signal?: AbortSignal) =>
     request<DomainList>(

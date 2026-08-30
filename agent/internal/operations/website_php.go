@@ -22,9 +22,20 @@ type websitePHPPayload struct {
 	DocumentRoot string   `json:"document_root"`
 	SystemUser   string   `json:"system_user"`
 	Version      string   `json:"version"`
-	PoolName     string   `json:"pool_name"`
-	SocketPath   string   `json:"socket_path"`
-	MaxBodySize  string   `json:"max_body_size"`
+	// The site's certificate. These operations rewrite the whole vhost, so
+	// without them switching PHP version would drop an HTTPS site back to
+	// plain HTTP — a working certificate turned off by an unrelated change.
+	CertificatePath string `json:"certificate_path"`
+	PrivateKeyPath  string `json:"private_key_path"`
+	RedirectToHTTPS bool   `json:"redirect_to_https"`
+	// ProxyPort is accepted so the payload the panel builds is decodable here,
+	// and refused with it set: a site is served by an application or by PHP,
+	// never both. The API refuses first; this is the boundary that cannot be
+	// skipped.
+	ProxyPort   int    `json:"proxy_port"`
+	PoolName    string `json:"pool_name"`
+	SocketPath  string `json:"socket_path"`
+	MaxBodySize string `json:"max_body_size"`
 
 	MemoryLimit       string `json:"memory_limit"`
 	UploadMaxFilesize string `json:"upload_max_filesize"`
@@ -39,6 +50,18 @@ type websitePHPPayload struct {
 // deliberate: a vhost passing to a socket that does not exist yet returns 502
 // to every visitor, whereas a pool nothing passes to is merely idle. If the
 // vhost step then fails, the site keeps serving exactly as it did before.
+// sslConfig builds the vhost's certificate section from the payload.
+//
+// It is the same rule as the website operations use: both paths or neither,
+// because nginx refuses a server block naming one without the other.
+func (p websitePHPPayload) sslConfig() *nginx.SSLConfig {
+	return websiteCreatePayload{
+		CertificatePath: p.CertificatePath,
+		PrivateKeyPath:  p.PrivateKeyPath,
+		RedirectToHTTPS: p.RedirectToHTTPS,
+	}.sslConfig()
+}
+
 func (r *Registry) handleWebsitePHPSet(ctx context.Context, req protocol.Request, reporter *jobs.Reporter) (map[string]any, error) {
 	var payload websitePHPPayload
 	if err := decodePayload(req, &payload); err != nil {
@@ -146,6 +169,7 @@ func (r *Registry) handleWebsitePHPSet(ctx context.Context, req protocol.Request
 		Aliases:      payload.Aliases,
 		DocumentRoot: payload.DocumentRoot,
 		MaxBodySize:  payload.MaxBodySize,
+		SSL:          payload.sslConfig(),
 		PHPSocket:    pool.SocketPath,
 	}, nil)
 	if err != nil {
@@ -221,6 +245,7 @@ func (r *Registry) handleWebsitePHPUnset(ctx context.Context, req protocol.Reque
 		Aliases:      payload.Aliases,
 		DocumentRoot: payload.DocumentRoot,
 		MaxBodySize:  payload.MaxBodySize,
+		SSL:          payload.sslConfig(),
 	}, nil)
 	if err != nil {
 		return nil, websiteError(err)

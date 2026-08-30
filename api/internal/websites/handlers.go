@@ -60,6 +60,16 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("PATCH /api/v1/websites/{id}", guarded(rbac.PermWebsiteUpdate, h.update))
 	mux.Handle("DELETE /api/v1/websites/{id}", guarded(rbac.PermWebsiteDelete, h.delete))
 
+	// A subdomain is a website, so creating one is a website.create right and
+	// removing one is website.delete: the same authority, over the same kind
+	// of thing.
+	mux.Handle("GET /api/v1/websites/{id}/subdomains",
+		guarded(rbac.PermWebsiteView, h.listSubdomains))
+	mux.Handle("POST /api/v1/websites/{id}/subdomains",
+		guarded(rbac.PermWebsiteCreate, h.createSubdomain))
+	mux.Handle("DELETE /api/v1/subdomains/{id}",
+		guarded(rbac.PermWebsiteDelete, h.deleteSubdomain))
+
 	mux.Handle("GET /api/v1/websites/{id}/domains", guarded(rbac.PermWebsiteView, h.listDomains))
 	mux.Handle("POST /api/v1/websites/{id}/domains", guarded(rbac.PermWebsiteUpdate, h.addDomain))
 	mux.Handle("DELETE /api/v1/domains/{id}", guarded(rbac.PermWebsiteUpdate, h.removeDomain))
@@ -69,7 +79,13 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r)
 	defer cancel()
 
-	params := ListParams{Status: strings.TrimSpace(r.URL.Query().Get("status"))}
+	params := ListParams{
+		Status: strings.TrimSpace(r.URL.Query().Get("status")),
+		// Subdomains are left out unless asked for: this listing is what the
+		// websites page shows, and a site with twenty subdomains would
+		// otherwise fill it on its own.
+		IncludeSubdomains: r.URL.Query().Get("include_subdomains") == "true",
+	}
 	if params.Status != "" && !validStatus(params.Status) {
 		httpx.Error(w, r, httpx.BadRequest("status is not a valid website status"))
 		return
@@ -223,6 +239,102 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// subdomainBody is the request body for creating a subdomain.
+type subdomainBody struct {
+	// Name is the label beneath the parent, not a full hostname: "shop", or
+	// "dev.shop", or "*". Taking a label rather than a hostname is what makes
+	// it impossible to create a site under a domain the parent does not own —
+	// the full name is derived here, from the parent's own record.
+	Name             string `json:"name"`
+	DocumentRootMode string `json:"document_root_mode"`
+	PHPPoolMode      string `json:"php_pool_mode"`
+	SystemUserMode   string `json:"system_user_mode"`
+}
+
+func (h *Handler) listSubdomains(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r)
+	defer cancel()
+
+	id := r.PathValue("id")
+	if !isUUID(id) {
+		httpx.Error(w, r, httpx.BadRequest("id must be a UUID"))
+		return
+	}
+
+	subdomains, err := h.service.ListSubdomains(ctx, id)
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+
+	httpx.OK(w, r, map[string]any{"subdomains": subdomains, "count": len(subdomains)})
+}
+
+func (h *Handler) createSubdomain(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r)
+	defer cancel()
+
+	id := r.PathValue("id")
+	if !isUUID(id) {
+		httpx.Error(w, r, httpx.BadRequest("id must be a UUID"))
+		return
+	}
+
+	var body subdomainBody
+	if err := decode(w, r, &body); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	claims, _ := auth.ClaimsFromContext(r.Context())
+
+	result, err := h.service.CreateSubdomain(ctx, CreateSubdomainRequest{
+		ParentID:         id,
+		Name:             body.Name,
+		DocumentRootMode: body.DocumentRootMode,
+		PHPPoolMode:      body.PHPPoolMode,
+		SystemUserMode:   body.SystemUserMode,
+		Actor:            claims.UserID,
+		IPAddress:        clientIP(r),
+		UserAgent:        r.UserAgent(),
+	})
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+
+	httpx.Created(w, r, result)
+}
+
+func (h *Handler) deleteSubdomain(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r)
+	defer cancel()
+
+	id := r.PathValue("id")
+	if !isUUID(id) {
+		httpx.Error(w, r, httpx.BadRequest("id must be a UUID"))
+		return
+	}
+
+	claims, _ := auth.ClaimsFromContext(r.Context())
+
+	job, err := h.service.DeleteSubdomain(ctx, DeleteRequest{
+		WebsiteID: id,
+		Actor:     claims.UserID,
+		IPAddress: clientIP(r),
+		UserAgent: r.UserAgent(),
+	})
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+
+	httpx.WriteJSON(w, r, http.StatusAccepted, httpx.Envelope{
+		Success: true,
+		Data:    map[string]any{"job": job},
+	})
+}
+
 func (h *Handler) listDomains(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r)
 	defer cancel()
@@ -339,8 +451,20 @@ func translate(err error) error {
 		return httpx.BadRequest("SSL is not available yet")
 	case errors.Is(err, ErrRedirectUnsupported):
 		return httpx.BadRequest("Redirect domains are not available yet")
-	case errors.Is(err, ErrInvalidState):
+	case errors.Is(err, ErrInvalidState), errors.Is(err, ErrParentNotReady):
 		return httpx.Conflict(err.Error())
+	case errors.Is(err, ErrHasSubdomains):
+		return httpx.Conflict(err.Error())
+	case errors.Is(err, ErrNestedSubdomain):
+		return httpx.BadRequest(err.Error())
+	case errors.Is(err, ErrNotSubdomain):
+		return httpx.BadRequest(
+			"That website is not a subdomain; delete it as a website instead")
+	case errors.Is(err, validate.ErrInvalidSubdomain),
+		errors.Is(err, validate.ErrInvalidDocumentRootMode),
+		errors.Is(err, validate.ErrInvalidPHPPoolMode),
+		errors.Is(err, validate.ErrInvalidSystemUserMode):
+		return httpx.ValidationFailed(err.Error())
 	case errors.Is(err, validate.ErrInvalidDomain),
 		errors.Is(err, validate.ErrInvalidSystemUser):
 		return httpx.ValidationFailed(err.Error())

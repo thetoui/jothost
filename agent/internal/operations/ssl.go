@@ -38,9 +38,20 @@ type sslPayload struct {
 	Email        string   `json:"email"`
 	Staging      bool     `json:"staging"`
 	DocumentRoot string   `json:"document_root"`
-	PHPSocket    string   `json:"php_socket"`
-	MaxBodySize  string   `json:"max_body_size"`
-	Aliases      []string `json:"aliases"`
+	// SystemUser is not acted on here — a certificate has no owner — but it is
+	// part of every vhost payload the panel builds, and rejecting it would
+	// make that one builder unusable for this operation.
+	SystemUser  string   `json:"system_user"`
+	PHPSocket   string   `json:"php_socket"`
+	MaxBodySize string   `json:"max_body_size"`
+	Aliases     []string `json:"aliases"`
+	// ProxyPort keeps a reverse-proxied site proxied. Issuing a certificate
+	// rewrites the whole vhost, so without this a Node.js site would go onto
+	// HTTPS and stop reaching its own application in the same operation.
+	ProxyPort int `json:"proxy_port"`
+	// PrivateKeyPath is carried for symmetry with the rest of the payload; the
+	// key this operation installs is the one the provider just wrote.
+	PrivateKeyPath string `json:"private_key_path"`
 	// RedirectToHTTPS sends plain HTTP to the secure site once the certificate
 	// is live.
 	RedirectToHTTPS bool `json:"redirect_to_https"`
@@ -169,6 +180,7 @@ func (r *Registry) handleSSLRevoke(ctx context.Context, req protocol.Request, re
 			DocumentRoot: payload.DocumentRoot,
 			MaxBodySize:  payload.MaxBodySize,
 			PHPSocket:    payload.PHPSocket,
+			ProxyPort:    payload.ProxyPort,
 			// No SSL: the rendered vhost drops the HTTPS block entirely.
 		}, nil)
 		if err != nil {
@@ -242,6 +254,7 @@ func (r *Registry) applyCertificate(ctx context.Context, payload sslPayload, cer
 		DocumentRoot: payload.DocumentRoot,
 		MaxBodySize:  payload.MaxBodySize,
 		PHPSocket:    payload.PHPSocket,
+		ProxyPort:    payload.ProxyPort,
 		SSL: &nginx.SSLConfig{
 			CertificatePath: certificate.CertPath,
 			PrivateKeyPath:  certificate.KeyPath,

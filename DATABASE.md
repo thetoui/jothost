@@ -185,6 +185,69 @@ created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
 ```
 
+**Extended in migration 0010 (Phase 4.1).** A subdomain is a website row with
+a parent, not a separate table:
+
+```sql
+parent_website_id UUID REFERENCES websites(id) ON DELETE CASCADE
+document_root_mode VARCHAR(10)
+php_pool_mode VARCHAR(10)
+system_user_mode VARCHAR(10)
+
+CHECK ((parent_website_id IS NULL) = (document_root_mode IS NULL)
+   AND (parent_website_id IS NULL) = (php_pool_mode IS NULL)
+   AND (parent_website_id IS NULL) = (system_user_mode IS NULL))
+CHECK (document_root_mode IS NULL OR document_root_mode IN ('nested', 'isolated'))
+CHECK (php_pool_mode IS NULL OR php_pool_mode IN ('inherit', 'dedicated'))
+CHECK (system_user_mode IS NULL OR system_user_mode IN ('inherit', 'dedicated'))
+CHECK (parent_website_id IS NULL OR parent_website_id <> id)
+CHECK (system_user_mode IS DISTINCT FROM 'dedicated' OR php_pool_mode = 'dedicated')
+```
+
+A subdomain needs a document root, a system account, a PHP version, a
+certificate, logs, a file manager, a database, possibly a Node application —
+which is the list of things a website has. A separate table would duplicate
+every one of them, and every feature already built would have to learn that a
+site is sometimes one thing and sometimes another. See docs/PHASE4.1.md §2.
+
+`ON DELETE CASCADE` here, unlike a database's `SET NULL`: a subdomain cannot
+outlive its parent. It is a backstop rather than the path taken — the API
+refuses to delete a website that still has subdomains, because the rows are not
+the sites and nothing would be queued to remove their vhosts.
+
+The last check is the one worth reading twice. A dedicated account with an
+inherited pool would run PHP as the parent's user over files owned by the
+subdomain's: every write fails, and it reads as a broken application rather
+than a bad configuration.
+
+The three modes are non-null exactly when there is a parent. A mode on a
+top-level row would be a value with no meaning that some later query would read
+anyway.
+
+**Shared accounts.** `websites_system_user_idx` became partial:
+
+```sql
+CREATE UNIQUE INDEX websites_system_user_idx ON websites (system_username)
+    WHERE system_user_mode IS DISTINCT FROM 'inherit';
+```
+
+A subdomain that inherits its parent's account shares that account's name. The
+index still does its original job — two *independent* sites sharing an account
+would let a compromised one read the other's files — by applying to the rows
+that own their account; an inheriting row is a copy of a parent row that is
+itself unique.
+
+**Wildcard names.** `websites_domain_format` accepts a leading `*.` label, and
+only on a subdomain row: on a top-level site it would be a site whose own
+identity matches nothing. `domains_format` accepts it too, since a subdomain
+carries a primary domain row like any other website.
+
+**Nesting depth.** A subdomain's parent must be a top-level site, enforced by
+the `websites_no_nested_subdomains` trigger. This cannot be a CHECK constraint:
+the rule is about another row, and a CHECK may not run a subquery. A name
+several levels down is still reachable — the label may contain dots, so
+`dev.shop.example.com` is one subdomain of `example.com`.
+
 **Note on `system_username`.** This field was specified as `system_user`.
 PostgreSQL 16 made `SYSTEM_USER` a reserved keyword (SQL:2023), so that name is
 a syntax error unquoted and, in some contexts, silently resolves to the
@@ -214,6 +277,17 @@ alias
 subdomain
 redirect
 ```
+
+A `subdomain` row here is **not** a subdomain site. It is an extra name served
+by *this* site whose hostname happens to sit beneath its domain — an alias by
+another name. A subdomain in the Phase 4.1 sense is its own website row with
+its own vhost and document root (table 9).
+
+The two cannot collide: `domain` is unique across the whole table and every
+website — subdomains included — writes its primary name into it, so a name can
+be an alias of one site or the identity of another, never both. Two server
+blocks answering to one name is a configuration nginx resolves by picking one,
+which is not a decision the panel should leave to it.
 
 ---
 

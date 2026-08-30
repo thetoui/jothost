@@ -4,6 +4,7 @@ import {
   jobsApi,
   websitesApi,
   type AddDomainInput,
+  type CreateSubdomainInput,
   type CreateWebsiteInput,
 } from '@/features/websites/api';
 import type { Job, Website } from '@/types/api';
@@ -14,6 +15,7 @@ export const websiteKeys = {
   list: () => [...websiteKeys.all, 'list'] as const,
   detail: (id: string) => [...websiteKeys.all, 'detail', id] as const,
   domains: (id: string) => [...websiteKeys.all, 'domains', id] as const,
+  subdomains: (id: string) => [...websiteKeys.all, 'subdomains', id] as const,
   jobs: (id: string) => [...websiteKeys.all, 'jobs', id] as const,
 };
 
@@ -133,6 +135,49 @@ export function useRemoveDomain(websiteId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(websiteId) });
       void queryClient.invalidateQueries({ queryKey: websiteKeys.domains(websiteId) });
+    },
+  });
+}
+
+/** useSubdomains lists the sites beneath a website. */
+export function useSubdomains(websiteId: string | undefined) {
+  return useQuery({
+    queryKey: websiteKeys.subdomains(websiteId ?? ''),
+    queryFn: ({ signal }) => websitesApi.subdomains(websiteId as string, signal),
+    enabled: Boolean(websiteId),
+    refetchInterval: (query) => {
+      const subdomains = query.state.data?.subdomains ?? [];
+      return subdomains.some((site) => isSettling(site.status)) ? WORK_IN_FLIGHT_MS : false;
+    },
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** useCreateSubdomain adds a site beneath a website. */
+export function useCreateSubdomain() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateSubdomainInput) => websitesApi.createSubdomain(input),
+    onSuccess: (_result, input) => {
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.subdomains(input.parentId) });
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(input.parentId) });
+      // A subdomain is a website, so the sites listing can show it too.
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.list() });
+    },
+  });
+}
+
+/** useDeleteSubdomain removes a site beneath a website. */
+export function useDeleteSubdomain(parentId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => websitesApi.removeSubdomain(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.subdomains(parentId) });
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(parentId) });
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.list() });
     },
   });
 }

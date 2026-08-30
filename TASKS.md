@@ -255,22 +255,56 @@ Only authorised callers may change it. verified: 401 anonymous, 403 without perm
 
 # PHASE 4.1 — Subdomain Manager (Plesk Style)
 
-- [ ] Subdomain database schema & parent website relationship
-- [ ] Document Root mapping options:
-Nested path (e.g., /var/www/vhosts/example.com/sub.example.com)
-Isolated path (e.g., /var/www/vhosts/sub.example.com)
+**Status: COMPLETE** — see [docs/PHASE4.1.md](docs/PHASE4.1.md) for scope,
+decisions, and known limitations.
 
-- [ ] Dedicated Nginx vhost & Apache VirtualHost generation for subdomains
-- [ ] PHP-FPM Pool strategy selector:
+- [x] Subdomain database schema & parent website relationship
+- [x] Document Root mapping options:
+Nested path (e.g., /var/www/example.com/sub.example.com)
+Isolated path (e.g., /var/www/sub.example.com)
+
+- [x] Dedicated Nginx vhost generation for subdomains
+- [x] PHP-FPM Pool strategy selector:
 Inherit parent site pool
 Dedicated isolated PHP-FPM pool & socket per subdomain
 
-- [ ] Dedicated SSL certificate issuance (Certbot / Let's Encrypt) per subdomain
-- [ ] Wildcard subdomain support (*.example.com) & Catch-all routing
-- [ ] Isolated Access & Error log files per subdomain
-- [ ] Automatic DNS record injection (A / AAAA / CNAME) into parent domain's zone
-- [ ] User permission model (Parent site user ownership vs Dedicated FTP/System user)
-- [ ] Subdomain API endpoints & UI management tab (Plesk-style collapsible site card)
+- [x] Dedicated SSL certificate issuance (Certbot / Let's Encrypt) per subdomain
+- [x] Wildcard subdomain support (*.example.com) & Catch-all routing
+- [x] Isolated Access & Error log files per subdomain
+- [x] User permission model (Parent site user ownership vs Dedicated system user)
+- [x] Subdomain API endpoints & UI management tab (Plesk-style collapsible site card)
+
+Two items belong to phases that do not exist yet, and building them here would
+mean building those phases. They are deferred rather than dropped:
+
+- [ ] Apache VirtualHost generation — **Phase 4.5**, which is where the Apache
+  provider is. This phase writes the nginx vhost, which is what the host runs
+  today; when the hybrid engine lands, a subdomain is a vhost like any other.
+- [ ] Automatic DNS record injection (A / AAAA / CNAME) into the parent's zone —
+  **Phase 13**, which is where a zone exists at all. A subdomain needs no DNS
+  from this panel to work: it is reached through whatever already resolves the
+  parent.
+
+A subdomain is a website row with a parent, not a separate table, which is why
+SSL, PHP, files, databases and Node apply to one unchanged. See docs/PHASE4.1.md
+section 2.
+
+Additionally required by the above:
+
+- [x] One place that assembles a site's complete vhost state, so a rewrite no
+  longer turns PHP, HTTPS or a reverse proxy off as a side effect of an
+  unrelated change (docs/PHASE4.1.md section 4)
+- [x] Wildcard names accepted as an nginx server_name, and kept out of every
+  filename
+- [x] PHP refused on a site served by a Node application
+
+Test:
+
+```text
+Nested subdomain
+Isolated subdomain with its own account
+Wildcard catch-all
+```
 
 # PHASE 4.5 — Apache Hybrid Engine (Nginx + Apache)
 
@@ -388,6 +422,23 @@ Security:
 - [x] Symlink escape test
 - [x] Permission test
 - [x] Unauthorized access test
+
+---
+
+# PHASE 7.1 — FTP Manager (Plesk Style)
+
+- [ ] Pure-FTPd / ProFTPD provider & daemon configuration engine
+- [ ] FTP user database schema (Virtual FTP users tied to system accounts)
+- [ ] Additional FTP users per website/subscription
+- [ ] Strict Directory Chroot (chroot jail) to prevent path traversal outside home/document root
+- [ ] Granular permission assignment per FTP user (Read-only / Full access)
+- [ ] FTPS (FTP over TLS/SSL) enforcement & certificate binding
+- [ ] Passive port range configuration (PassivePortRange) & automatic firewall sync
+- [ ] Custom home directory mapping (e.g., restrict to specific subfolder /var/www/vhosts/example.com/httpdocs/assets)
+- [ ] FTP quota enforcement (Disk space limits per FTP user)
+- [ ] FTP active session monitor & disconnect user API
+- [ ] FTP connection & transfer logs tracking
+- [ ] FTP management UI tab in Website Manager (Plesk-style additional FTP accounts card)
 
 ---
 

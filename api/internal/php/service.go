@@ -245,23 +245,40 @@ func (s *Service) SetVersion(ctx context.Context, req SetRequest) (jobs.Job, err
 		return jobs.Job{}, err
 	}
 
+	// This operation rewrites the whole vhost, so the payload starts from the
+	// site's complete serving state. Assembling it here from the fields PHP
+	// happens to care about is what used to drop a site's certificate when its
+	// PHP version was changed.
+	payload, err := s.websites.VhostPayload(ctx, site)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+	// A site is served by an application or by PHP, never both: a vhost
+	// carrying both would send some URLs to FPM and the rest to the
+	// application depending on the path. The renderer refuses that
+	// configuration, so refusing here is the difference between a clear
+	// message and a job that fails on the host.
+	if _, proxied := payload["proxy_port"]; proxied {
+		return jobs.Job{}, fmt.Errorf(
+			"%w: it is served by a Node.js application; stop the application first",
+			ErrWebsiteNotReady)
+	}
+	// The site's *current* socket is not the one this job installs, and the
+	// operation derives the vhost's socket from the pool it is about to write.
+	// Sending both would be two answers to one question.
+	delete(payload, "php_socket")
+	payload["version"] = version
+	payload["pool_name"] = poolName
+	payload["socket_path"] = socketPath
+	payload["memory_limit"] = settings.MemoryLimit
+	payload["upload_max_filesize"] = settings.UploadMaxFilesize
+	payload["max_execution_time"] = settings.MaxExecutionTime
+	payload["opcache_enabled"] = settings.OPcacheEnabled
+	payload["max_children"] = settings.MaxChildren
+
 	job, err := s.jobs.Create(ctx, jobs.CreateParams{
-		Type: jobs.TypeWebsitePHPSet,
-		Payload: map[string]any{
-			"website_id":          site.ID,
-			"domain":              site.PrimaryDomain,
-			"document_root":       site.DocumentRoot,
-			"system_user":         site.SystemUser,
-			"version":             version,
-			"pool_name":           poolName,
-			"socket_path":         socketPath,
-			"memory_limit":        settings.MemoryLimit,
-			"upload_max_filesize": settings.UploadMaxFilesize,
-			"max_execution_time":  settings.MaxExecutionTime,
-			"opcache_enabled":     settings.OPcacheEnabled,
-			"max_children":        settings.MaxChildren,
-			"aliases":             s.aliasesOf(ctx, site.ID),
-		},
+		Type:         jobs.TypeWebsitePHPSet,
+		Payload:      payload,
 		CreatedBy:    req.Actor.UserID,
 		ResourceType: ResourceTypeWebsite,
 		ResourceID:   site.ID,
@@ -290,17 +307,20 @@ func (s *Service) disablePHP(ctx context.Context, site websites.Website, actor A
 		return jobs.Job{}, err
 	}
 
+	payload, err := s.websites.VhostPayload(ctx, site)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+	// The pool row is already gone from the record, so the payload carries no
+	// socket: the vhost is rewritten as a static site, which is what turning
+	// PHP off means. The certificate and the aliases stay.
+	delete(payload, "php_socket")
+	payload["version"] = existing.PHPVersion
+	payload["pool_name"] = existing.PoolName
+
 	job, err := s.jobs.Create(ctx, jobs.CreateParams{
-		Type: jobs.TypeWebsitePHPUnset,
-		Payload: map[string]any{
-			"website_id":    site.ID,
-			"domain":        site.PrimaryDomain,
-			"document_root": site.DocumentRoot,
-			"system_user":   site.SystemUser,
-			"version":       existing.PHPVersion,
-			"pool_name":     existing.PoolName,
-			"aliases":       s.aliasesOf(ctx, site.ID),
-		},
+		Type:         jobs.TypeWebsitePHPUnset,
+		Payload:      payload,
 		CreatedBy:    actor.UserID,
 		ResourceType: ResourceTypeWebsite,
 		ResourceID:   site.ID,
@@ -395,28 +415,6 @@ func (s *Service) resolveSettings(ctx context.Context, websiteID string, request
 		return resolvedSettings{}, err
 	}
 	return current, nil
-}
-
-// aliasesOf returns a site's non-primary hostnames.
-//
-// The vhost is rewritten as part of a PHP change, and it must keep serving
-// every name the site already answered to.
-func (s *Service) aliasesOf(ctx context.Context, websiteID string) []string {
-	domains, err := s.websites.ListDomains(ctx, websiteID)
-	if err != nil {
-		s.log.Error("failed to read site domains for a php change",
-			"website_id", websiteID, logger.KeyError, err.Error())
-		return nil
-	}
-
-	aliases := make([]string, 0, len(domains))
-	for _, domain := range domains {
-		if domain.Type == websites.DomainPrimary {
-			continue
-		}
-		aliases = append(aliases, domain.Domain)
-	}
-	return aliases
 }
 
 // record writes an audit event, logging rather than failing the request.

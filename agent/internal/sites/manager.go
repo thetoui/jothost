@@ -116,7 +116,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 	}
 
 	domain := validate.NormalizeDomain(req.Domain)
-	if err := validate.Domain(domain); err != nil {
+	if err := validate.ServerName(domain); err != nil {
 		return CreateResult{}, err
 	}
 	if err := validate.SystemUser(req.SystemUser); err != nil {
@@ -126,7 +126,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 	aliases := make([]string, 0, len(req.Aliases))
 	for _, alias := range req.Aliases {
 		normalized := validate.NormalizeDomain(alias)
-		if err := validate.Domain(normalized); err != nil {
+		if err := validate.ServerName(normalized); err != nil {
 			return CreateResult{}, fmt.Errorf("alias %q: %w", alias, err)
 		}
 		if normalized == domain {
@@ -218,7 +218,7 @@ type DeleteResult struct {
 // live server would serve half-deleted directories to whoever is browsing.
 func (m *Manager) Delete(ctx context.Context, req DeleteRequest, report func(int, string)) (DeleteResult, error) {
 	domain := validate.NormalizeDomain(req.Domain)
-	if err := validate.Domain(domain); err != nil {
+	if err := validate.ServerName(domain); err != nil {
 		return DeleteResult{}, err
 	}
 
@@ -287,7 +287,7 @@ type Status struct {
 // becomes visible instead of silently disagreeing.
 func (m *Manager) StatusOf(ctx context.Context, domain, documentRoot, systemUser string) (Status, error) {
 	normalized := validate.NormalizeDomain(domain)
-	if err := validate.Domain(normalized); err != nil {
+	if err := validate.ServerName(normalized); err != nil {
 		return Status{}, err
 	}
 
@@ -439,14 +439,14 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 	}
 
 	domain := validate.NormalizeDomain(req.Domain)
-	if err := validate.Domain(domain); err != nil {
+	if err := validate.ServerName(domain); err != nil {
 		return UpdateResult{}, err
 	}
 
 	aliases := make([]string, 0, len(req.Aliases))
 	for _, alias := range req.Aliases {
 		normalized := validate.NormalizeDomain(alias)
-		if err := validate.Domain(normalized); err != nil {
+		if err := validate.ServerName(normalized); err != nil {
 			return UpdateResult{}, fmt.Errorf("alias %q: %w", alias, err)
 		}
 		if normalized == domain {

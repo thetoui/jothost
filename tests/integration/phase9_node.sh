@@ -357,8 +357,9 @@ JS
 site_group="$(stat -c '%G' "$ROOT")"
 chown "$OWNER":"$site_group" "$ROOT/package.json" "$ROOT/server.js"
 
+APP_NAME="jothost-p9-check"
 app_created="$(api POST /api/v1/node/apps \
-  "{\"website_id\":\"$SITE\",\"port\":$APP_PORT,\"startup_file\":\"server.js\"}")"
+  "{\"website_id\":\"$SITE\",\"port\":$APP_PORT,\"startup_file\":\"server.js\",\"name\":\"$APP_NAME\"}")"
 APP="$(json_field "$app_created" 'id')"
 
 contains 'creating the application reports it back' "$app_created" '"port":'
@@ -552,14 +553,11 @@ else
   fail 'the code and its dependencies are left alone'
 fi
 
-# And nothing of the panel's is left behind.
-if [ -f /var/lib/jothost/node/*.pid ] 2>/dev/null; then
-  remaining="$(ls /var/lib/jothost/node/*.pid 2>/dev/null | wc -l)"
-else
-  remaining=0
-fi
-if [ "${remaining:-0}" -eq 0 ]; then
-  pass 'no process record is left behind'
+# And nothing of the panel's is left behind. The pid file names the
+# application, so only this application's is looked for: another suite's
+# application may legitimately be running alongside.
+if [ -f "/var/lib/jothost/node/$APP_NAME.pid" ]; then
+  fail 'no process record is left behind'
 else
   pass 'no process record is left behind'
 fi

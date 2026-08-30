@@ -7,12 +7,18 @@ import (
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/sites"
+	"github.com/jothost/panel/agent/internal/ssl"
 	"github.com/jothost/panel/shared/protocol"
 	"github.com/jothost/panel/shared/validate"
 )
 
 // websiteCreatePayload describes a website to provision.
 type websiteCreatePayload struct {
+	// WebsiteID is the panel's id for the site. The Agent does not act on it —
+	// it works in domains and paths — but it is accepted and logged, because
+	// every other vhost-writing operation carries it and rejecting it here
+	// would make the panel's one payload builder unusable for this operation.
+	WebsiteID    string   `json:"website_id"`
 	Domain       string   `json:"domain"`
 	Aliases      []string `json:"aliases"`
 	DocumentRoot string   `json:"document_root"`
@@ -26,6 +32,37 @@ type websiteCreatePayload struct {
 	// carrying both it and a proxy port is refused by the renderer, because a
 	// site is served by one thing or the other.
 	PHPSocket string `json:"php_socket"`
+
+	// The site's certificate, carried by every operation that rewrites the
+	// vhost rather than only by the certificate operations.
+	//
+	// The Agent renders the whole file from this payload, so a rewrite that
+	// omitted these would drop the site back to plain HTTP as a side effect of
+	// adding an alias or switching PHP version — a working HTTPS site turned
+	// off by an unrelated change, with nothing in the panel saying so.
+	CertificatePath string `json:"certificate_path"`
+	PrivateKeyPath  string `json:"private_key_path"`
+	RedirectToHTTPS bool   `json:"redirect_to_https"`
+}
+
+// sslConfig builds the vhost's certificate section from the payload.
+//
+// Both paths are required: nginx needs the key to serve the certificate, and a
+// server block naming one without the other is refused at validation — which
+// on a reload means the whole host keeps the previous configuration.
+func (p websiteCreatePayload) sslConfig() *nginx.SSLConfig {
+	if p.CertificatePath == "" || p.PrivateKeyPath == "" {
+		return nil
+	}
+	return &nginx.SSLConfig{
+		CertificatePath: p.CertificatePath,
+		PrivateKeyPath:  p.PrivateKeyPath,
+		RedirectToHTTPS: p.RedirectToHTTPS,
+		// The challenge path stays open on every HTTPS site: a renewal
+		// arrives over plain HTTP, and a site that redirects it to HTTPS
+		// cannot be renewed at all.
+		ChallengeRoot: ssl.ACMEChallengeDir,
+	}
 }
 
 func (r *Registry) handleWebsiteCreate(ctx context.Context, req protocol.Request, reporter *jobs.Reporter) (map[string]any, error) {
@@ -49,6 +86,9 @@ func (r *Registry) handleWebsiteCreate(ctx context.Context, req protocol.Request
 		DocumentRoot: payload.DocumentRoot,
 		SystemUser:   payload.SystemUser,
 		MaxBodySize:  payload.MaxBodySize,
+		PHPSocket:    payload.PHPSocket,
+		ProxyPort:    payload.ProxyPort,
+		SSL:          payload.sslConfig(),
 	}, reporterFunc(reporter))
 	if err != nil {
 		return nil, websiteError(err)
@@ -129,6 +169,14 @@ func (r *Registry) removeSiteCertificate(domain string) bool {
 		return false
 	}
 
+	// A wildcard site has no certificate of its own: issuing one needs a DNS
+	// challenge, which this panel does not do. Asking anyway produces a
+	// warning about an invalid certificate domain on every wildcard deletion,
+	// which is noise that would train an operator to ignore the log line.
+	if validate.IsWildcard(domain) {
+		return false
+	}
+
 	if err := r.deps.SSL.Remove(domain); err != nil {
 		r.log.Warn("website deleted but its certificate could not be removed",
 			"domain", domain, "error", err.Error())
@@ -194,6 +242,7 @@ func (r *Registry) handleWebsiteUpdate(ctx context.Context, req protocol.Request
 		MaxBodySize:  payload.MaxBodySize,
 		PHPSocket:    payload.PHPSocket,
 		ProxyPort:    payload.ProxyPort,
+		SSL:          payload.sslConfig(),
 	}, reporterFunc(reporter))
 	if err != nil {
 		return nil, websiteError(err)

@@ -188,7 +188,11 @@ const defaultMaxBodySize = "64m"
 // function is the last point before text becomes a config nginx will execute,
 // and it must not depend on a caller having remembered.
 func Render(cfg SiteConfig) (string, error) {
-	if err := validate.Domain(cfg.PrimaryDomain); err != nil {
+	// ServerName rather than Domain: a subdomain may be a wildcard, which is
+	// what makes catch-all routing possible. Everything else a wildcard could
+	// be — a bare asterisk answering for every name on the host, an asterisk
+	// inside a label — is still refused.
+	if err := validate.ServerName(cfg.PrimaryDomain); err != nil {
 		return "", err
 	}
 	if cfg.ProxyPort != 0 {
@@ -204,7 +208,7 @@ func Render(cfg SiteConfig) (string, error) {
 		}
 	}
 	for _, alias := range cfg.Aliases {
-		if err := validate.Domain(alias); err != nil {
+		if err := validate.ServerName(alias); err != nil {
 			return "", fmt.Errorf("alias %q: %w", alias, err)
 		}
 	}

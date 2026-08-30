@@ -515,14 +515,29 @@ func (s *Service) writeEnvironment(ctx context.Context, requestID string,
 }
 
 // proxyWebsite points the site's vhost at the application, or back at files.
+//
+// The payload is the site's complete serving state with the port set over the
+// top. Sending only the port — which is all this used to send — rewrote the
+// vhost without the site's aliases or its certificate, so starting an
+// application dropped its own site off HTTPS.
+//
+// The port is applied here rather than resolved from the record because this
+// runs *while* the application is starting: the record does not say "running"
+// yet, and asking it would point nginx back at the files it is replacing.
 func (s *Service) proxyWebsite(ctx context.Context, requestID string,
 	site websites.Website, port int,
 ) error {
-	return s.agent.UpdateWebsite(ctx, requestID, map[string]any{
-		"domain":        site.PrimaryDomain,
-		"document_root": site.DocumentRoot,
-		"proxy_port":    port,
-	})
+	payload, err := s.websites.VhostPayload(ctx, site)
+	if err != nil {
+		return err
+	}
+	payload["proxy_port"] = port
+	if port != 0 {
+		// A proxied site is served by its application, so it has no PHP block.
+		// The renderer refuses a configuration carrying both.
+		delete(payload, "php_socket")
+	}
+	return s.agent.UpdateWebsite(ctx, requestID, payload)
 }
 
 // load reads an application and its website together.

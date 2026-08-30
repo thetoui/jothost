@@ -271,6 +271,13 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// The websites service can now resolve a site's complete vhost: which FPM
+	// socket it serves PHP through, which certificate it holds, which
+	// application it proxies to. Without this every vhost rewrite would send
+	// only the names, turning PHP, HTTPS and the reverse proxy off as a side
+	// effect of adding an alias (see websites/serving.go).
+	websiteRepo.SetServingSources(servingSources(phpRepo, sslRepo, nodeRepo))
+
 	if opts.LocalServerID != "" {
 		// The worker reconciles websites through the service, so a finished
 		// job moves the site to active or failed rather than leaving it in

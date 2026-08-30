@@ -256,6 +256,15 @@ export interface WebsiteDomain {
   created_at: string;
 }
 
+/** Where a subdomain's files live. */
+export type DocumentRootMode = 'nested' | 'isolated';
+
+/** Whether a subdomain shares its parent's PHP pool or has its own. */
+export type PHPPoolMode = 'inherit' | 'dedicated';
+
+/** Whether a subdomain's files belong to its parent's account or its own. */
+export type SystemUserMode = 'inherit' | 'dedicated';
+
 export interface Website {
   id: string;
   server_id: string;
@@ -267,9 +276,22 @@ export interface Website {
   status: WebsiteStatus;
   ssl_enabled: boolean;
   https_redirect: boolean;
+  /** Set on a subdomain; null on a top-level site. */
+  parent_website_id: string | null;
+  /** The three modes are set together on a subdomain, or all null. */
+  document_root_mode: DocumentRootMode | null;
+  php_pool_mode: PHPPoolMode | null;
+  system_user_mode: SystemUserMode | null;
   created_at: string;
   updated_at: string;
   domains?: WebsiteDomain[];
+  /** Present on a top-level site loaded on its own. */
+  subdomains?: Website[];
+}
+
+export interface SubdomainList {
+  subdomains: Website[];
+  count: number;
 }
 
 export interface WebsiteList {

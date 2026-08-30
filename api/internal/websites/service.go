@@ -208,6 +208,27 @@ func (s *Service) Delete(ctx context.Context, req DeleteRequest) (jobs.Job, erro
 		return jobs.Job{}, fmt.Errorf("%w: it is already being deleted", ErrInvalidState)
 	}
 
+	// A parent with subdomains is refused rather than cascaded.
+	//
+	// The database would delete the rows, but the rows are not the site: each
+	// subdomain has a vhost and possibly an account on the host, and nothing
+	// would be queued to remove them. The panel would forget about names nginx
+	// is still serving — and with a nested layout, the parent's deletion takes
+	// the subdomain's files while its configuration stays live, which is a
+	// 403 for a site nobody can find in the panel any more.
+	subdomains, err := s.repo.ListSubdomains(ctx, site.ID)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+	if len(subdomains) > 0 {
+		names := make([]string, 0, len(subdomains))
+		for _, sub := range subdomains {
+			names = append(names, sub.PrimaryDomain)
+		}
+		return jobs.Job{}, fmt.Errorf("%w: remove %s first",
+			ErrHasSubdomains, strings.Join(names, ", "))
+	}
+
 	if err := s.repo.SetStatus(ctx, site.ID, StatusDeleting); err != nil {
 		return jobs.Job{}, err
 	}
@@ -353,33 +374,23 @@ func (s *Service) RemoveDomain(ctx context.Context, req RemoveDomainRequest) (jo
 
 // queueVhostUpdate asks the Agent to rewrite a site's nginx configuration.
 //
-// The payload carries the full desired server_name set rather than a delta:
-// the Agent rewrites the vhost from it, so a job that is retried or arrives
-// out of order still converges on the same configuration.
+// The payload carries the site's full desired state rather than a delta: the
+// Agent rewrites the vhost from it, so a job that is retried or arrives out of
+// order still converges on the same configuration.
+//
+// "Full" includes the PHP socket, the certificate and the application port,
+// which is why this goes through VhostPayload. Sending only the names — which
+// is all this function used to send — turned PHP, HTTPS and the reverse proxy
+// off as a side effect of adding an alias.
 func (s *Service) queueVhostUpdate(ctx context.Context, site Website, actor string) (jobs.Job, error) {
-	domains, err := s.repo.ListDomains(ctx, site.ID)
+	payload, err := s.repo.VhostPayload(ctx, site)
 	if err != nil {
 		return jobs.Job{}, err
 	}
 
-	// Redirect domains are refused at the door, so only the primary and the
-	// aliases can be present here.
-	aliases := []string{}
-	for _, domain := range domains {
-		if domain.Type == DomainPrimary {
-			continue
-		}
-		aliases = append(aliases, domain.Domain)
-	}
-
 	return s.jobs.Create(ctx, jobs.CreateParams{
-		Type: jobs.TypeWebsiteUpdate,
-		Payload: map[string]any{
-			"domain":        site.PrimaryDomain,
-			"document_root": site.DocumentRoot,
-			"system_user":   site.SystemUser,
-			"aliases":       aliases,
-		},
+		Type:         jobs.TypeWebsiteUpdate,
+		Payload:      payload,
 		CreatedBy:    actor,
 		ResourceType: ResourceTypeWebsite,
 		ResourceID:   site.ID,

@@ -16,6 +16,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/jothost/panel/shared/validate"
 )
 
 // Status values a website can hold. They match the CHECK constraint in
@@ -49,12 +51,42 @@ type Website struct {
 	SSLEnabled    bool    `json:"ssl_enabled"`
 	HTTPSRedirect bool    `json:"https_redirect"`
 
+	// ParentWebsiteID is set on a subdomain and nil on a top-level site.
+	// A subdomain is a website row like any other (migration 0010), so every
+	// feature keyed on website_id — PHP, SSL, files, databases, Node — applies
+	// to it unchanged.
+	ParentWebsiteID *string `json:"parent_website_id"`
+	// The three modes are set together with the parent, or all nil.
+	DocumentRootMode *string `json:"document_root_mode"`
+	PHPPoolMode      *string `json:"php_pool_mode"`
+	SystemUserMode   *string `json:"system_user_mode"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
 	// Domains is populated by Get, not by List: a listing does not need every
 	// site's alias table, and fetching it would be a query per row.
 	Domains []Domain `json:"domains,omitempty"`
+
+	// Subdomains is populated by Get for a top-level site, so the page that
+	// shows a website can show what lives under it in one request. It is
+	// always empty on a subdomain: one level is the whole model.
+	Subdomains []Website `json:"subdomains,omitempty"`
+}
+
+// IsSubdomain reports whether this site lives under another.
+func (w Website) IsSubdomain() bool { return w.ParentWebsiteID != nil }
+
+// InheritsSystemUser reports whether the site's files belong to its parent's
+// account, which is what decides whether deleting it may remove that account.
+func (w Website) InheritsSystemUser() bool {
+	return w.SystemUserMode != nil && *w.SystemUserMode == validate.SystemUserInherit
+}
+
+// InheritsPHPPool reports whether the site serves PHP through its parent's
+// FPM pool rather than one of its own.
+func (w Website) InheritsPHPPool() bool {
+	return w.PHPPoolMode != nil && *w.PHPPoolMode == validate.PHPPoolInherit
 }
 
 // Domain is a hostname pointing at a website.
@@ -78,11 +110,18 @@ var (
 	ErrUserTaken = errors.New("system user is already in use")
 	// ErrPrimaryDomain means a caller tried to detach a site's own identity.
 	ErrPrimaryDomain = errors.New("the primary domain cannot be removed")
+	// ErrNestedSubdomain means the chosen parent is itself a subdomain. One
+	// level is the whole model; a name several levels down is created as a
+	// subdomain of the top-level site with a dotted label.
+	ErrNestedSubdomain = errors.New("a subdomain cannot be created under another subdomain")
 )
 
 // Repository reads and writes websites and their domains.
 type Repository struct {
 	pool *pgxpool.Pool
+	// serving resolves the parts of a vhost owned by other features — the PHP
+	// pool, the certificate, the application port. See serving.go.
+	serving ServingSources
 }
 
 // NewRepository builds a Repository.
@@ -96,13 +135,17 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 const websiteColumns = `
 	id::text, server_id::text, name, primary_domain, document_root,
 	system_username AS system_user,
-	php_version, status, ssl_enabled, https_redirect, created_at, updated_at`
+	php_version, status, ssl_enabled, https_redirect,
+	parent_website_id::text, document_root_mode, php_pool_mode, system_user_mode,
+	created_at, updated_at`
 
 func scanWebsite(row pgx.Row) (Website, error) {
 	var site Website
 	err := row.Scan(&site.ID, &site.ServerID, &site.Name, &site.PrimaryDomain,
 		&site.DocumentRoot, &site.SystemUser, &site.PHPVersion, &site.Status,
-		&site.SSLEnabled, &site.HTTPSRedirect, &site.CreatedAt, &site.UpdatedAt)
+		&site.SSLEnabled, &site.HTTPSRedirect,
+		&site.ParentWebsiteID, &site.DocumentRootMode, &site.PHPPoolMode,
+		&site.SystemUserMode, &site.CreatedAt, &site.UpdatedAt)
 	return site, err
 }
 
@@ -123,6 +166,14 @@ type CreateParams struct {
 	PrimaryDomain string
 	DocumentRoot  string
 	SystemUser    string
+
+	// ParentWebsiteID makes this a subdomain. The three modes must be set with
+	// it and left empty without it; the database enforces that pairing rather
+	// than trusting every caller to remember.
+	ParentWebsiteID  string
+	DocumentRootMode string
+	PHPPoolMode      string
+	SystemUserMode   string
 }
 
 // Create inserts a website and its primary domain in one transaction.
@@ -142,11 +193,15 @@ func (r *Repository) Create(ctx context.Context, params CreateParams) (Website, 
 	}()
 
 	row := tx.QueryRow(ctx, `
-		INSERT INTO websites (server_id, name, primary_domain, document_root, system_username, status)
-		VALUES ($1::uuid, nullif($2, ''), $3, $4, $5, 'creating')
+		INSERT INTO websites (server_id, name, primary_domain, document_root,
+		                      system_username, status, parent_website_id,
+		                      document_root_mode, php_pool_mode, system_user_mode)
+		VALUES ($1::uuid, nullif($2, ''), $3, $4, $5, 'creating',
+		        nullif($6, '')::uuid, nullif($7, ''), nullif($8, ''), nullif($9, ''))
 		RETURNING `+websiteColumns,
 		params.ServerID, params.Name, params.PrimaryDomain,
-		params.DocumentRoot, params.SystemUser)
+		params.DocumentRoot, params.SystemUser, params.ParentWebsiteID,
+		params.DocumentRootMode, params.PHPPoolMode, params.SystemUserMode)
 
 	site, err := scanWebsite(row)
 	if err != nil {
@@ -184,6 +239,9 @@ func translateConflict(err error) error {
 
 	message := err.Error()
 	switch {
+	case strings.Contains(message, "websites_no_nested_subdomains"),
+		strings.Contains(message, "under another subdomain"):
+		return ErrNestedSubdomain
 	case strings.Contains(message, "primary_domain"),
 		strings.Contains(message, "domains_domain_key"):
 		return ErrDomainTaken
@@ -213,7 +271,46 @@ func (r *Repository) Get(ctx context.Context, id string) (Website, error) {
 		return Website{}, err
 	}
 	site.Domains = domains
+
+	// Only a top-level site can have any; asking for a subdomain's subdomains
+	// would be a query that can never return a row.
+	if !site.IsSubdomain() {
+		subdomains, err := r.ListSubdomains(ctx, site.ID)
+		if err != nil {
+			return Website{}, err
+		}
+		site.Subdomains = subdomains
+	}
 	return site, nil
+}
+
+// ListSubdomains returns the sites living under a parent, oldest first.
+//
+// Oldest first rather than newest: these are shown as a list under their
+// parent, where a stable order matters more than recency.
+func (r *Repository) ListSubdomains(ctx context.Context, parentID string) ([]Website, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT `+websiteColumns+`
+		FROM websites
+		WHERE parent_website_id = $1::uuid
+		ORDER BY created_at`, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("select subdomains: %w", err)
+	}
+	defer rows.Close()
+
+	sites := []Website{}
+	for rows.Next() {
+		site, err := scanWebsite(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan subdomain: %w", err)
+		}
+		sites = append(sites, site)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate subdomains: %w", err)
+	}
+	return sites, nil
 }
 
 // GetByDomain returns the website owning a hostname.
@@ -235,6 +332,11 @@ func (r *Repository) GetByDomain(ctx context.Context, domain string) (Website, e
 type ListParams struct {
 	Status string
 	Limit  int
+	// IncludeSubdomains adds subdomain rows to the listing. It defaults to
+	// false so the websites page keeps showing sites rather than sites and
+	// everything nested under them mixed together — a site with twenty
+	// subdomains would otherwise fill the page on its own.
+	IncludeSubdomains bool
 }
 
 // DefaultListLimit bounds a website listing.
@@ -257,8 +359,9 @@ func (r *Repository) List(ctx context.Context, params ListParams) ([]Website, er
 		SELECT `+websiteColumns+`
 		FROM websites
 		WHERE ($1 = '' OR status = $1)
+		  AND ($2 OR parent_website_id IS NULL)
 		ORDER BY created_at DESC
-		LIMIT $2`, params.Status, limit)
+		LIMIT $3`, params.Status, params.IncludeSubdomains, limit)
 	if err != nil {
 		return nil, fmt.Errorf("select websites: %w", err)
 	}

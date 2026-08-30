@@ -98,12 +98,19 @@ func healthyAgent(t *testing.T) *agentclient.Client {
 			data = map[string]any{"interfaces": []any{}, "total_rx_bytes": 1000, "total_tx_bytes": 500}
 		case protocol.OperationMetricsLoad:
 			data = map[string]any{"load_1": 0.5, "cores": 4, "load_per_core": 0.125}
-		case protocol.OperationServiceList:
+		case protocol.OperationServiceDetect:
+			// What the Agent's detection returns: services the host actually
+			// has, with the state it actually has them in.
 			data = map[string]any{
 				"services": []any{
-					map[string]any{"name": "nginx", "running": true, "active_state": "active", "load_state": "loaded"},
+					map[string]any{
+						"key": "nginx", "label": "nginx", "role": "web",
+						"installed": true, "running": true, "essential": true,
+						"active_state": "active", "controllable": true,
+					},
 				},
-				"count": 1,
+				"count":        1,
+				"controllable": true,
 			}
 		default:
 			data = map[string]any{}
@@ -135,11 +142,10 @@ func newFixture(t *testing.T, agent *agentclient.Client, opts ...func(*Options))
 
 	var buf bytes.Buffer
 	options := Options{
-		Agent:          agent,
-		Servers:        serverRepo,
-		Log:            logger.New(logger.Options{Service: "api", Level: "error", Output: &buf}),
-		MonitoredUnits: []string{"nginx"},
-		Dependencies:   []string{"postgres"},
+		Agent:        agent,
+		Servers:      serverRepo,
+		Log:          logger.New(logger.Options{Service: "api", Level: "error", Output: &buf}),
+		Dependencies: []string{"postgres"},
 		CheckDependency: func(context.Context, string) bool {
 			return true
 		},
@@ -325,7 +331,7 @@ func TestUnsupportedMetricIsDistinctFromAFailure(t *testing.T) {
 
 func TestServicesDegradeWithoutSystemd(t *testing.T) {
 	agent := fakeAgent(t, func(req protocol.Request) protocol.Response {
-		if req.Operation == protocol.OperationServiceList {
+		if req.Operation == protocol.OperationServiceDetect {
 			return protocol.NewError(req.RequestID, protocol.CodeUnsupported,
 				"No service manager is available on this host")
 		}
@@ -520,12 +526,14 @@ func TestLoadAlertIsPerCore(t *testing.T) {
 
 func TestStoppedServiceRaisesACriticalAlert(t *testing.T) {
 	agent := fakeAgent(t, func(req protocol.Request) protocol.Response {
-		if req.Operation == protocol.OperationServiceList {
+		if req.Operation == protocol.OperationServiceDetect {
 			return protocol.NewSuccess(req.RequestID, map[string]any{
 				"services": []any{
-					map[string]any{"name": "nginx", "running": false,
-						"active_state": "inactive", "load_state": "loaded"},
+					map[string]any{"key": "nginx", "label": "nginx",
+						"installed": true, "running": false,
+						"active_state": "inactive", "essential": true},
 				},
+				"controllable": true,
 			})
 		}
 		return protocol.NewSuccess(req.RequestID, map[string]any{})
@@ -550,12 +558,13 @@ func TestStoppedServiceRaisesACriticalAlert(t *testing.T) {
 
 func TestNotInstalledServiceDoesNotAlert(t *testing.T) {
 	agent := fakeAgent(t, func(req protocol.Request) protocol.Response {
-		if req.Operation == protocol.OperationServiceList {
+		if req.Operation == protocol.OperationServiceDetect {
+			// Detection leaves out what the host does not have, so an absent
+			// service reaches the dashboard as nothing at all rather than as a
+			// row saying "not installed".
 			return protocol.NewSuccess(req.RequestID, map[string]any{
-				"services": []any{
-					map[string]any{"name": "php-fpm", "running": false,
-						"active_state": "inactive", "load_state": "not-found"},
-				},
+				"services":     []any{},
+				"controllable": true,
 			})
 		}
 		return protocol.NewSuccess(req.RequestID, map[string]any{})
@@ -613,5 +622,40 @@ func TestTrimFloat(t *testing.T) {
 		if got := trimFloat(input); got != want {
 			t.Fatalf("trimFloat(%v) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+// An alert that is always on is one nobody reads.
+//
+// Cron is legitimately stopped on a host with no scheduled work, and Apache is
+// deliberately stopped whenever the host serves everything from nginx. Neither
+// is a fault, and neither may raise a critical alert.
+func TestAStoppedNonEssentialServiceDoesNotAlert(t *testing.T) {
+	agent := fakeAgent(t, func(req protocol.Request) protocol.Response {
+		if req.Operation == protocol.OperationServiceDetect {
+			return protocol.NewSuccess(req.RequestID, map[string]any{
+				"services": []any{
+					map[string]any{"key": "cron", "label": "Cron", "role": "system",
+						"installed": true, "running": false,
+						"active_state": "inactive", "essential": false},
+				},
+				"controllable": true,
+			})
+		}
+		return protocol.NewSuccess(req.RequestID, map[string]any{})
+	})
+
+	f := newFixture(t, agent)
+	snapshot := f.snapshot(t)
+
+	for _, alert := range snapshot.Alerts {
+		if alert.Category == "service" {
+			t.Fatalf("a stopped optional service must not alert: %+v", alert)
+		}
+	}
+	// It is still listed: an operator wants to see that it is down, they just
+	// do not want to be paged about it.
+	if snapshot.Services.Data == nil || len(*snapshot.Services.Data) == 0 {
+		t.Fatal("the service was left out of the listing entirely")
 	}
 }

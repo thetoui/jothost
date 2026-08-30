@@ -129,6 +129,8 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationMetricsLoad, r.handleMetricsLoad)
 	r.mustRegister(protocol.OperationProcessList, r.handleProcessList)
 
+	r.mustRegister(protocol.OperationServiceDetect, r.handleServiceDetect)
+	r.mustRegister(protocol.OperationServiceAction, r.handleServiceAction)
 	r.mustRegister(protocol.OperationServiceList, r.handleServiceList)
 	r.mustRegister(protocol.OperationServiceStatus, r.handleServiceStatus)
 

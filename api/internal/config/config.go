@@ -63,10 +63,6 @@ type DashboardConfig struct {
 	SampleInterval time.Duration
 	// MetricRetention is how long samples are kept.
 	MetricRetention time.Duration
-	// MonitoredServices are the systemd units shown on the dashboard. A host
-	// without a given unit reports it as not installed rather than failing.
-	MonitoredServices []string
-
 	// Alert thresholds, as percentages except the load figures, which are per
 	// core so the same numbers mean the same thing on any machine.
 	DiskWarnPercent   float64
@@ -123,10 +119,8 @@ func Load() (Config, error) {
 		AgentTimeout:    getDuration("AGENT_TIMEOUT", 30*time.Second),
 		AgentToken:      getString("AGENT_TOKEN", ""),
 		Dashboard: DashboardConfig{
-			SampleInterval:  getDuration("METRIC_SAMPLE_INTERVAL", 30*time.Second),
-			MetricRetention: getDuration("METRIC_RETENTION", 30*24*time.Hour),
-			MonitoredServices: getStringList("DASHBOARD_SERVICES",
-				[]string{"nginx", "php-fpm", "postgresql", "redis"}),
+			SampleInterval:    getDuration("METRIC_SAMPLE_INTERVAL", 30*time.Second),
+			MetricRetention:   getDuration("METRIC_RETENTION", 30*24*time.Hour),
 			DiskWarnPercent:   getFloat("ALERT_DISK_WARN_PERCENT", 80),
 			DiskCritPercent:   getFloat("ALERT_DISK_CRIT_PERCENT", 90),
 			MemoryWarnPercent: getFloat("ALERT_MEMORY_WARN_PERCENT", 85),

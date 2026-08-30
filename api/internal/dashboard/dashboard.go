@@ -59,6 +59,9 @@ type ServiceState struct {
 	// Status is a short human-readable state: running, stopped, not installed.
 	Status  string `json:"status"`
 	Enabled *bool  `json:"enabled,omitempty"`
+	// Essential means the websites on this host stop working while it is down.
+	// It is what decides whether being stopped raises an alert.
+	Essential bool `json:"essential"`
 }
 
 // Service kinds.
@@ -126,8 +129,6 @@ type Service struct {
 	servers    *servers.Repository
 	log        *slog.Logger
 	thresholds Thresholds
-	// monitoredUnits are the systemd units reported in the services widget.
-	monitoredUnits []string
 	// checkDependency reports whether an API-side dependency is healthy. It is
 	// injected so the dashboard does not reach into the server package.
 	checkDependency func(ctx context.Context, name string) bool
@@ -144,7 +145,6 @@ type Options struct {
 	Servers         *servers.Repository
 	Log             *slog.Logger
 	Thresholds      Thresholds
-	MonitoredUnits  []string
 	Dependencies    []string
 	CheckDependency func(ctx context.Context, name string) bool
 	Now             func() time.Time
@@ -178,7 +178,6 @@ func NewService(opts Options) *Service {
 		servers:         opts.Servers,
 		log:             opts.Log,
 		thresholds:      opts.Thresholds,
-		monitoredUnits:  opts.MonitoredUnits,
 		dependencies:    opts.Dependencies,
 		checkDependency: opts.CheckDependency,
 		now:             opts.Now,
@@ -251,13 +250,20 @@ func widget[T any](data T, err error) Widget[T] {
 	return ok(data)
 }
 
-// collectServices reports the monitored services.
+// collectServices reports the services on the host and the panel's own
+// dependencies.
 //
-// systemd units and API-side dependencies are gathered into one list because
-// an operator wants a single "what is up" panel, but each entry records which
-// kind it is so a systemd-less host degrades only the units.
+// The units come from the Agent's detection rather than from a configured list
+// of names. A list in configuration is a guess that has to be maintained per
+// host: it names php-fpm on a host that runs php-fpm83, or mysql on one that
+// runs mariadb, and the widget then reports "not installed" for something that
+// is running. Detection asks the host.
+//
+// Dependencies and services are gathered into one list because an operator
+// wants a single "what is up" panel, but each entry records which kind it is so
+// a host without a service manager degrades only the services.
 func (s *Service) collectServices(ctx context.Context, requestID string) Widget[[]ServiceState] {
-	states := make([]ServiceState, 0, len(s.monitoredUnits)+len(s.dependencies))
+	states := make([]ServiceState, 0, len(s.dependencies)+8)
 
 	// API-side dependencies are checked directly: the API holds the pools, so
 	// asking the Agent about Postgres would be a worse answer than its own.
@@ -271,11 +277,7 @@ func (s *Service) collectServices(ctx context.Context, requestID string) Widget[
 		})
 	}
 
-	if len(s.monitoredUnits) == 0 {
-		return ok(states)
-	}
-
-	result, err := s.agent.ServiceList(ctx, requestID, s.monitoredUnits)
+	result, err := s.agent.ServiceDetect(ctx, requestID)
 	if err != nil {
 		if agentclient.IsUnsupported(err) {
 			// No service manager: the dependencies are still worth showing, so
@@ -293,25 +295,32 @@ func (s *Service) collectServices(ctx context.Context, requestID string) Widget[
 
 	for _, service := range result.Services {
 		states = append(states, ServiceState{
-			Name:    service.Name,
-			Kind:    KindSystemd,
-			Running: service.Running,
-			Status:  unitStatus(service),
-			Enabled: service.Enabled,
+			Name:      service.Label,
+			Kind:      KindSystemd,
+			Running:   service.Running,
+			Status:    detectedStatus(service),
+			Enabled:   service.Enabled,
+			Essential: service.Essential,
 		})
 	}
 	return ok(states)
 }
 
-// unitStatus renders a systemd unit's state for display.
-func unitStatus(service agentclient.ServiceStatus) string {
+// detectedStatus renders a service's state for display.
+//
+// "stopped" and "not installed" are different answers, and so is a unit that is
+// still starting: a dashboard that rounds activating to running says a service
+// is ready when it is not.
+func detectedStatus(service agentclient.DetectedService) string {
 	switch {
-	case service.LoadState == "not-found":
+	case !service.Installed:
 		return "not installed"
 	case service.Running:
 		return "running"
 	case service.ActiveState == "failed":
 		return "failed"
+	case service.ActiveState == "activating":
+		return "starting"
 	default:
 		return "stopped"
 	}
@@ -381,6 +390,15 @@ func (s *Service) buildAlerts(ctx context.Context, snapshot Snapshot) []Alert {
 			// "Not installed" is a configuration, not a fault; alerting on it
 			// would fire permanently on every host missing an optional unit.
 			if service.Status == "not installed" {
+				continue
+			}
+			// Nor does every stopped service mean something is wrong. Cron is
+			// legitimately down on a host with no scheduled work, and Apache is
+			// deliberately stopped whenever the host serves everything from
+			// nginx. An alert that is always on is one nobody reads, so this
+			// fires only for the services whose being down breaks websites —
+			// and for the API's own dependencies, which are checked above.
+			if service.Kind == KindSystemd && !service.Essential {
 				continue
 			}
 			if !service.Running {

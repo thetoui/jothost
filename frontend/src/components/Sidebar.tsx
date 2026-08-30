@@ -13,6 +13,7 @@ import {
   Lock,
   Layers,
   Server,
+  ServerCog,
   ShieldCheck,
   UserCog,
 } from 'lucide-react';
@@ -66,6 +67,7 @@ const navGroups: NavGroup[] = [
     label: 'Server',
     items: [
       { label: 'Web server', to: '/webserver', icon: Layers, enabled: true },
+      { label: 'Services', to: '/services', icon: ServerCog, enabled: true },
       { label: 'Server', to: '/server', icon: Server, enabled: false },
       { label: 'Monitoring', to: '/monitoring', icon: Activity, enabled: false },
       { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: false },

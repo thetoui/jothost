@@ -722,6 +722,106 @@ type NodeVersionsResult struct {
 }
 
 // NodeVersions reports the Node.js runtimes on the host.
+// IsNotFound reports whether the Agent said the thing asked about is not there.
+func IsNotFound(err error) bool {
+	var failed *ErrOperationFailed
+	return errors.As(err, &failed) && failed.Code == protocol.CodeNotFound
+}
+
+// IsInvalidRequest reports whether the Agent refused the request itself — the
+// action is understood and not allowed, which is a conflict rather than a
+// malformed message.
+func IsInvalidRequest(err error) bool {
+	var failed *ErrOperationFailed
+	return errors.As(err, &failed) && failed.Code == protocol.CodeInvalidRequest
+}
+
+// IsInvalidPayload reports whether the Agent rejected the payload's shape or
+// values.
+func IsInvalidPayload(err error) bool {
+	var failed *ErrOperationFailed
+	return errors.As(err, &failed) && failed.Code == protocol.CodeInvalidPayload
+}
+
+// Message returns the Agent's own explanation for a failure.
+//
+// The Agent's structured errors carry a message written for a person; anything
+// else carries Go's. This is what a caller records in an audit trail or shows
+// a user, and it is deliberately not the full error string, which repeats the
+// code and the wrapper.
+func Message(err error) string {
+	var failed *ErrOperationFailed
+	if errors.As(err, &failed) {
+		return failed.Message
+	}
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+// ServiceDetectResult is the set of services the host actually has.
+type ServiceDetectResult struct {
+	Services []DetectedService `json:"services"`
+	Count    int               `json:"count"`
+	// Controllable reports whether this host can start and stop anything at
+	// all. False means no service manager: the states below are still true,
+	// and nothing can be changed through the panel.
+	Controllable bool `json:"controllable"`
+}
+
+// DetectedService is one service as the host has it.
+type DetectedService struct {
+	Key       string   `json:"key"`
+	Label     string   `json:"label"`
+	Role      string   `json:"role"`
+	Summary   string   `json:"summary"`
+	Units     []string `json:"units"`
+	Protected bool     `json:"protected"`
+	Essential bool     `json:"essential"`
+
+	Installed    bool   `json:"installed"`
+	Running      bool   `json:"running"`
+	PID          int    `json:"pid"`
+	Unit         string `json:"unit"`
+	Enabled      *bool  `json:"enabled"`
+	ActiveState  string `json:"active_state"`
+	SubState     string `json:"sub_state"`
+	Controllable bool   `json:"controllable"`
+}
+
+// ServiceDetect asks the host which services it has.
+func (c *Client) ServiceDetect(ctx context.Context, requestID string) (ServiceDetectResult, error) {
+	var result ServiceDetectResult
+	err := c.call(ctx, requestID, protocol.OperationServiceDetect,
+		map[string]any{}, &result)
+	return result, err
+}
+
+// ServiceActionResult is a service's state after being acted on.
+type ServiceActionResult struct {
+	Service string `json:"service"`
+	Unit    string `json:"unit"`
+	Action  string `json:"action"`
+	Running bool   `json:"running"`
+	Enabled *bool  `json:"enabled"`
+	State   string `json:"state"`
+}
+
+// ServiceAction starts, stops, restarts, enables or disables a service.
+//
+// The service is named by its catalogue key, not by a unit: the Agent chooses
+// the unit from its own table, so nothing sent from here can select what is
+// acted on.
+func (c *Client) ServiceAction(ctx context.Context, requestID, key, action string) (ServiceActionResult, error) {
+	var result ServiceActionResult
+	err := c.call(ctx, requestID, protocol.OperationServiceAction, map[string]any{
+		"service": key,
+		"action":  action,
+	}, &result)
+	return result, err
+}
+
 // ApacheStatusResult is what the host reports about the hybrid backend.
 type ApacheStatusResult struct {
 	Available bool   `json:"available"`

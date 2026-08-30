@@ -275,6 +275,10 @@ func serviceError(err error) error {
 		return Fail(protocol.CodeInvalidPayload, "That is not a valid service name", err)
 	case errors.Is(err, services.ErrNotFound):
 		return Fail(protocol.CodeNotFound, "Service not found", err)
+	case errors.Is(err, services.ErrProtected):
+		// The Agent's own words: the panel shows them, and they say what the
+		// operator would otherwise have to work out.
+		return Fail(protocol.CodeInvalidRequest, err.Error(), err)
 	default:
 		return err
 	}

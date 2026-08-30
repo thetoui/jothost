@@ -40,30 +40,30 @@ Done, in the order they were built:
 9  Node.js Manager
 4.1 Subdomain Manager
 4.5 Apache Hybrid Engine
+12  Service Manager
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  12   Service Manager        — nothing can manage a daemon without it
- 2.  16   Firewall               — every phase that opens a port needs it
- 3.  11   Logs                   — before the things that produce logs
- 4.  10   Cron                   — needs 12 (crond) and 11 (its log view)
- 5.  17   SSH Security           — needs 12 (sshd reload)
- 6.  18   Fail2Ban               — reads logs (11), writes firewall rules (16)
- 7.  7.1  FTP Manager            — passive ports need 16; transfers need 11
- 8.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
- 9.  21   System Updates         — scheduled updates need 10
-10.  19   Monitoring             — service monitoring needs 12
-11.  14   Backup                 — scheduling needs 10
-12.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
-13.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
-14.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
-15.  27   Git & Webhook Actions  — deployment logs need 11
-16.  22   Multi-Tenant           — quota dimensions must exist first, mail included
-17.  23   Production Installer   — installs everything, so everything must exist
-18.  24   Production Hardening   — tests the finished system
-19.  25   Release                — last by definition
+ 1.  16   Firewall               — every phase that opens a port needs it
+ 2.  11   Logs                   — before the things that produce logs
+ 3.  10   Cron                   — needs 12 (crond) and 11 (its log view)
+ 4.  17   SSH Security           — needs 12 (sshd reload)
+ 5.  18   Fail2Ban               — reads logs (11), writes firewall rules (16)
+ 6.  7.1  FTP Manager            — passive ports need 16; transfers need 11
+ 7.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
+ 8.  21   System Updates         — scheduled updates need 10
+ 9.  19   Monitoring             — service monitoring needs 12
+10.  14   Backup                 — scheduling needs 10
+11.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+12.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+13.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+14.  27   Git & Webhook Actions  — deployment logs need 11
+15.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+16.  23   Production Installer   — installs everything, so everything must exist
+17.  24   Production Hardening   — tests the finished system
+18.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -529,7 +529,7 @@ Security:
 
 # PHASE 7.1 — FTP Manager (Plesk Style)
 
-**Build order: 7 of 19.** Depends on 12 (start and reload the daemon), 16 (the
+**Build order: 7 of 18.** Depends on 12 (start and reload the daemon), 16 (the
 passive port range has to be opened), 11 (connection and transfer logs), and 6
 (FTPS binds a certificate the SSL phase already issues).
 
@@ -643,7 +643,7 @@ PrivateTmp, a bounded restart limit — which is the reason to prefer it.
 
 # PHASE 10 — Cron
 
-**Build order: 4 of 19.** Depends on 12 (the cron daemon is a service) and 11
+**Build order: 4 of 18.** Depends on 12 (the cron daemon is a service) and 11
 (a cron job's output is a log this phase registers as a source).
 **Blocks** 14 (backup scheduling) and 21 (scheduled updates).
 
@@ -662,7 +662,7 @@ PrivateTmp, a bounded restart limit — which is the reason to prefer it.
 
 # PHASE 11 — Logs
 
-**Build order: 3 of 19.** Depends on nothing new: it reads files the Agent
+**Build order: 3 of 18.** Depends on nothing new: it reads files the Agent
 already writes.
 **Blocks** 18 (Fail2Ban decides bans by reading logs), 10, 7.1 and 27, each of
 which registers a log source rather than building its own viewer.
@@ -683,7 +683,10 @@ which registers a log source rather than building its own viewer.
 
 # PHASE 12 — Service Manager
 
-**Build order: 1 of 19.** Depends on nothing.
+**Status: COMPLETE** — see [docs/PHASE12.md](docs/PHASE12.md) for scope,
+decisions, and known limitations.
+
+**Build order: 1 of 18.** Depends on nothing.
 **Blocks** 7.1, 13, 16, 17, 18, 19, 22 and 26 — everything that starts, stops or
 reloads a daemon.
 
@@ -692,20 +695,33 @@ Phase 9 as the smallest dependency that phase needed, and Phase 4.5 drove Apache
 with `httpd -k` directly because there was no general layer to ask. Both should
 end up calling this.
 
-- [ ] Service detection
-- [ ] Status
-- [ ] Start
-- [ ] Stop
-- [ ] Restart
-- [ ] Enable
-- [ ] Disable
-- [ ] Service UI
+- [x] Service detection
+- [x] Status
+- [x] Start
+- [x] Stop
+- [x] Restart
+- [x] Enable
+- [x] Disable
+- [x] Service UI
+
+Additionally required by the above:
+
+- [x] A catalogue: the panel acts on a *key* it knows, and chooses the unit
+  itself. Forwarding a caller's unit name is one careless request away from
+  stopping the unit the Agent runs as
+- [x] Status from the process table as well as systemd, so a host without an
+  init system still gets a truthful page rather than a blank one
+- [x] The dashboard reads the same detection instead of a configured list of
+  unit names — two sources for "which services exist" is two answers, and the
+  configured one named php-fpm on a host running php-fpm83
+- [x] Alerts only for the services whose being down breaks websites: cron is
+  legitimately stopped, and Apache is deliberately stopped in nginx-only mode
 
 ---
 
 # PHASE 13 — DNS & Local Name Server
 
-**Build order: 8 of 19.** Depends on 12 (BIND or PowerDNS is a service) and 16
+**Build order: 8 of 18.** Depends on 12 (BIND or PowerDNS is a service) and 16
 (port 53 has to be open).
 **Blocks** 26 (DKIM, SPF and DMARC are published as records).
 
@@ -726,7 +742,7 @@ all. See docs/PHASE4.1.md section 7.
 
 # PHASE 14 — Backup
 
-**Build order: 11 of 19.** Depends on 10 (a schedule is a cron job), 12, and the
+**Build order: 11 of 18.** Depends on 10 (a schedule is a cron job), 12, and the
 website and database phases already built.
 **Blocks** 20 (backup alerts) and 24 (the restore and disaster-recovery tests).
 
@@ -754,7 +770,7 @@ Critical tests:
 
 # PHASE 15 — Security Center
 
-**Build order: 12 of 19.** Depends on 16, 17, 21, 6 and 7 — it scans what those
+**Build order: 12 of 18.** Depends on 16, 17, 21, 6 and 7 — it scans what those
 phases manage, so every one of them has to exist first or the score is computed
 from blanks.
 **Blocks** 20 (security alerts).
@@ -773,7 +789,7 @@ from blanks.
 
 # PHASE 16 — Firewall
 
-**Build order: 2 of 19.** Depends on 12.
+**Build order: 2 of 18.** Depends on 12.
 **Blocks** 7.1 (passive port range), 13 (port 53), 18 (a ban is a rule), 26 (mail
 ports), 15 (the firewall scanner) and 23 (an install step).
 
@@ -793,7 +809,7 @@ ports), 15 (the firewall scanner) and 23 (an install step).
 
 # PHASE 17 — SSH Security
 
-**Build order: 5 of 19.** Depends on 12 (changing sshd's configuration means
+**Build order: 5 of 18.** Depends on 12 (changing sshd's configuration means
 reloading it).
 **Blocks** 15 (the SSH scanner).
 
@@ -810,7 +826,7 @@ reloading it).
 
 # PHASE 18 — Fail2Ban
 
-**Build order: 6 of 19.** Depends on 11 (it decides bans by reading logs), 16 (a
+**Build order: 6 of 18.** Depends on 11 (it decides bans by reading logs), 16 (a
 ban is a firewall rule) and 12.
 
 - [ ] Detection
@@ -826,7 +842,7 @@ ban is a firewall rule) and 12.
 
 # PHASE 19 — Monitoring
 
-**Build order: 10 of 19.** Depends on 12 (service monitoring) and on the metric
+**Build order: 10 of 18.** Depends on 12 (service monitoring) and on the metric
 collection built in Phase 3.
 **Blocks** 20 (the alert engine is what notifications deliver) and 22 (disk usage
 is a quota dimension).
@@ -845,7 +861,7 @@ is a quota dimension).
 
 # PHASE 20 — Notifications
 
-**Build order: 13 of 19.** Depends on 19, 14, 15, 6 and 12 — every alert type
+**Build order: 13 of 18.** Depends on 19, 14, 15, 6 and 12 — every alert type
 listed below is raised by one of them, and built earlier this phase would ship
 switches with nothing behind them.
 
@@ -863,7 +879,7 @@ switches with nothing behind them.
 
 # PHASE 21 — System Updates
 
-**Build order: 9 of 19.** Depends on 10 for the scheduled half.
+**Build order: 9 of 18.** Depends on 10 for the scheduled half.
 **Blocks** 15 (the package update scanner).
 
 Initial version:
@@ -883,7 +899,7 @@ Later:
 
 # PHASE 22 — Multi-Tenant Hierarchy & Subscriptions
 
-**Build order: 16 of 19.** Depends on 26 (mailboxes are a quota dimension), 19
+**Build order: 16 of 18.** Depends on 26 (mailboxes are a quota dimension), 19
 (disk usage is another) and 12 (cgroup isolation is a systemd slice).
 **Blocks** 23 and 24.
 
@@ -903,7 +919,7 @@ nothing — the retroactive edit this ordering exists to avoid.
 
 # PHASE 23 — Production Installer
 
-**Build order: 17 of 19.** Depends on everything it installs: 16 for the firewall
+**Build order: 17 of 18.** Depends on everything it installs: 16 for the firewall
 step, 12 for the systemd step, and every runtime feature it lays down.
 
 - [ ] OS detection
@@ -933,7 +949,7 @@ uninstall
 
 # PHASE 24 — Production Hardening
 
-**Build order: 18 of 19.** Depends on 14 (restore test), 16 (firewall recovery
+**Build order: 18 of 18.** Depends on 14 (restore test), 16 (firewall recovery
 test) and 22 (the RBAC and tenancy tests).
 
 - [ ] Full security audit
@@ -954,7 +970,7 @@ test) and 22 (the RBAC and tenancy tests).
 
 # PHASE 25 — Release
 
-**Build order: 19 of 19.** Last by definition.
+**Build order: 19 of 18.** Last by definition.
 
 - [ ] Versioning
 - [ ] Release build
@@ -972,7 +988,7 @@ test) and 22 (the RBAC and tenancy tests).
 
 # PHASE 26 — Mail Server Ecosystem
 
-**Build order: 14 of 19.** Depends on 13 (DKIM, SPF and DMARC are DNS records),
+**Build order: 14 of 18.** Depends on 13 (DKIM, SPF and DMARC are DNS records),
 16 (25, 465, 587, 993), 6 (TLS uses the certificates already issued) and 12
 (Postfix and Dovecot are services).
 **Blocks** 22 (mailboxes are one of its quota dimensions).
@@ -991,7 +1007,7 @@ test) and 22 (the RBAC and tenancy tests).
 
 # PHASE 27 — Git & Webhook Deployment Actions
 
-**Build order: 15 of 19.** Depends on 11 (deployment log streaming), 12, and the
+**Build order: 15 of 18.** Depends on 11 (deployment log streaming), 12, and the
 per-site isolated execution built in Phases 5 and 9.
 
 - [ ] Git repository manager per website

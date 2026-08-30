@@ -30,8 +30,14 @@ const (
 	OperationMetricsNetwork OperationType = "metrics.network"
 	OperationMetricsLoad    OperationType = "metrics.load"
 	OperationProcessList    OperationType = "process.list"
-	OperationServiceList    OperationType = "service.list"
-	OperationServiceStatus  OperationType = "service.status"
+	// service.detect reports what this host actually has, and service.action
+	// starts, stops, restarts, enables or disables one of them. The action
+	// names a catalogue key rather than a unit: see operations/services_manage.go.
+	OperationServiceDetect OperationType = "service.detect"
+	OperationServiceAction OperationType = "service.action"
+
+	OperationServiceList   OperationType = "service.list"
+	OperationServiceStatus OperationType = "service.status"
 
 	// Website provisioning. These change the host, unlike everything above.
 	OperationWebsiteCreate OperationType = "website.create"
@@ -135,6 +141,8 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationMetricsNetwork:       {},
 	OperationMetricsLoad:          {},
 	OperationProcessList:          {},
+	OperationServiceDetect:        {},
+	OperationServiceAction:        {},
 	OperationServiceList:          {},
 	OperationServiceStatus:        {},
 	OperationWebsiteCreate:        {},

@@ -157,7 +157,6 @@ services:
       TOTP_ISSUER: ${TOTP_ISSUER:-JotHost Panel}
       METRIC_SAMPLE_INTERVAL: ${METRIC_SAMPLE_INTERVAL:-30s}
       METRIC_RETENTION: ${METRIC_RETENTION:-720h}
-      DASHBOARD_SERVICES: ${DASHBOARD_SERVICES:-nginx,php-fpm,postgresql,redis}
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:

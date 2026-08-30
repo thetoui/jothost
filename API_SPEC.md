@@ -970,14 +970,56 @@ level
 # 20. Services
 
 ```http
-GET /services
-GET /services/:name
-POST /services/:name/start
-POST /services/:name/stop
-POST /services/:name/restart
-POST /services/:name/enable
-POST /services/:name/disable
+GET  /services
+POST /services/:key/start
+POST /services/:key/stop
+POST /services/:key/restart
+POST /services/:key/enable
+POST /services/:key/disable
 ```
+
+**As implemented in Phase 12.**
+
+The path segment is a **key from the Agent's catalogue, not a unit name**. A
+request naming `nginx` is answered; one naming `nginx.service`,
+`systemd-logind.service` or anything else a caller invents is a **404**. The
+unit that key becomes is chosen by the Agent from a table in the repository, so
+nothing sent from a client ever reaches systemctl as the thing being acted on.
+`GET /services/:name` is therefore not offered: a per-service read would be a
+second place that maps a caller's string to a unit, and the listing already
+carries every service's state.
+
+`GET /services` reports what the host actually has — detected, not configured.
+Each entry carries its state twice over: `running` and `pid` come from the
+process table, which is readable whether or not systemd is present, while
+`unit`, `active_state`, `sub_state` and `enabled` come from systemd where it
+can answer. `enabled` is `null` when nothing can say, which is a different
+answer from `false`. Services that are not installed are left out entirely.
+
+The listing also carries `controllable`, on the response and on each service.
+It is `false` on a host with no service manager, where the states above are
+still true and nothing can be changed. That is reported once, as a property of
+the host, rather than discovered one failed action at a time.
+
+Each verb returns the service's state **after** the action, read from the host
+rather than assumed: a start that returns zero and leaves the service down is
+exactly what an operator needs to see.
+
+Refusals worth naming:
+
+- a key outside the catalogue → **404**
+- `stop` or `disable` on a protected service → **409**. SSH is protected:
+  stopping it on a remote host locks the operator out of the machine they are
+  administering, and nothing in the panel can put them back. `restart` stays
+  available, because that is how a configuration change is applied.
+- any verb on a host with no service manager → **409**, saying so
+- a verb the panel does not have (`mask`, `reload`) → **404**: the verb is part
+  of the route, so an invented one is not a route.
+
+Reading needs `server.view`; every verb needs `server.manage`. Restarting the
+database is not authority over one website. Every action is audited under its
+own name — `service.start`, `service.stop` and so on — including the refusals,
+because "who tried to stop SSH" is a question worth being able to answer.
 
 ---
 

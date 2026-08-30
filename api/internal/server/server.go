@@ -29,6 +29,7 @@ import (
 	"github.com/jothost/panel/api/internal/rbac"
 	"github.com/jothost/panel/api/internal/secrets"
 	"github.com/jothost/panel/api/internal/servers"
+	servicespkg "github.com/jothost/panel/api/internal/services"
 	"github.com/jothost/panel/api/internal/sessions"
 	sslpkg "github.com/jothost/panel/api/internal/ssl"
 	"github.com/jothost/panel/api/internal/twofactor"
@@ -55,6 +56,7 @@ type Server struct {
 
 	websites  *websites.Handler
 	webserver *webserverpkg.Handler
+	services  *servicespkg.Handler
 	jobs      *jobs.Handler
 	php       *phppkg.Handler
 	ssl       *sslpkg.Handler
@@ -154,7 +156,6 @@ func New(opts Options) (*Server, error) {
 			LoadWarning:    cfg.Dashboard.LoadWarnPerCore,
 			LoadCritical:   cfg.Dashboard.LoadCritPerCore,
 		},
-		MonitoredUnits: cfg.Dashboard.MonitoredServices,
 		// Postgres and Redis are checked by the API itself: it holds the
 		// pools, so its own probe is a better answer than asking the Agent
 		// whether a unit happens to be running.
@@ -280,6 +281,19 @@ func New(opts Options) (*Server, error) {
 	// effect of adding an alias (see websites/serving.go).
 	websiteRepo.SetServingSources(servingSources(phpRepo, sslRepo, nodeRepo))
 
+	// The daemons on the host. No state of the panel's own: a service's state
+	// is on the host, and the Agent is the only thing that may read or change
+	// it.
+	s.services = servicespkg.NewHandler(servicespkg.HandlerOptions{
+		Service: servicespkg.NewService(servicespkg.ServiceOptions{
+			Agent:    agent,
+			Audit:    auditRecorder,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		}),
+		Auth: authService,
+	})
+
 	// Which web server arrangement the host runs. It is a server-wide setting
 	// rather than a per-site one, because both servers are one process tree
 	// serving every site on the machine.
@@ -387,6 +401,7 @@ func (s *Server) routes() http.Handler {
 	s.dashboard.Routes(mux)
 	s.websites.Routes(mux)
 	s.webserver.Routes(mux)
+	s.services.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)
 	s.ssl.Routes(mux)

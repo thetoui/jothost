@@ -296,6 +296,45 @@ export interface Website {
   subdomains?: Website[];
 }
 
+/** The verbs a service may be given. */
+export type ServiceAction = 'start' | 'stop' | 'restart' | 'enable' | 'disable';
+
+/** One service as the host actually has it. */
+export interface HostService {
+  key: string;
+  label: string;
+  role: 'web' | 'runtime' | 'database' | 'cache' | 'system';
+  summary: string;
+  units: string[];
+  /** Refuses stop and disable: SSH is how the host is administered. */
+  protected: boolean;
+  installed: boolean;
+  running: boolean;
+  pid: number;
+  unit: string;
+  /** Null when nothing can say whether it starts at boot. */
+  enabled: boolean | null;
+  active_state: string;
+  sub_state: string;
+  controllable: boolean;
+}
+
+export interface ServiceList {
+  services: HostService[];
+  count: number;
+  /** False on a host with no service manager: states are true, nothing can be changed. */
+  controllable: boolean;
+}
+
+export interface ServiceActionResult {
+  service: string;
+  unit: string;
+  action: ServiceAction;
+  running: boolean;
+  enabled: boolean | null;
+  state: string;
+}
+
 /** Which web server arrangement a host runs. */
 export type WebserverMode = 'nginx' | 'hybrid';
 

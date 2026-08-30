@@ -65,6 +65,8 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/files/stat", guarded(rbac.PermFileRead, h.stat))
 	mux.Handle("GET /api/v1/files/download", guarded(rbac.PermFileRead, h.download))
 	mux.Handle("GET /api/v1/files/search", guarded(rbac.PermFileRead, h.search))
+	mux.Handle("GET /api/v1/files/content", guarded(rbac.PermFileRead, h.readContent))
+	mux.Handle("PUT /api/v1/files/content", guarded(rbac.PermFileWrite, h.writeContent))
 
 	mux.Handle("POST /api/v1/files/upload", guarded(rbac.PermFileWrite, h.upload))
 	mux.Handle("POST /api/v1/files/folder", guarded(rbac.PermFileWrite, h.folder))
@@ -191,6 +193,96 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestID, "path", target, "written", written,
 			"error", err.Error())
 		return
+	}
+}
+
+// ----------------------------------------------------------------- content
+
+// maxContentBodyBytes bounds a save.
+//
+// Larger than MaxEditableBytes because the content arrives JSON-encoded, and
+// escaping can grow it: a file of quotes and newlines is meaningfully bigger on
+// the wire than on disk. The real limit is checked on the decoded content.
+const maxContentBodyBytes = 8 << 20
+
+func (h *Handler) readContent(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	defer cancel()
+
+	target, err := ValidatePath(r.URL.Query().Get("path"))
+	if err != nil {
+		httpx.Error(w, r, pathError(err))
+		return
+	}
+
+	content, err := h.service.ReadContent(ctx, httpx.RequestIDFromContext(ctx), target)
+	if err != nil {
+		httpx.Error(w, r, contentError(err))
+		return
+	}
+	httpx.OK(w, r, content)
+}
+
+// writeContentRequest is a save from the editor.
+type writeContentRequest struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	// Checksum is what the editor loaded. Sent back so a second editor cannot
+	// silently overwrite the first one's work.
+	Checksum string `json:"checksum,omitempty"`
+	// Force saves anyway. The panel asks first; it is never the default.
+	Force bool `json:"force,omitempty"`
+}
+
+func (h *Handler) writeContent(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	defer cancel()
+
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxContentBodyBytes))
+	decoder.DisallowUnknownFields()
+
+	var body writeContentRequest
+	if err := decoder.Decode(&body); err != nil {
+		httpx.Error(w, r, httpx.BadRequest("The request body is not valid JSON: "+err.Error()))
+		return
+	}
+
+	target, err := ValidatePath(body.Path)
+	if err != nil {
+		httpx.Error(w, r, pathError(err))
+		return
+	}
+
+	saved, err := h.service.WriteContent(ctx, httpx.RequestIDFromContext(ctx),
+		WriteContentRequest{
+			Path:     target,
+			Content:  body.Content,
+			Checksum: body.Checksum,
+			Force:    body.Force,
+		}, actorFrom(r))
+	if err != nil {
+		httpx.Error(w, r, contentError(err))
+		return
+	}
+	httpx.OK(w, r, saved)
+}
+
+// contentError maps an editor failure onto an HTTP status.
+func contentError(err error) error {
+	switch {
+	case errors.Is(err, ErrFileTooLarge):
+		return httpx.ValidationFailed(
+			"This file is too large to edit in the browser. Download it instead.")
+	case errors.Is(err, ErrFileBinary):
+		return httpx.ValidationFailed(
+			"This file is not text, so editing it would corrupt it.")
+	case errors.Is(err, ErrStaleWrite):
+		// 409 rather than 422: nothing about the request is malformed, the
+		// world moved underneath it.
+		return httpx.Conflict(
+			"This file changed since you opened it. Reload it, or save again to overwrite.")
+	default:
+		return agentError(err)
 	}
 }
 

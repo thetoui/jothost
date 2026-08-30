@@ -532,6 +532,8 @@ Reads require `file.read`; every mutation requires `file.write`.
 
 # 13. Code Editor
 
+**Implemented in Phase 7.5** — see [docs/PHASE7.5.md](docs/PHASE7.5.md).
+
 The code editor uses the File API.
 
 ```http
@@ -544,9 +546,22 @@ Request:
 ```json
 {
   "path": "/var/www/example.com/httpdocs/index.php",
-  "content": "<?php ..."
+  "content": "<?php ...",
+  "checksum": "sha256 of what was loaded",
+  "force": false
 }
 ```
+
+A read returns the content with the file's mode, owner, language, line-ending
+style, and a `checksum` of exactly what was loaded. A save sends the checksum
+back; if the file changed underneath, the save is refused with **409** rather
+than silently overwriting it. `force: true` overwrites deliberately, which the
+panel asks about before setting.
+
+A file over 2 MiB, or one containing a NUL byte, is refused: too large to edit is
+not too large to download, and editing a binary would corrupt it.
+
+Reads require `file.read`; saves require `file.write`.
 
 ---
 

@@ -173,6 +173,9 @@ jobs:
       - name: Run Phase 7 file manager checks
         run: docker compose exec -T agent sh /tests/integration/phase7_files.sh
 
+      - name: Run Phase 7.5 code editor checks
+        run: docker compose exec -T agent sh /tests/integration/phase75_editor.sh
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color

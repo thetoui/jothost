@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { clearTokens, setAccessToken, setRefreshToken } from '@/features/auth/tokenStorage';
@@ -203,5 +203,123 @@ describe('FilesPage', () => {
     renderWithProviders(<FilesPage />);
 
     expect(await screen.findByRole('region', { name: 'File browser' })).toBeInTheDocument();
+  });
+});
+
+describe('FilesPage file actions', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearTokens();
+    setRefreshToken('refresh-test');
+    setAccessToken('access-test');
+    useAuthStore.setState({ status: 'authenticated' });
+  });
+
+  // Clicking a file used to download it outright. Download is one of five
+  // things someone might mean, and the only one that cannot be undone.
+  it('opens an action menu when a file is clicked', async () => {
+    const user = userEvent.setup();
+    globalThis.fetch = route({
+      '/auth/me': () => envelopeResponse(profile(['file.read', 'file.write'])),
+      '/files?': () => envelopeResponse(listing([entry()])),
+    }) as unknown as typeof fetch;
+
+    renderWithProviders(<FilesPage />);
+    await user.click(await screen.findByRole('button', { name: 'index.php' }));
+
+    const menu = await screen.findByRole('menu', { name: 'Actions for index.php' });
+    for (const label of ['Open in editor', 'Download', 'Rename', 'Permissions', 'Delete']) {
+      expect(within(menu).getByRole('menuitem', { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it('closes the menu on Escape', async () => {
+    const user = userEvent.setup();
+    globalThis.fetch = route({
+      '/auth/me': () => envelopeResponse(profile(['file.read', 'file.write'])),
+      '/files?': () => envelopeResponse(listing([entry()])),
+    }) as unknown as typeof fetch;
+
+    renderWithProviders(<FilesPage />);
+    await user.click(await screen.findByRole('button', { name: 'index.php' }));
+    await screen.findByRole('menu');
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+  });
+
+  // A viewer can look at the menu but must not be offered a way to change
+  // anything through it.
+  it('disables the changing actions without file.write', async () => {
+    const user = userEvent.setup();
+    globalThis.fetch = route({
+      '/auth/me': () => envelopeResponse(profile(['file.read'])),
+      '/files?': () => envelopeResponse(listing([entry()])),
+    }) as unknown as typeof fetch;
+
+    renderWithProviders(<FilesPage />);
+    await user.click(await screen.findByRole('button', { name: 'index.php' }));
+
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'Download' })).toBeEnabled();
+    expect(within(menu).getByRole('menuitem', { name: 'Open in editor' })).toBeEnabled();
+    expect(within(menu).getByRole('menuitem', { name: 'Rename' })).toBeDisabled();
+    expect(within(menu).getByRole('menuitem', { name: 'Permissions' })).toBeDisabled();
+    expect(within(menu).getByRole('menuitem', { name: 'Delete' })).toBeDisabled();
+  });
+
+  // A file over the editor's limit would be refused by the API, so the menu
+  // says so rather than offering an action that always fails.
+  it('will not offer the editor for a file that is too large', async () => {
+    const user = userEvent.setup();
+    globalThis.fetch = route({
+      '/auth/me': () => envelopeResponse(profile(['file.read', 'file.write'])),
+      '/files?': () =>
+        envelopeResponse(listing([entry({ name: 'huge.log', size: 9_000_000, editable: false })])),
+    }) as unknown as typeof fetch;
+
+    renderWithProviders(<FilesPage />);
+    await user.click(await screen.findByRole('button', { name: 'huge.log' }));
+
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'Open in editor' })).toBeDisabled();
+    // It can still be downloaded: too big to edit is not too big to fetch.
+    expect(within(menu).getByRole('menuitem', { name: 'Download' })).toBeEnabled();
+  });
+
+  it('asks before deleting from the menu', async () => {
+    const user = userEvent.setup();
+    globalThis.fetch = route({
+      '/auth/me': () => envelopeResponse(profile(['file.read', 'file.write'])),
+      '/files?': () => envelopeResponse(listing([entry()])),
+    }) as unknown as typeof fetch;
+
+    renderWithProviders(<FilesPage />);
+    await user.click(await screen.findByRole('button', { name: 'index.php' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+
+    expect(await screen.findByText('Delete index.php?')).toBeInTheDocument();
+    expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument();
+  });
+
+  // A directory still navigates: a menu on a folder would be a menu of things
+  // that mostly do not apply to it.
+  it('navigates into a folder rather than opening a menu', async () => {
+    const user = userEvent.setup();
+    globalThis.fetch = route({
+      '/auth/me': () => envelopeResponse(profile(['file.read', 'file.write'])),
+      '/files?': () =>
+        envelopeResponse(
+          listing([entry({ name: 'site', path: '/var/www/site', type: 'directory' })]),
+        ),
+    }) as unknown as typeof fetch;
+
+    renderWithProviders(<FilesPage />);
+    await user.click(await screen.findByRole('button', { name: 'site' }));
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('site');
+    });
   });
 });

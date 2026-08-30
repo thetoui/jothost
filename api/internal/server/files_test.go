@@ -204,3 +204,67 @@ func TestUploadRequiresMultipart(t *testing.T) {
 		t.Fatalf("got %d, want 400: %s", rec.Code, rec.Body)
 	}
 }
+
+// ---------------------------------------------------------------- editor
+
+// The editor reads with file.read and saves with file.write, the same split as
+// the rest of the file manager.
+func TestContentRoutesAreGatedSeparately(t *testing.T) {
+	fixture := newDashboardFixture(t, rbac.RoleViewer)
+
+	const target = "/api/v1/files/content?path=/var/www/site/index.php"
+	rec := fixture.send(t, http.MethodGet, target, fixture.token, nil)
+	if rec.Code == http.StatusForbidden {
+		t.Fatal("a viewer with file.read was refused a read")
+	}
+
+	rec = fixture.send(t, http.MethodPut, "/api/v1/files/content", fixture.token,
+		map[string]any{"path": "/var/www/site/index.php", "content": "x"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("viewer saving a file: got %d, want 403", rec.Code)
+	}
+}
+
+func TestContentRoutesRejectAnonymousCallers(t *testing.T) {
+	fixture := newDashboardFixture(t, rbac.RoleAdmin)
+
+	rec := fixture.send(t, http.MethodGet,
+		"/api/v1/files/content?path=/var/www/site/index.php", "", nil)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous read: got %d, want 401", rec.Code)
+	}
+
+	rec = fixture.send(t, http.MethodPut, "/api/v1/files/content", "",
+		map[string]any{"path": "/var/www/site/index.php", "content": "x"})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous save: got %d, want 401", rec.Code)
+	}
+}
+
+func TestContentRoutesValidateThePath(t *testing.T) {
+	fixture := newDashboardFixture(t, rbac.RoleAdmin)
+
+	for _, path := range []string{"../../etc/passwd", "relative", ""} {
+		rec := fixture.send(t, http.MethodGet,
+			"/api/v1/files/content?path="+url.QueryEscape(path), fixture.token, nil)
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("read %q: got %d, want 422", path, rec.Code)
+		}
+
+		rec = fixture.send(t, http.MethodPut, "/api/v1/files/content", fixture.token,
+			map[string]any{"path": path, "content": "x"})
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("save %q: got %d, want 422", path, rec.Code)
+		}
+	}
+}
+
+func TestSavingRejectsUnknownFields(t *testing.T) {
+	fixture := newDashboardFixture(t, rbac.RoleAdmin)
+
+	rec := fixture.send(t, http.MethodPut, "/api/v1/files/content", fixture.token,
+		map[string]any{"path": "/var/www/x.php", "content": "x", "contnet": "typo"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d, want 400 for an unknown field", rec.Code)
+	}
+}

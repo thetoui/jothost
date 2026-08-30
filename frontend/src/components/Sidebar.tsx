@@ -54,7 +54,7 @@ const navGroups: NavGroup[] = [
     label: 'Files & Jobs',
     items: [
       { label: 'Files', to: '/files', icon: Files, enabled: true },
-      { label: 'Editor', to: '/editor', icon: Code2, enabled: false },
+      { label: 'Editor', to: '/editor', icon: Code2, enabled: true },
       { label: 'Scheduled jobs', to: '/cron', icon: Clock, enabled: false },
       { label: 'Backups', to: '/backups', icon: HardDrive, enabled: false },
     ],

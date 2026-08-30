@@ -363,16 +363,18 @@ Security:
 
 # PHASE 7.5 — Code Editor
 
-- [ ] Monaco integration
-- [ ] File tree
-- [ ] Open file
-- [ ] Save file
-- [ ] Tabs
-- [ ] Search
-- [ ] Replace
-- [ ] Syntax highlighting
-- [ ] Auto save
-- [ ] Large file protection
+**Status: COMPLETE** — see [docs/PHASE7.5.md](docs/PHASE7.5.md) for scope, decisions, and known limitations.
+
+- [x] Monaco integration
+- [x] File tree
+- [x] Open file
+- [x] Save file
+- [x] Tabs
+- [x] Search
+- [x] Replace
+- [x] Syntax highlighting
+- [x] Auto save
+- [x] Large file protection
 
 ---
 

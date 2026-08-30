@@ -41,5 +41,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // The default 5s is not enough headroom once the whole suite runs in
+    // parallel inside a container; see src/test/setup.ts for the same reasoning
+    // applied to Testing Library's own waits.
+    testTimeout: 20_000,
   },
 });

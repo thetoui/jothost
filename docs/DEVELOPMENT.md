@@ -327,6 +327,7 @@ make docker-test-websites     # Phase 4 website checks
 make docker-test-php          # Phase 5 PHP checks
 make docker-test-ssl          # Phase 6 SSL checks
 make docker-test-files        # Phase 7 file manager checks
+make docker-test-editor       # Phase 7.5 code editor checks
 make verify                   # what CI runs
 ```
 

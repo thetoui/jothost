@@ -490,3 +490,35 @@ export interface FileArchiveResult {
   entries: number;
   size: number;
 }
+
+// ------------------------------------------------------------------ editor
+
+/** A file as the code editor sees it. */
+export interface FileContent {
+  path: string;
+  content: string;
+  size: number;
+  mode: string;
+  modified: string;
+  owner: string;
+  /**
+   * Identifies exactly this content. Sent back on save so a second editor
+   * cannot silently overwrite the first one's work.
+   */
+  checksum: string;
+  /** Syntax highlighting hint, derived from the file name. */
+  language: string;
+  /** What the file already uses, so saving does not convert every line. */
+  end_of_line: 'lf' | 'crlf';
+}
+
+/** What a save returns: the same metadata, without the content echoed back. */
+export interface FileContentSaved {
+  path: string;
+  size: number;
+  mode: string;
+  modified: string;
+  owner: string;
+  checksum: string;
+  language: string;
+}

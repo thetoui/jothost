@@ -8,6 +8,12 @@ import {
   HelpCircle,
 } from 'lucide-react';
 
+import { useState } from 'react';
+
+import {
+  FileActionMenu,
+  type FileAction,
+} from '@/features/files/components/FileActionMenu';
 import { describeMode, formatModified, formatSize, isWorldWritable } from '@/features/files/format';
 import type { FileEntry } from '@/types/api';
 
@@ -16,7 +22,13 @@ interface FileTableProps {
   selected: Set<string>;
   onToggle: (path: string) => void;
   onToggleAll: () => void;
+  /** A directory navigates; a file opens its action menu. */
   onOpen: (entry: FileEntry) => void;
+  /** Path whose action menu is open, if any. */
+  menuFor: string | null;
+  onMenuAction: (action: FileAction, entry: FileEntry) => void;
+  onMenuClose: () => void;
+  canWrite: boolean;
 }
 
 /** iconFor picks an icon from the entry type, then the extension. */
@@ -55,8 +67,21 @@ function iconFor(entry: FileEntry) {
  * points at: showing a link's target as though it were the link's own content
  * is how a file manager gets someone to delete the wrong thing.
  */
-export function FileTable({ entries, selected, onToggle, onToggleAll, onOpen }: FileTableProps) {
+export function FileTable({
+  entries,
+  selected,
+  onToggle,
+  onToggleAll,
+  onOpen,
+  menuFor,
+  onMenuAction,
+  onMenuClose,
+  canWrite,
+}: FileTableProps) {
   const allSelected = entries.length > 0 && entries.every((entry) => selected.has(entry.path));
+  // The menu positions itself against the control that opened it, so the
+  // element is kept rather than the path alone.
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   return (
     <div className="overflow-x-auto">
@@ -113,13 +138,18 @@ export function FileTable({ entries, selected, onToggle, onToggleAll, onOpen }: 
                   />
                 </td>
 
-                <td className="px-3 py-2">
+                <td className="relative px-3 py-2">
                   <div className="flex items-center gap-2">
                     {iconFor(entry)}
                     {entry.type === 'directory' || entry.type === 'file' ? (
                       <button
                         type="button"
-                        onClick={() => onOpen(entry)}
+                        onClick={(event) => {
+                          setAnchor(event.currentTarget);
+                          onOpen(entry);
+                        }}
+                        aria-haspopup={entry.type === 'file' ? 'menu' : undefined}
+                        aria-expanded={entry.type === 'file' ? menuFor === entry.path : undefined}
                         className="truncate text-left font-medium text-slate-800 hover:text-brand-700 hover:underline"
                       >
                         {entry.name}
@@ -140,6 +170,16 @@ export function FileTable({ entries, selected, onToggle, onToggleAll, onOpen }: 
                       </span>
                     )}
                   </div>
+
+                  {menuFor === entry.path && anchor && (
+                    <FileActionMenu
+                      entry={entry}
+                      anchor={anchor}
+                      canWrite={canWrite}
+                      onSelect={onMenuAction}
+                      onClose={onMenuClose}
+                    />
+                  )}
                 </td>
 
                 <td className="px-3 py-2 tabular-nums text-slate-600">

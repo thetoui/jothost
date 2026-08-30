@@ -125,6 +125,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-php
 	$(MAKE) docker-test-ssl
 	$(MAKE) docker-test-files
+	$(MAKE) docker-test-editor
 
 .PHONY: docker-test-integration
 docker-test-integration: ## Run integration tests against the running dev stack
@@ -176,6 +177,12 @@ docker-test-ssl: create-integration-admin ## Run the Phase 6 SSL integration che
 .PHONY: docker-test-files
 docker-test-files: create-integration-admin ## Run the Phase 7 file manager integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase7_files.sh
+
+# The Phase 7.5 checks verify what a save does to a file on disk, so they run
+# inside the agent container alongside the Phase 7 checks.
+.PHONY: docker-test-editor
+docker-test-editor: create-integration-admin ## Run the Phase 7.5 code editor integration checks
+	$(COMPOSE) exec -T agent sh /tests/integration/phase75_editor.sh
 
 # create-integration-admin provisions the account the auth checks sign in with.
 # Re-running is harmless: an existing username is reported and ignored.

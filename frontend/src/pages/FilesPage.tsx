@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowUp,
   ChevronRight,
@@ -26,6 +27,7 @@ import { RequirePermission } from '@/features/auth/components/RequirePermission'
 import { Permission } from '@/features/auth/permissions';
 import { useProfile } from '@/features/auth/hooks';
 import { hasPermission } from '@/features/auth/permissions';
+import type { FileAction } from '@/features/files/components/FileActionMenu';
 import { FileDialogsHost } from '@/features/files/components/FileDialogsHost';
 import { FileTable } from '@/features/files/components/FileTable';
 import { useDirectory, useDownload, useFileMutations, useFileSearch } from '@/features/files/hooks';
@@ -66,6 +68,12 @@ export function FilesPage() {
   const [activeSearch, setActiveSearch] = useState('');
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Which row's action menu is open. One at a time: two menus on screen makes
+  // it ambiguous which file an action would apply to.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [rowDialog, setRowDialog] = useState<{ action: FileAction; entry: FileEntry } | null>(null);
+
+  const navigate = useNavigate();
 
   const uploadInput = useRef<HTMLInputElement>(null);
 
@@ -85,13 +93,14 @@ export function FilesPage() {
     [entries, selected],
   );
 
-  const navigate = useCallback((next: string) => {
+  const goTo = useCallback((next: string) => {
     setPath(next);
     setOffset(0);
     setSelected(new Set());
     setActiveSearch('');
     setSearchTerm('');
     setActionError(null);
+    setMenuFor(null);
   }, []);
 
   const toggle = useCallback((target: string) => {
@@ -115,11 +124,33 @@ export function FilesPage() {
   const open = useCallback(
     (entry: FileEntry) => {
       if (entry.type === 'directory') {
-        navigate(entry.path);
+        goTo(entry.path);
         return;
       }
-      if (entry.type === 'file') {
-        download.mutate({ path: entry.path, name: entry.name });
+      // Clicking a file used to download it outright. Download is one of five
+      // things someone might mean, and the only one that cannot be undone by
+      // closing a dialog, so the click asks instead.
+      setMenuFor((current) => (current === entry.path ? null : entry.path));
+    },
+    [goTo],
+  );
+
+  const runAction = useCallback(
+    (action: FileAction, entry: FileEntry) => {
+      setMenuFor(null);
+      setActionError(null);
+
+      switch (action) {
+        case 'editor':
+          // The editor is reached through the file it is going to open, so the
+          // path travels with the navigation rather than being picked again.
+          navigate(`/editor?path=${encodeURIComponent(entry.path)}`);
+          return;
+        case 'download':
+          download.mutate({ path: entry.path, name: entry.name }, { onError: (thrown) => setActionError(message(thrown)) });
+          return;
+        default:
+          setRowDialog({ action, entry });
       }
     },
     [navigate, download],
@@ -207,7 +238,7 @@ export function FilesPage() {
                   )}
                   <button
                     type="button"
-                    onClick={() => navigate(crumb.path)}
+                    onClick={() => goTo(crumb.path)}
                     aria-current={index === crumbs.length - 1 ? 'page' : undefined}
                     className={
                       index === crumbs.length - 1
@@ -226,7 +257,7 @@ export function FilesPage() {
               <Button
                 size="sm"
                 icon={<ArrowUp aria-hidden="true" className="h-4 w-4" />}
-                onClick={() => navigate(parentOf(path))}
+                onClick={() => goTo(parentOf(path))}
                 disabled={path === ROOT || parentOf(path) === ''}
               >
                 Up
@@ -308,6 +339,10 @@ export function FilesPage() {
                 onToggle={toggle}
                 onToggleAll={toggleAll}
                 onOpen={open}
+                menuFor={menuFor}
+                onMenuAction={runAction}
+                onMenuClose={() => setMenuFor(null)}
+                canWrite={canWrite}
               />
 
               {listing.data && listing.data.total > PAGE_SIZE && (
@@ -337,7 +372,75 @@ export function FilesPage() {
           )}
         </CardBody>
       </Card>
+
+      {/* The row menu drives the same dialogs as the toolbar, on one entry
+          rather than on the selection. Sharing them keeps "rename" meaning
+          exactly one thing however it was reached. */}
+      <FileDialogsHost
+        dialog={
+          rowDialog && rowDialog.action !== 'delete'
+            ? (rowDialog.action as 'rename' | 'permissions')
+            : null
+        }
+        path={path}
+        selected={rowDialog ? [rowDialog.entry] : []}
+        onClose={() => setRowDialog(null)}
+        onSettled={(thrown) => {
+          if (thrown) {
+            setActionError(message(thrown));
+            return;
+          }
+          setActionError(null);
+          setRowDialog(null);
+        }}
+      />
+
+      <RowDeleteDialog
+        entry={rowDialog?.action === 'delete' ? rowDialog.entry : null}
+        onClose={() => setRowDialog(null)}
+        onError={setActionError}
+      />
     </div>
+  );
+}
+
+interface RowDeleteDialogProps {
+  entry: FileEntry | null;
+  onClose: () => void;
+  onError: (message: string | null) => void;
+}
+
+/** RowDeleteDialog confirms deleting the one file the menu was opened on. */
+function RowDeleteDialog({ entry, onClose, onError }: RowDeleteDialogProps) {
+  const mutations = useFileMutations();
+
+  return (
+    <ConfirmDialog
+      open={entry !== null}
+      onClose={onClose}
+      destructive
+      loading={mutations.remove.isPending}
+      title={`Delete ${entry?.name}?`}
+      description="This cannot be undone. There is no trash and no backup."
+      confirmLabel="Delete"
+      onConfirm={() => {
+        if (!entry) {
+          return;
+        }
+        mutations.remove.mutate(
+          { path: entry.path, recursive: entry.type === 'directory' },
+          {
+            onSuccess: () => {
+              onError(null);
+              onClose();
+            },
+            onError: (thrown) => onError(message(thrown)),
+          },
+        );
+      }}
+    >
+      <p className="mt-2 font-mono text-xs text-slate-600">{entry?.path}</p>
+    </ConfirmDialog>
   );
 }
 

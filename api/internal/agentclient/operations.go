@@ -454,3 +454,204 @@ func (c *Client) SSLStatus(ctx context.Context, requestID, domain string) (SSLCe
 		map[string]any{"domain": domain}, &result)
 	return result, err
 }
+
+// ---------------------------------------------------------------- databases
+
+// DatabaseEngine describes one database server as the Agent found it.
+type DatabaseEngine struct {
+	Engine    string `json:"engine"`
+	Available bool   `json:"available"`
+	Version   string `json:"version,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	// SupportsHostPatterns reports whether accounts are a user/host pair, so
+	// the panel shows the host control only where it means something.
+	SupportsHostPatterns bool `json:"supports_host_patterns"`
+}
+
+// DatabaseEnginesResult is the answer to "what can this host run".
+type DatabaseEnginesResult struct {
+	Engines    []DatabaseEngine `json:"engines"`
+	Available  bool             `json:"available"`
+	Privileges []string         `json:"privileges"`
+}
+
+// DatabaseEngines reports which database servers this host runs.
+func (c *Client) DatabaseEngines(ctx context.Context, requestID string) (DatabaseEnginesResult, error) {
+	var result DatabaseEnginesResult
+	err := c.call(ctx, requestID, protocol.OperationDatabaseEngines, nil, &result)
+	return result, err
+}
+
+// DatabaseRecord is one database as the server reports it.
+type DatabaseRecord struct {
+	Name      string `json:"name"`
+	Engine    string `json:"engine"`
+	Charset   string `json:"charset,omitempty"`
+	Collation string `json:"collation,omitempty"`
+	Owner     string `json:"owner,omitempty"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+// DatabaseListResult lists the databases on one engine.
+type DatabaseListResult struct {
+	Engine    string           `json:"engine"`
+	Databases []DatabaseRecord `json:"databases"`
+	Count     int              `json:"count"`
+}
+
+// DatabaseList reports the databases the host actually has.
+//
+// The panel uses it to reconcile: a database dropped from a shell is gone
+// whether or not the panel's table still lists it.
+func (c *Client) DatabaseList(ctx context.Context, requestID, engine string) (DatabaseListResult, error) {
+	var result DatabaseListResult
+	err := c.call(ctx, requestID, protocol.OperationDatabaseList,
+		map[string]any{"engine": engine}, &result)
+	return result, err
+}
+
+// DatabaseCreateResult reports a created database as the server describes it.
+type DatabaseCreateResult struct {
+	Engine string `json:"engine"`
+	Name   string `json:"name"`
+	// Charset and Collation are what the server settled on, which is not
+	// always what was asked for.
+	Charset   string `json:"charset"`
+	Collation string `json:"collation"`
+	SizeBytes int64  `json:"size_bytes"`
+	Created   bool   `json:"created"`
+}
+
+// DatabaseCreate creates a database on the host.
+func (c *Client) DatabaseCreate(ctx context.Context, requestID, engine, name string) (DatabaseCreateResult, error) {
+	var result DatabaseCreateResult
+	err := c.call(ctx, requestID, protocol.OperationDatabaseCreate,
+		map[string]any{"engine": engine, "name": name}, &result)
+	return result, err
+}
+
+// DatabaseDelete drops a database on the host.
+func (c *Client) DatabaseDelete(ctx context.Context, requestID, engine, name string) error {
+	return c.call(ctx, requestID, protocol.OperationDatabaseDelete,
+		map[string]any{"engine": engine, "name": name}, nil)
+}
+
+// DatabaseSizeResult reports one database's size.
+type DatabaseSizeResult struct {
+	Engine    string `json:"engine"`
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+// DatabaseSize reports a database's size in bytes.
+func (c *Client) DatabaseSize(ctx context.Context, requestID, engine, name string) (DatabaseSizeResult, error) {
+	var result DatabaseSizeResult
+	err := c.call(ctx, requestID, protocol.OperationDatabaseSize,
+		map[string]any{"engine": engine, "name": name}, &result)
+	return result, err
+}
+
+// DatabaseUserResult reports an account, and its password on creation.
+//
+// The password field is populated exactly once, by the operation that actually
+// set it. Created is false when the account was already on the server, and the
+// password is then empty: an existing account keeps the password it had, and
+// reporting a new one would hand the operator a credential the server never
+// accepted. It is never logged and never stored in plaintext.
+type DatabaseUserResult struct {
+	Engine   string `json:"engine"`
+	Username string `json:"username"`
+	Host     string `json:"host,omitempty"`
+	Password string `json:"password,omitempty"`
+	Created  bool   `json:"created"`
+	Changed  bool   `json:"changed"`
+	Deleted  bool   `json:"deleted"`
+}
+
+// DatabaseUserRequest names an account and, optionally, its password.
+type DatabaseUserRequest struct {
+	Engine   string
+	Username string
+	Host     string
+	// Password may be empty, in which case the Agent generates one. Letting
+	// the host invent it means a password the operator never chose is never
+	// weaker than the panel's generator, and an operator who wants their own
+	// can still supply it.
+	Password string
+}
+
+func (r DatabaseUserRequest) payload() map[string]any {
+	payload := map[string]any{"engine": r.Engine, "username": r.Username}
+	if r.Host != "" {
+		payload["host"] = r.Host
+	}
+	if r.Password == "" {
+		payload["generate"] = true
+	} else {
+		payload["password"] = r.Password
+	}
+	return payload
+}
+
+// DatabaseUserCreate adds an account to a database server.
+func (c *Client) DatabaseUserCreate(ctx context.Context, requestID string,
+	req DatabaseUserRequest,
+) (DatabaseUserResult, error) {
+	var result DatabaseUserResult
+	err := c.call(ctx, requestID, protocol.OperationDatabaseUserCreate, req.payload(), &result)
+	return result, err
+}
+
+// DatabaseUserPassword changes an account's password.
+func (c *Client) DatabaseUserPassword(ctx context.Context, requestID string,
+	req DatabaseUserRequest,
+) (DatabaseUserResult, error) {
+	var result DatabaseUserResult
+	err := c.call(ctx, requestID, protocol.OperationDatabaseUserPassword, req.payload(), &result)
+	return result, err
+}
+
+// DatabaseUserDelete removes an account from a database server.
+func (c *Client) DatabaseUserDelete(ctx context.Context, requestID, engine, username, host string) error {
+	payload := map[string]any{"engine": engine, "username": username}
+	if host != "" {
+		payload["host"] = host
+	}
+	return c.call(ctx, requestID, protocol.OperationDatabaseUserDelete, payload, nil)
+}
+
+// DatabaseUserList lists the accounts on one engine.
+type DatabaseUserListResult struct {
+	Engine string `json:"engine"`
+	Users  []struct {
+		Username string `json:"username"`
+		Host     string `json:"host,omitempty"`
+		Engine   string `json:"engine"`
+	} `json:"users"`
+	Count int `json:"count"`
+}
+
+// DatabaseUsers reports the accounts the host actually has.
+func (c *Client) DatabaseUsers(ctx context.Context, requestID, engine string) (DatabaseUserListResult, error) {
+	var result DatabaseUserListResult
+	err := c.call(ctx, requestID, protocol.OperationDatabaseUserList,
+		map[string]any{"engine": engine}, &result)
+	return result, err
+}
+
+// DatabaseGrant sets an account's access to one database.
+//
+// An empty privilege revokes. The panel expresses "no access" through the same
+// call as every other level, so there is one code path deciding who can reach
+// a database rather than two that can disagree.
+func (c *Client) DatabaseGrant(ctx context.Context, requestID, engine, username, host,
+	database, privilege string,
+) error {
+	payload := map[string]any{
+		"engine": engine, "username": username, "name": database, "privilege": privilege,
+	}
+	if host != "" {
+		payload["host"] = host
+	}
+	return c.call(ctx, requestID, protocol.OperationDatabaseUserGrant, payload, nil)
+}

@@ -309,8 +309,16 @@ describe('WebsitesPage domain panel', () => {
     renderWithProviders(<WebsitesPage />);
     await user.click(await screen.findByRole('button', { name: 'example.test' }));
 
-    expect(await screen.findByText('Added in Phase 8')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /^Databases$/ })).not.toBeInTheDocument();
+    expect(await screen.findByText('Added in Phase 14')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Backup & restore/ })).not.toBeInTheDocument();
+    // Databases stopped being a future phase in Phase 8, so it is now a real
+    // link rather than a greyed placeholder — in the panel's tool grid and in
+    // the server rail beside it.
+    const databaseLinks = screen.getAllByRole('link', { name: /Databases/ });
+    expect(databaseLinks.length).toBeGreaterThan(0);
+    for (const link of databaseLinks) {
+      expect(link).toHaveAttribute('href', '/databases');
+    }
   });
 
   it('closes the panel again', async () => {

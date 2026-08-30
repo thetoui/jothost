@@ -71,6 +71,21 @@ type Config struct {
 	// group-owned by it so the server can read what it serves. Empty probes
 	// the conventional names.
 	WebGroup string
+
+	// Database management. Both admin passwords are optional and normally
+	// empty: on a default installation the Agent runs as root and both servers
+	// authenticate a local connection by the peer's uid, so no secret has to
+	// exist at all. When one is set it reaches the client through a mode-0600
+	// file, never through a command-line argument.
+	MySQLPath         string
+	MySQLSocket       string
+	MySQLAdminUser    string
+	MySQLAdminPass    string
+	PsqlPath          string
+	PostgresHost      string
+	PostgresPort      int
+	PostgresAdminUser string
+	PostgresAdminPass string
 }
 
 // Load reads and validates Agent configuration.
@@ -107,6 +122,21 @@ func Load() (Config, error) {
 		UserdelPath:   getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
 		DeluserPath:   getString("AGENT_DELUSER_PATH", "/usr/sbin/deluser"),
 		WebGroup:      getString("AGENT_WEB_GROUP", ""),
+
+		// The MariaDB client is preferred because a MariaDB host ships it
+		// under this name and a MySQL host symlinks the same name to its own.
+		MySQLPath:      getString("AGENT_MYSQL_PATH", "/usr/bin/mariadb"),
+		MySQLSocket:    getString("AGENT_MYSQL_SOCKET", "/run/mysqld/mysqld.sock"),
+		MySQLAdminUser: getString("AGENT_MYSQL_ADMIN_USER", "root"),
+		MySQLAdminPass: getString("AGENT_MYSQL_ADMIN_PASSWORD", ""),
+
+		PsqlPath: getString("AGENT_PSQL_PATH", "/usr/bin/psql"),
+		// A leading slash makes libpq treat this as a socket directory rather
+		// than a hostname, which is what keeps peer authentication working.
+		PostgresHost:      getString("AGENT_POSTGRES_HOST", "/run/postgresql"),
+		PostgresPort:      getInt("AGENT_POSTGRES_PORT", 5432),
+		PostgresAdminUser: getString("AGENT_POSTGRES_ADMIN_USER", "postgres"),
+		PostgresAdminPass: getString("AGENT_POSTGRES_ADMIN_PASSWORD", ""),
 	}
 
 	var problems []string
@@ -119,6 +149,8 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_SITE_ROOT", cfg.SiteRoot)...)
 	problems = append(problems, validateAbsolute("AGENT_USERADD_PATH", cfg.UseraddPath)...)
 	problems = append(problems, validateAbsolute("AGENT_ADDUSER_PATH", cfg.AdduserPath)...)
+	problems = append(problems, validateAbsolute("AGENT_MYSQL_PATH", cfg.MySQLPath)...)
+	problems = append(problems, validateAbsolute("AGENT_PSQL_PATH", cfg.PsqlPath)...)
 
 	if cfg.AuditLogPath != "" {
 		problems = append(problems, validateAbsolute("AGENT_AUDIT_LOG", cfg.AuditLogPath)...)

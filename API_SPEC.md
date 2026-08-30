@@ -568,22 +568,99 @@ Reads require `file.read`; saves require `file.write`.
 # 14. Databases
 
 ```http
-GET /databases
-POST /databases
-GET /databases/:id
+GET    /databases
+POST   /databases
+GET    /databases/engines
+GET    /databases/:id
 DELETE /databases/:id
+POST   /databases/:id/size
 ```
+
+**As implemented in Phase 8.** The four endpoints above are joined by
+`GET /databases/engines`, which reports what the host actually runs, and
+`POST /databases/:id/size`, which re-measures one database on demand.
+
+These endpoints are **synchronous**, unlike websites and certificates. Creating
+a database is a single DDL statement that finishes in milliseconds; a job would
+add a poll cycle of latency and, worse, leave no response in which to hand back
+the generated password. A **201** therefore means the database exists on the
+host, not that the intent was recorded.
+
+`POST /databases` takes `name`, and optionally `engine`, `website_id`,
+`create_user`, `username`, `host`, and `password`.
+
+`engine` may be omitted on a host running one server, which is most of them.
+`create_user` defaults to **true**: a database no account can reach cannot be
+used by anything, so creating one alone is the unusual case.
+
+Linking a database to a website is a convenience, not ownership. Deleting the
+website leaves the database, and its `website_id` becomes null — the data
+outlives the vhost, and dropping it has to be a separate, deliberate decision.
+
+`GET /databases/engines` returns each engine the panel knows about with
+`available`, `version`, `supports_host_patterns`, and — when it cannot be used —
+a `detail` explaining why. "Not installed" and "installed but not answering" are
+reported as different states, because they have different fixes.
+
+Everything here needs `database.manage`, reads included. The split some other
+resources use would be a mistake here: a role that can list accounts is one
+step from a role that can read their passwords.
 
 ---
 
 # 15. Database Users
 
 ```http
-GET /databases/:id/users
-POST /databases/:id/users
+GET    /databases/:id/users
+POST   /databases/:id/users
+PATCH  /databases/:id/users/:userId
+GET    /database-users
 DELETE /database-users/:id
-PATCH /database-users/:id/password
+PATCH  /database-users/:id/password
+GET    /database-users/:id/password
 ```
+
+**As implemented in Phase 8.**
+
+`POST /databases/:id/users` creates an account and grants it access in one
+call. An omitted `password` asks the host to generate one, which is the normal
+path: the password is then never typed, never sent from the browser, and comes
+back in this response exactly once.
+
+`PATCH /databases/:id/users/:userId` sets the account's `privilege` on that
+database. The three levels are `readonly`, `readwrite`, and `full`, and they are
+the only accepted values — a panel that forwarded a privilege string could be
+asked for `SUPER` or `FILE`, either of which is server-wide. An **empty**
+privilege revokes: "no access" travels the same path as every other level, so
+there is one piece of code deciding who can reach a database rather than two
+that can disagree.
+
+A grant replaces whatever the account held, rather than adding to it. Lowering
+someone from `full` to `readonly` actually takes `DROP` away.
+
+`PATCH /database-users/:id/password` rotates a password, generating one when
+the body's `password` is empty. The stored copy is replaced only after the
+server accepts the change, so the panel never shows a credential the server
+would reject.
+
+`GET /database-users/:id/password` returns a stored password. It is a separate
+endpoint rather than a field on any listing, and every call is audited: this is
+the one request in the panel that hands back a working credential, and "who
+read this, and when" has to remain answerable. The response is sent
+`Cache-Control: no-store`.
+
+Passwords are stored AES-256-GCM encrypted, bound to their own row, so a
+ciphertext copied from another account fails to decrypt rather than revealing
+that account's password. The panel stores them because the servers do not: both
+MySQL and PostgreSQL keep only a hash, so a password not captured here could
+never be shown to the person who has to put it in a configuration file.
+
+**Account identity differs by engine.** MySQL identifies an account by user
+*and* host, so `'app'@'localhost'` and `'app'@'%'` are two accounts; only
+`localhost` and `%` are accepted, because a literal address or a wildcard
+pattern is how a typo becomes a database exposed to a subnet. PostgreSQL roles
+are global, so `host` is empty there and supplying one is refused rather than
+silently ignored.
 
 ---
 

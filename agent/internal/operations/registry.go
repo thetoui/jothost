@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 
 	"github.com/jothost/panel/agent/internal/collectors"
+	"github.com/jothost/panel/agent/internal/database"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
@@ -78,6 +79,11 @@ type Dependencies struct {
 	// management is not wired up, which handlers report as unsupported.
 	SSL *ssl.Manager
 
+	// Databases manages the database servers on the host. Nil, or holding no
+	// reachable engine, means database management is reported as unsupported
+	// rather than failing one operation at a time.
+	Databases *database.Manager
+
 	// Files serves the file manager. Nil, or configured with no roots, means
 	// file management is unavailable rather than unrestricted.
 	Files *files.Manager
@@ -135,6 +141,17 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationSSLRevoke, r.handleSSLRevoke)
 	r.mustRegister(protocol.OperationSSLStatus, r.handleSSLStatus)
 	r.mustRegister(protocol.OperationSSLCapabilities, r.handleSSLCapabilities)
+
+	r.mustRegister(protocol.OperationDatabaseEngines, r.handleDatabaseEngines)
+	r.mustRegister(protocol.OperationDatabaseList, r.handleDatabaseList)
+	r.mustRegister(protocol.OperationDatabaseCreate, r.handleDatabaseCreate)
+	r.mustRegister(protocol.OperationDatabaseDelete, r.handleDatabaseDelete)
+	r.mustRegister(protocol.OperationDatabaseSize, r.handleDatabaseSize)
+	r.mustRegister(protocol.OperationDatabaseUserList, r.handleDatabaseUserList)
+	r.mustRegister(protocol.OperationDatabaseUserCreate, r.handleDatabaseUserCreate)
+	r.mustRegister(protocol.OperationDatabaseUserDelete, r.handleDatabaseUserDelete)
+	r.mustRegister(protocol.OperationDatabaseUserPassword, r.handleDatabaseUserPassword)
+	r.mustRegister(protocol.OperationDatabaseUserGrant, r.handleDatabaseUserGrant)
 
 	r.mustRegister(protocol.OperationFileList, r.handleFileList)
 	r.mustRegister(protocol.OperationFileStat, r.handleFileStat)

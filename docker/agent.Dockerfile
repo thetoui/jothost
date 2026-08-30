@@ -50,14 +50,31 @@ FROM alpine:3.21 AS runtime
 # It cannot actually issue in this container: ACME needs public DNS and a
 # reachable challenge, and a private network has neither. Self-signed
 # certificates are what the tests drive end to end (docs/PHASE6.md section 3.1).
+#
+# MariaDB and PostgreSQL are both installed for the same reason: this container
+# is the managed host, so Phase 8 has to drive real servers. Both rather than
+# one, because the two providers differ in exactly the places most likely to be
+# wrong — PostgreSQL has no CREATE DATABASE IF NOT EXISTS, no user/host pairs,
+# and per-schema rather than per-database privileges — and a provider only ever
+# exercised against a mock is a provider nobody has actually run.
+#
+# This PostgreSQL is not the panel's own. The control-plane database is a
+# separate container, and the distinction matters: dropping a database on this
+# host must never be able to reach the panel's own tables.
 RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       php82-fpm php83-fpm php84-fpm \
       php82-opcache php83-opcache php84-opcache \
       php82-session php83-session php84-session \
       certbot \
+      mariadb mariadb-client \
+      postgresql16 postgresql16-client \
     && addgroup -g 10001 jothost \
     && mkdir -p /etc/nginx/conf.d /var/www /run/nginx /run/php-fpm \
                 /etc/jothost/ssl /var/www/.acme-challenge/.well-known/acme-challenge \
+                /run/mysqld /var/lib/mysql /run/postgresql /var/lib/postgresql/data \
+    && chown -R mysql:mysql /run/mysqld /var/lib/mysql \
+    && chown -R postgres:postgres /run/postgresql /var/lib/postgresql \
+    && chmod 0700 /var/lib/postgresql/data \
     && rm -f /etc/nginx/http.d/default.conf \
     && rm -f /etc/php82/php-fpm.d/www.conf \
              /etc/php83/php-fpm.d/www.conf \

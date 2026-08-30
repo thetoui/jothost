@@ -522,3 +522,112 @@ export interface FileContentSaved {
   checksum: string;
   language: string;
 }
+
+// --------------------------------------------------------------- databases
+
+/** Which database servers the host runs. */
+export type DatabaseEngineName = 'mysql' | 'mariadb' | 'postgres';
+
+/** How much a database account may do. Weakest first. */
+export type DatabasePrivilege = 'readonly' | 'readwrite' | 'full';
+
+/** Where a MySQL account may connect from. PostgreSQL roles have no host. */
+export type DatabaseHost = 'localhost' | '%';
+
+export interface DatabaseEngine {
+  engine: DatabaseEngineName;
+  available: boolean;
+  version?: string;
+  /** Why an unavailable engine is unavailable, so the panel can say so. */
+  detail?: string;
+  /**
+   * Whether accounts are identified by a user and host pair. False on
+   * PostgreSQL, where a role is global — the panel hides the host control
+   * rather than offering one the server would ignore.
+   */
+  supports_host_patterns: boolean;
+}
+
+export interface DatabaseEngines {
+  engines: DatabaseEngine[];
+  available: boolean;
+  privileges: DatabasePrivilege[];
+  detail?: string;
+}
+
+export type DatabaseStatus = 'creating' | 'active' | 'deleting' | 'failed';
+
+export interface Database {
+  id: string;
+  server_id: string;
+  website_id: string | null;
+  name: string;
+  engine: DatabaseEngineName;
+  status: DatabaseStatus;
+  charset: string | null;
+  collation: string | null;
+  /** Null until the size has been measured; not the same as an empty database. */
+  size_bytes: number | null;
+  size_checked_at: string | null;
+  created_at: string;
+  updated_at: string;
+  website_domain: string | null;
+  user_count: number;
+}
+
+export interface DatabaseGrant {
+  database_id: string;
+  database_name: string;
+  privilege: DatabasePrivilege;
+}
+
+export interface DatabaseUser {
+  id: string;
+  server_id: string;
+  engine: DatabaseEngineName;
+  username: string;
+  /** Empty on PostgreSQL. */
+  host: string;
+  created_at: string;
+  updated_at: string;
+  password_updated_at: string;
+  grants?: DatabaseGrant[];
+}
+
+export interface DatabaseList {
+  databases: Database[];
+  count: number;
+  total_size_bytes: number;
+}
+
+export interface DatabaseDetail {
+  database: Database;
+  users: DatabaseUser[];
+}
+
+export interface DatabaseUserList {
+  users: DatabaseUser[];
+  count: number;
+}
+
+/**
+ * What creating a database returns.
+ *
+ * The password is present exactly once, in this response. The server keeps only
+ * a hash, so the panel showing it here is the only chance anyone has to copy it
+ * before it has to be looked up deliberately.
+ */
+export interface DatabaseCreated {
+  database: Database;
+  user?: DatabaseUser;
+  password?: string;
+}
+
+export interface DatabaseUserCreated {
+  user: DatabaseUser;
+  password: string;
+}
+
+export interface DatabasePassword {
+  password: string;
+}

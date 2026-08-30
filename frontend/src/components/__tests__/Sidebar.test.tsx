@@ -26,9 +26,14 @@ describe('Sidebar', () => {
       '/websites',
     );
     expect(screen.getByRole('link', { name: 'PHP' })).toHaveAttribute('href', '/php');
+    // Databases became a real destination in Phase 8.
+    expect(screen.getByRole('link', { name: 'Databases' })).toHaveAttribute(
+      'href',
+      '/databases',
+    );
     // Future-phase modules are visible but must not be clickable links.
-    expect(screen.queryByRole('link', { name: 'Databases' })).not.toBeInTheDocument();
-    expect(screen.getByTitle('Databases — not yet implemented')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Backups' })).not.toBeInTheDocument();
+    expect(screen.getByTitle('Backups — not yet implemented')).toBeInTheDocument();
   });
 
   it('collapses in response to UI state', () => {

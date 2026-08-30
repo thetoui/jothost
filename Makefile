@@ -126,6 +126,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-ssl
 	$(MAKE) docker-test-files
 	$(MAKE) docker-test-editor
+	$(MAKE) docker-test-databases
 
 .PHONY: docker-test-integration
 docker-test-integration: ## Run integration tests against the running dev stack
@@ -183,6 +184,14 @@ docker-test-files: create-integration-admin ## Run the Phase 7 file manager inte
 .PHONY: docker-test-editor
 docker-test-editor: create-integration-admin ## Run the Phase 7.5 code editor integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase75_editor.sh
+
+# The Phase 8 checks connect to MariaDB and PostgreSQL as the accounts the panel
+# created, to verify that the privileges it reports are the privileges the
+# servers enforce. Only the managed host can reach those sockets, so they run
+# inside the agent container.
+.PHONY: docker-test-databases
+docker-test-databases: create-integration-admin ## Run the Phase 8 database integration checks
+	$(COMPOSE) exec -T agent sh /tests/integration/phase8_databases.sh
 
 # create-integration-admin provisions the account the auth checks sign in with.
 # Re-running is harmless: an existing username is reported and ignored.

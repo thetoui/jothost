@@ -19,6 +19,7 @@ import (
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/command"
 	"github.com/jothost/panel/agent/internal/config"
+	"github.com/jothost/panel/agent/internal/database"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
@@ -183,6 +184,23 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	specs = append(specs, php.ManagerSpecs()...)
 	specs = append(specs, ssl.CertbotSpec()...)
 
+	// The two database clients. They are allowlisted unconditionally: an
+	// absent binary is reported by Runner.Available, which is how the panel
+	// learns the engine is not installed, and registering the path here is
+	// what stops any other program ever being run in its place.
+	specs = append(specs,
+		command.Spec{
+			Name: database.CommandMySQL, Path: cfg.MySQLPath, Timeout: 30 * time.Second,
+		},
+		command.Spec{
+			Name: database.CommandPsql, Path: cfg.PsqlPath, Timeout: 30 * time.Second,
+			// psql is the only program in the Agent permitted an environment
+			// variable from a caller, and only this one: it is how the admin
+			// password reaches libpq without passing through argv.
+			AllowedEnv: []string{"PGPASSFILE"},
+		},
+	)
+
 	runner, err := command.NewRunner(specs...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("build command allowlist: %w", err)
@@ -279,6 +297,40 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("file management ready", "roots", fileManager.Roots())
 	}
 
+	// Database providers probe their servers here, at startup, so agent.info
+	// can report what this host runs rather than each operation discovering it
+	// separately.
+	databaseManager := database.NewManager(database.ManagerOptions{
+		Providers: []database.Provider{
+			database.NewMySQL(context.Background(), database.MySQLOptions{
+				Runner:        runner,
+				Socket:        cfg.MySQLSocket,
+				AdminUser:     cfg.MySQLAdminUser,
+				AdminPassword: cfg.MySQLAdminPass,
+				Log:           log,
+			}),
+			database.NewPostgres(context.Background(), database.PostgresOptions{
+				Runner:        runner,
+				Host:          cfg.PostgresHost,
+				Port:          cfg.PostgresPort,
+				AdminUser:     cfg.PostgresAdminUser,
+				AdminPassword: cfg.PostgresAdminPass,
+				Log:           log,
+			}),
+		},
+		Log: log,
+	})
+
+	for _, engine := range databaseManager.Engines(context.Background()) {
+		if engine.Available {
+			log.Info("database engine ready", "engine", engine.Engine, "version", engine.Version)
+			continue
+		}
+		// Not an error: most hosts run one engine, and the panel hides what
+		// is not there rather than offering a button that always fails.
+		log.Info("database engine unavailable", "engine", engine.Engine, "detail", engine.Detail)
+	}
+
 	jobRunner := jobs.NewRunner(jobs.Options{
 		MaxConcurrent: cfg.MaxConcurrentJobs,
 		MaxJobs:       cfg.MaxJobs,
@@ -299,6 +351,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		PHPInstaller: phpInstaller,
 		WebGroup:     provisioner.WebGroup(),
 		SSL:          sslManager,
+		Databases:    databaseManager,
 		Files:        fileManager,
 	})
 

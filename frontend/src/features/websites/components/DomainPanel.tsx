@@ -77,7 +77,9 @@ export function DomainPanel({ site }: DomainPanelProps) {
                 <ToolTile
                   icon={<Database className="h-4 w-4" />}
                   label="Databases"
-                  unavailable="Added in Phase 8"
+                  detail="Create and grant access"
+                  tone="green"
+                  to="/databases"
                 />
                 <ToolTile
                   icon={<Plug className="h-4 w-4" />}

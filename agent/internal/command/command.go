@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -74,6 +75,15 @@ type Spec struct {
 	Timeout time.Duration
 	// MaxOutput caps combined stdout and stderr. Zero means DefaultMaxOutput.
 	MaxOutput int
+	// AllowedEnv names the environment variables a caller may set for this
+	// program, on top of the sanitised base environment.
+	//
+	// It is an allowlist rather than a free-form map because the environment
+	// is an execution channel: LD_PRELOAD, PATH, or IFS supplied by a caller
+	// would change what runs, not merely how. A spec that names nothing here
+	// — which is every spec but the database clients — cannot have its
+	// environment influenced at all.
+	AllowedEnv []string
 }
 
 // Runner executes allowlisted commands.
@@ -142,17 +152,40 @@ func (r *Runner) Names() []string {
 	return names
 }
 
+// Options are the per-execution extras a caller may supply.
+type Options struct {
+	// Stdin is written to the child's standard input and then closed.
+	//
+	// This is how a secret reaches a program without appearing in argv: the
+	// process table is world-readable on a normal Linux host, so a password
+	// passed as an argument is visible to every account on the machine for as
+	// long as the command runs.
+	Stdin string
+	// Env adds variables to the sanitised base environment. Every name must
+	// appear in the spec's AllowedEnv or the execution is refused.
+	Env map[string]string
+}
+
 // Run executes an allowlisted command with the given arguments.
 //
 // args are passed as argv entries. They are never concatenated into a string
 // and never interpreted by a shell, so a value like "; rm -rf /" is handed to
 // the program as one literal argument.
 func (r *Runner) Run(ctx context.Context, name string, args ...string) (Result, error) {
+	return r.RunWith(ctx, name, Options{}, args...)
+}
+
+// RunWith executes an allowlisted command with per-execution options.
+func (r *Runner) RunWith(ctx context.Context, name string, opts Options, args ...string) (Result, error) {
 	spec, ok := r.specs[name]
 	if !ok {
 		return Result{}, fmt.Errorf("%w: %q", ErrNotAllowed, name)
 	}
 	if err := validateArgs(args); err != nil {
+		return Result{}, err
+	}
+	env, err := r.environment(spec, opts.Env)
+	if err != nil {
 		return Result{}, err
 	}
 	if !isExecutable(spec.Path) {
@@ -164,12 +197,16 @@ func (r *Runner) Run(ctx context.Context, name string, args ...string) (Result, 
 
 	// exec.CommandContext with an absolute path performs no PATH lookup.
 	cmd := exec.CommandContext(ctx, spec.Path, args...)
-	cmd.Env = r.env
+	cmd.Env = env
 	// A working directory the caller does not control avoids relative-path
 	// surprises inside the child.
 	cmd.Dir = "/"
-	// Never hand the child a terminal or the parent's stdin.
+	// Never hand the child a terminal or the parent's own stdin. A caller that
+	// supplied input gets a reader over exactly that string and nothing else.
 	cmd.Stdin = nil
+	if opts.Stdin != "" {
+		cmd.Stdin = strings.NewReader(opts.Stdin)
+	}
 
 	// The child gets its own process group, and cancellation kills the group
 	// rather than just the program that was started. A grandchild holding the
@@ -188,7 +225,7 @@ func (r *Runner) Run(ctx context.Context, name string, args ...string) (Result, 
 	cmd.Stderr = &stderr
 
 	start := time.Now()
-	err := cmd.Run()
+	err = cmd.Run()
 	result := Result{
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),
@@ -216,6 +253,43 @@ func (r *Runner) Run(ctx context.Context, name string, args ...string) (Result, 
 		return result, fmt.Errorf("%w: %s", ErrOutputTooLarge, spec.Name)
 	}
 	return result, nil
+}
+
+// environment builds the child's environment from the sanitised base plus any
+// allowlisted additions.
+func (r *Runner) environment(spec Spec, extra map[string]string) ([]string, error) {
+	if len(extra) == 0 {
+		return r.env, nil
+	}
+
+	allowed := make(map[string]struct{}, len(spec.AllowedEnv))
+	for _, name := range spec.AllowedEnv {
+		allowed[name] = struct{}{}
+	}
+
+	// Sorted so the environment a command receives is the same on every run,
+	// which keeps failures reproducible.
+	names := make([]string, 0, len(extra))
+	for name := range extra {
+		if _, ok := allowed[name]; !ok {
+			return nil, fmt.Errorf("%w: %s may not set %s", ErrNotAllowed, spec.Name, name)
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	env := make([]string, len(r.env), len(r.env)+len(names))
+	copy(env, r.env)
+	for _, name := range names {
+		value := extra[name]
+		// A newline would let one variable forge another, and a null byte
+		// truncates the entry inside the kernel.
+		if strings.ContainsAny(value, "\x00\n\r") {
+			return nil, fmt.Errorf("%w: %s contains a control character", ErrInvalidArg, name)
+		}
+		env = append(env, name+"="+value)
+	}
+	return env, nil
 }
 
 // validateArgs rejects argument shapes that indicate a caller mistake.

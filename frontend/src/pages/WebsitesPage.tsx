@@ -184,7 +184,7 @@ function ServerRail({ sites }: { sites: Website[] }) {
           <RailLink to="/editor" icon={<FileCode2 className="h-4 w-4" />} label="Code editor" />
           <RailLink to="/php" icon={<FileCode2 className="h-4 w-4" />} label="PHP" />
           <RailLink to="/ssl" icon={<Lock className="h-4 w-4" />} label="SSL/TLS" />
-          <RailDisabled icon={<Database className="h-4 w-4" />} label="Databases" phase="Phase 8" />
+          <RailLink to="/databases" icon={<Database className="h-4 w-4" />} label="Databases" />
           <RailDisabled icon={<Clock className="h-4 w-4" />} label="Scheduled tasks" phase="Phase 10" />
           <RailDisabled icon={<HardDrive className="h-4 w-4" />} label="Backup & restore" phase="Phase 14" />
         </nav>

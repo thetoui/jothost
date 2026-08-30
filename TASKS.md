@@ -380,17 +380,27 @@ Security:
 
 # PHASE 8 — Database Manager
 
-- [ ] MariaDB provider
-- [ ] MySQL provider
-- [ ] PostgreSQL provider
-- [ ] Database creation
-- [ ] Database deletion
-- [ ] User creation
-- [ ] User deletion
-- [ ] Password change
-- [ ] Permissions
-- [ ] Database size
-- [ ] Database UI
+- [x] MariaDB provider
+- [x] MySQL provider
+- [x] PostgreSQL provider
+- [x] Database creation
+- [x] Database deletion
+- [x] User creation
+- [x] User deletion
+- [x] Password change
+- [x] Permissions
+- [x] Database size
+- [x] Database UI
+
+MariaDB and MySQL share one provider: the clients speak the same protocol and
+the DDL the panel issues is identical. They stay distinct **engine values**,
+because an operator needs to know which server their data is actually in, and
+the provider reports whichever the host answered as.
+
+Grants are a fixed set of three levels rather than a privilege string. See
+docs/PHASE8.md for what each one means on each engine, and for the defects the
+live checks found.
+- [ ] PHPmyadmin
 
 ---
 

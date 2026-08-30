@@ -5,6 +5,7 @@ import { Spinner } from '@/components/ui/Loading';
 import { RequireAuth } from '@/features/auth/components/RequireAuth';
 import { AppLayout } from '@/layouts/AppLayout';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { DatabasesPage } from '@/pages/DatabasesPage';
 import { FilesPage } from '@/pages/FilesPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PHPPage } from '@/pages/PHPPage';
@@ -71,6 +72,7 @@ export const router = createBrowserRouter(
               ),
             },
             { path: 'php', element: <PHPPage /> },
+            { path: 'databases', element: <DatabasesPage /> },
             { path: 'ssl', element: <SSLPage /> },
             { path: 'security', element: <SecurityPage /> },
             { path: '*', element: <NotFoundPage /> },

@@ -310,37 +310,109 @@ UNIQUE(node_app_id, key)
 
 # 16. databases
 
+**As implemented in migration 0008.**
+
 ```sql
 id UUID PRIMARY KEY
-server_id UUID REFERENCES servers(id)
-name VARCHAR(255) NOT NULL
+server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE
+website_id UUID REFERENCES websites(id) ON DELETE SET NULL
+name VARCHAR(63) NOT NULL
 engine VARCHAR(30) NOT NULL
-status VARCHAR(30)
+status VARCHAR(30) NOT NULL DEFAULT 'creating'
+charset VARCHAR(64)
+collation_name VARCHAR(64)
+size_bytes BIGINT
+size_checked_at TIMESTAMPTZ
 created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+
+UNIQUE(server_id, engine, name)
+CHECK (engine IN ('mysql', 'mariadb', 'postgres'))
+CHECK (status IN ('creating', 'active', 'deleting', 'failed'))
+CHECK (name ~ '^[a-z][a-z0-9_]{0,62}$')
 ```
+
+`website_id` is `ON DELETE SET NULL`, not `CASCADE`. Deleting a website must
+never silently delete a database: the data outlives the vhost, and dropping it
+is a separate decision an operator has to make deliberately.
+
+The name is bounded at 63 — PostgreSQL's limit, and below MySQL's 64 — and
+constrained to the same character set as `shared/validate.DatabaseName`. The
+constraint is repeated here because the database is the last place a name can
+be constrained: a row written by some future code path that skipped the
+validator still cannot hold a name that would need escaping in a statement.
+
+`collation_name` rather than `collation`: the bare word is reserved in
+PostgreSQL and would need quoting at every use, which works until someone
+writes one query without the quotes.
+
+`size_bytes` is nullable on purpose. "Never measured" and "empty" are different
+facts, and only one of them is worth an operator's attention.
 
 ---
 
 # 17. database_users
 
+**As implemented in migration 0008.**
+
 ```sql
 id UUID PRIMARY KEY
-database_id UUID REFERENCES databases(id)
-username VARCHAR(255) NOT NULL
+server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE
+engine VARCHAR(30) NOT NULL
+username VARCHAR(32) NOT NULL
+host VARCHAR(64) NOT NULL DEFAULT ''
 password_encrypted TEXT NOT NULL
+password_updated_at TIMESTAMPTZ NOT NULL
 created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+
+UNIQUE(server_id, engine, username, host)
+CHECK (username ~ '^[a-z][a-z0-9_]{0,31}$')
+CHECK (host IN ('', 'localhost', '%'))
+CHECK ((engine = 'postgres' AND host = '') OR (engine <> 'postgres' AND host <> ''))
 ```
+
+Accounts belong to a **server**, not to a database. One account routinely holds
+grants on several, which is what `database_permissions` records.
+
+`host` exists because MySQL identifies an account by user and host together.
+PostgreSQL roles are global, so it is empty there — and the last CHECK enforces
+that, rather than letting a row imply a restriction the server does not apply.
+
+`password_encrypted` is AES-256-GCM, bound to the row's own id as additional
+authenticated data (section 30), so a ciphertext moved from another row fails to
+decrypt instead of revealing that account's password. The panel stores it
+because the servers do not: both keep only a hash, so a password not captured
+at creation could never be shown again.
 
 ---
 
 # 18. database_permissions
 
+**As implemented in migration 0008.**
+
 ```sql
 id UUID PRIMARY KEY
-database_user_id UUID REFERENCES database_users(id)
-database_id UUID REFERENCES databases(id)
-permissions JSONB NOT NULL
+database_user_id UUID NOT NULL REFERENCES database_users(id) ON DELETE CASCADE
+database_id UUID NOT NULL REFERENCES databases(id) ON DELETE CASCADE
+privilege VARCHAR(20) NOT NULL
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+
+UNIQUE(database_user_id, database_id)
+CHECK (privilege IN ('readonly', 'readwrite', 'full'))
 ```
+
+A privilege **level**, not a JSON blob of individual privileges. The two engines
+express the same intent differently — "readwrite" is four MySQL privileges and,
+on PostgreSQL, a schema grant plus default privileges — so recording the level
+the operator chose is what lets the panel say what it meant and reapply it
+identically on either server. Storing a raw privilege list would also mean
+accepting one, and a panel that accepts a privilege list can be asked for
+`SUPER`.
+
+The UNIQUE pair matters: two rows would make "what access does this account
+have" a question with two answers.
 
 ---
 

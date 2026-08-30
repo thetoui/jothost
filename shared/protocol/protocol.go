@@ -62,6 +62,19 @@ const (
 	OperationSSLStatus       OperationType = "ssl.status"
 	OperationSSLCapabilities OperationType = "ssl.capabilities"
 
+	// Database management. The Agent drives the local database servers; the
+	// API never holds a connection to a managed engine.
+	OperationDatabaseEngines      OperationType = "database.engines"
+	OperationDatabaseList         OperationType = "database.list"
+	OperationDatabaseCreate       OperationType = "database.create"
+	OperationDatabaseDelete       OperationType = "database.delete"
+	OperationDatabaseSize         OperationType = "database.size"
+	OperationDatabaseUserList     OperationType = "database.user.list"
+	OperationDatabaseUserCreate   OperationType = "database.user.create"
+	OperationDatabaseUserDelete   OperationType = "database.user.delete"
+	OperationDatabaseUserPassword OperationType = "database.user.password"
+	OperationDatabaseUserGrant    OperationType = "database.user.grant"
+
 	// File manager. Every one of these carries a caller-supplied path, so
 	// every handler resolves it through pathsec before touching the disk.
 	OperationFileList    OperationType = "file.list"
@@ -87,54 +100,64 @@ const (
 // allowedOperations is the allowlist consulted by Validate. An operation that
 // is not present here can never reach a handler.
 var allowedOperations = map[OperationType]struct{}{
-	OperationPing:            {},
-	OperationInfo:            {},
-	OperationSystemInfo:      {},
-	OperationMetricsCPU:      {},
-	OperationMetricsMemory:   {},
-	OperationMetricsDisk:     {},
-	OperationMetricsNetwork:  {},
-	OperationMetricsLoad:     {},
-	OperationProcessList:     {},
-	OperationServiceList:     {},
-	OperationServiceStatus:   {},
-	OperationWebsiteCreate:   {},
-	OperationWebsiteDelete:   {},
-	OperationWebsiteUpdate:   {},
-	OperationWebsiteStatus:   {},
-	OperationWebsiteLogs:     {},
-	OperationNginxValidate:   {},
-	OperationNginxReload:     {},
-	OperationPHPVersions:     {},
-	OperationPHPInstall:      {},
-	OperationPHPUninstall:    {},
-	OperationPHPPoolCreate:   {},
-	OperationPHPPoolDelete:   {},
-	OperationPHPPoolStatus:   {},
-	OperationPHPExtensions:   {},
-	OperationWebsitePHPSet:   {},
-	OperationWebsitePHPUnset: {},
-	OperationSSLIssue:        {},
-	OperationSSLRenew:        {},
-	OperationSSLRevoke:       {},
-	OperationSSLStatus:       {},
-	OperationSSLCapabilities: {},
-	OperationFileList:        {},
-	OperationFileStat:        {},
-	OperationFileRead:        {},
-	OperationFileWrite:       {},
-	OperationFileMkdir:       {},
-	OperationFileCreate:      {},
-	OperationFileDelete:      {},
-	OperationFileCopy:        {},
-	OperationFileMove:        {},
-	OperationFileChmod:       {},
-	OperationFileArchive:     {},
-	OperationFileExtract:     {},
-	OperationFileSearch:      {},
-	OperationJobStatus:       {},
-	OperationJobCancel:       {},
-	OperationJobList:         {},
+	OperationPing:                 {},
+	OperationInfo:                 {},
+	OperationSystemInfo:           {},
+	OperationMetricsCPU:           {},
+	OperationMetricsMemory:        {},
+	OperationMetricsDisk:          {},
+	OperationMetricsNetwork:       {},
+	OperationMetricsLoad:          {},
+	OperationProcessList:          {},
+	OperationServiceList:          {},
+	OperationServiceStatus:        {},
+	OperationWebsiteCreate:        {},
+	OperationWebsiteDelete:        {},
+	OperationWebsiteUpdate:        {},
+	OperationWebsiteStatus:        {},
+	OperationWebsiteLogs:          {},
+	OperationNginxValidate:        {},
+	OperationNginxReload:          {},
+	OperationPHPVersions:          {},
+	OperationPHPInstall:           {},
+	OperationPHPUninstall:         {},
+	OperationPHPPoolCreate:        {},
+	OperationPHPPoolDelete:        {},
+	OperationPHPPoolStatus:        {},
+	OperationPHPExtensions:        {},
+	OperationWebsitePHPSet:        {},
+	OperationWebsitePHPUnset:      {},
+	OperationSSLIssue:             {},
+	OperationSSLRenew:             {},
+	OperationSSLRevoke:            {},
+	OperationSSLStatus:            {},
+	OperationSSLCapabilities:      {},
+	OperationDatabaseEngines:      {},
+	OperationDatabaseList:         {},
+	OperationDatabaseCreate:       {},
+	OperationDatabaseDelete:       {},
+	OperationDatabaseSize:         {},
+	OperationDatabaseUserList:     {},
+	OperationDatabaseUserCreate:   {},
+	OperationDatabaseUserDelete:   {},
+	OperationDatabaseUserPassword: {},
+	OperationDatabaseUserGrant:    {},
+	OperationFileList:             {},
+	OperationFileStat:             {},
+	OperationFileRead:             {},
+	OperationFileWrite:            {},
+	OperationFileMkdir:            {},
+	OperationFileCreate:           {},
+	OperationFileDelete:           {},
+	OperationFileCopy:             {},
+	OperationFileMove:             {},
+	OperationFileChmod:            {},
+	OperationFileArchive:          {},
+	OperationFileExtract:          {},
+	OperationFileSearch:           {},
+	OperationJobStatus:            {},
+	OperationJobCancel:            {},
+	OperationJobList:              {},
 }
 
 // ErrUnknownOperation is returned for any operation outside the allowlist.

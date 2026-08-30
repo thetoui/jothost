@@ -121,45 +121,32 @@ func rc() RequestContext {
 	return RequestContext{IPAddress: "192.0.2.10", UserAgent: "go-test"}
 }
 
-// auditActions returns the recorded audit actions for the fixture's user.
+// awaitAudit waits for one audit action to be recorded for the fixture.
 //
-// Audit writes are asynchronous, so this polls briefly rather than assuming
-// the row has landed.
-func (f *fixture) auditActions(t *testing.T) []string {
+// Audit writes are asynchronous, so this polls rather than assuming the row has
+// landed. It waits for the specific action the caller cares about, not merely
+// for the table to be non-empty: every one of these tests logs in first, so a
+// poll that stopped at the first row would return login.succeeded and report a
+// missing logout that was simply still in flight.
+func (f *fixture) awaitAudit(t *testing.T, want string) bool {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		rows, err := f.pool.Query(f.ctx, `SELECT action FROM audit_logs ORDER BY created_at`)
-		if err != nil {
+		var found bool
+		if err := f.pool.QueryRow(f.ctx,
+			`SELECT EXISTS (SELECT 1 FROM audit_logs WHERE action = $1)`,
+			want).Scan(&found); err != nil {
 			t.Fatalf("query audit logs: %v", err)
 		}
-
-		var actions []string
-		for rows.Next() {
-			var action string
-			if err := rows.Scan(&action); err != nil {
-				rows.Close()
-				t.Fatalf("scan audit log: %v", err)
-			}
-			actions = append(actions, action)
+		if found {
+			return true
 		}
-		rows.Close()
-
-		if len(actions) > 0 || time.Now().After(deadline) {
-			return actions
+		if time.Now().After(deadline) {
+			return false
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-}
-
-func containsAction(actions []string, want string) bool {
-	for _, a := range actions {
-		if a == want {
-			return true
-		}
-	}
-	return false
 }
 
 // ---------------------------------------------------------------- login
@@ -184,7 +171,7 @@ func TestLoginSucceedsWithCorrectPassword(t *testing.T) {
 		t.Fatalf("expected a 900 second access token, got %d", result.Tokens.ExpiresIn)
 	}
 
-	if !containsAction(f.auditActions(t), audit.ActionLoginSucceeded) {
+	if !f.awaitAudit(t, audit.ActionLoginSucceeded) {
 		t.Fatal("a successful login must be audited")
 	}
 }
@@ -204,7 +191,7 @@ func TestLoginRejectsWrongPassword(t *testing.T) {
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
-	if !containsAction(f.auditActions(t), audit.ActionLoginFailed) {
+	if !f.awaitAudit(t, audit.ActionLoginFailed) {
 		t.Fatal("a failed login must be audited")
 	}
 }
@@ -398,7 +385,7 @@ func TestRefreshReuseRevokesTheWholeSession(t *testing.T) {
 		t.Fatalf("access tokens must be revoked after reuse detection, got %v", err)
 	}
 
-	if !containsAction(f.auditActions(t), audit.ActionRefreshReuse) {
+	if !f.awaitAudit(t, audit.ActionRefreshReuse) {
 		t.Fatal("refresh reuse must be audited")
 	}
 }
@@ -460,7 +447,7 @@ func TestLogoutRevokesImmediately(t *testing.T) {
 	if _, err := f.svc.Refresh(f.ctx, result.Tokens.RefreshToken, rc()); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("the refresh token must stop working, got %v", err)
 	}
-	if !containsAction(f.auditActions(t), audit.ActionLogout) {
+	if !f.awaitAudit(t, audit.ActionLogout) {
 		t.Fatal("logout must be audited")
 	}
 }
@@ -766,7 +753,9 @@ func TestAuditMetadataCarriesNoPassword(t *testing.T) {
 	if _, err := f.svc.Login(f.ctx, testUsername, "wrong-password-entirely", rc()); err == nil {
 		t.Fatal("expected a failure")
 	}
-	f.auditActions(t) // wait for the async write
+	if !f.awaitAudit(t, audit.ActionLoginFailed) {
+		t.Fatal("a failed login must be audited")
+	}
 
 	var metadata *string
 	if err := f.pool.QueryRow(f.ctx,
@@ -788,7 +777,9 @@ func TestAuditLogIsAppendOnly(t *testing.T) {
 	if _, err := f.svc.Login(f.ctx, testUsername, testPassword, rc()); err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	f.auditActions(t)
+	if !f.awaitAudit(t, audit.ActionLoginSucceeded) {
+		t.Fatal("a successful login must be audited")
+	}
 
 	// CLAUDE.md section 15 and DATABASE.md section 25: history must not be
 	// rewritable, even by something holding a database connection.

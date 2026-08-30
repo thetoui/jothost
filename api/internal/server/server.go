@@ -23,6 +23,7 @@ import (
 	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/api/internal/metrics"
 	"github.com/jothost/panel/api/internal/middleware"
+	nodepkg "github.com/jothost/panel/api/internal/node"
 	phppkg "github.com/jothost/panel/api/internal/php"
 	"github.com/jothost/panel/api/internal/ratelimit"
 	"github.com/jothost/panel/api/internal/rbac"
@@ -57,6 +58,7 @@ type Server struct {
 	ssl       *sslpkg.Handler
 	files     *filespkg.Handler
 	databases *databasespkg.Handler
+	node      *nodepkg.Handler
 	// worker realises queued jobs against the Agent. It is nil when no server
 	// is registered, because there is no host to provision against.
 	worker *jobs.Worker
@@ -252,6 +254,23 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// Node.js applications are managed synchronously, like databases: starting
+	// a process is fast, and the response should say what happened rather than
+	// that the intent was recorded.
+	nodeRepo := nodepkg.NewRepository(opts.Pool, encrypter)
+	s.node = nodepkg.NewHandler(nodepkg.HandlerOptions{
+		Service: nodepkg.NewService(nodepkg.ServiceOptions{
+			Repository: nodeRepo,
+			Websites:   websiteRepo,
+			Agent:      agent,
+			Audit:      auditRecorder,
+			Log:        log,
+			ServerID:   opts.LocalServerID,
+		}),
+		Repo: nodeRepo,
+		Auth: authService,
+	})
+
 	if opts.LocalServerID != "" {
 		// The worker reconciles websites through the service, so a finished
 		// job moves the site to active or failed rather than leaving it in
@@ -348,6 +367,7 @@ func (s *Server) routes() http.Handler {
 	s.ssl.Routes(mux)
 	s.files.Routes(mux)
 	s.databases.Routes(mux)
+	s.node.Routes(mux)
 
 	// Anything unmatched returns the standard error envelope rather than the
 	// net/http plain-text default.

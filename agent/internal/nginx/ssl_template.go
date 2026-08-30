@@ -74,9 +74,11 @@ server {
         log_not_found off;
     }
 
+{{ if .ProxyPort }}` + proxyLocation + `{{ else }}
     location / {
         try_files $uri $uri/{{ if .PHPSocket }} /index.php?$query_string{{ end }} =404;
     }
+{{ end }}
 {{ if .PHPSocket }}
     location ~ \.php$ {
         # A request only reaches PHP if the script it names exists. Removing

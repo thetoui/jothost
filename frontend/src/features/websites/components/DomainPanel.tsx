@@ -131,7 +131,9 @@ export function DomainPanel({ site }: DomainPanelProps) {
                 <ToolTile
                   icon={<Globe className="h-4 w-4" />}
                   label="Node.js"
-                  unavailable="Added in Phase 9"
+                  detail="Run an application"
+                  tone="green"
+                  to="/node"
                 />
               </ToolGroup>
 

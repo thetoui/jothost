@@ -84,6 +84,18 @@ type Spec struct {
 	// — which is every spec but the database clients — cannot have its
 	// environment influenced at all.
 	AllowedEnv []string
+	// AllowAnyEnv lifts the allowlist for a program whose environment is the
+	// caller's data rather than the Agent's configuration.
+	//
+	// Exactly one spec sets it: the Node.js runtime, where an application's
+	// environment variables are unbounded by nature — a database URL, an API
+	// key, a feature flag — and no fixed list could ever contain them.
+	//
+	// The boundary does not disappear, it moves. shared/validate.EnvKey is
+	// what refuses the names that change what runs rather than how it behaves
+	// (LD_PRELOAD, PATH, NODE_OPTIONS and the rest), and every variable
+	// reaching this path has been through it.
+	AllowAnyEnv bool
 }
 
 // Runner executes allowlisted commands.
@@ -164,6 +176,20 @@ type Options struct {
 	// Env adds variables to the sanitised base environment. Every name must
 	// appear in the spec's AllowedEnv or the execution is refused.
 	Env map[string]string
+	// Dir overrides the working directory. It must be absolute. Empty keeps
+	// the default of "/", which is deliberately not a directory any caller
+	// controls.
+	Dir string
+	// UID and GID run the program as another account, applied only when
+	// SetCredential is set — 0 is a valid uid, and root is exactly the value
+	// that must never be applied by accident.
+	//
+	// It exists so work done on behalf of a website is done as that website:
+	// npm writing node_modules as root produces a directory the application
+	// can read and never update.
+	UID           int
+	GID           int
+	SetCredential bool
 }
 
 // Run executes an allowlisted command with the given arguments.
@@ -201,6 +227,12 @@ func (r *Runner) RunWith(ctx context.Context, name string, opts Options, args ..
 	// A working directory the caller does not control avoids relative-path
 	// surprises inside the child.
 	cmd.Dir = "/"
+	if opts.Dir != "" {
+		if !strings.HasPrefix(opts.Dir, "/") {
+			return Result{}, fmt.Errorf("%w: a working directory must be absolute", ErrInvalidArg)
+		}
+		cmd.Dir = opts.Dir
+	}
 	// Never hand the child a terminal or the parent's own stdin. A caller that
 	// supplied input gets a reader over exactly that string and nothing else.
 	cmd.Stdin = nil
@@ -213,6 +245,9 @@ func (r *Runner) RunWith(ctx context.Context, name string, opts Options, args ..
 	// output pipe open would otherwise keep Wait blocked past the deadline,
 	// pinning an Agent worker.
 	configureProcessGroup(cmd)
+	if opts.SetCredential {
+		applyCredential(cmd, opts.UID, opts.GID)
+	}
 	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 	// A backstop for a child that survives the kill: after WaitDelay, the
 	// pipes are closed and Wait returns regardless.
@@ -271,8 +306,10 @@ func (r *Runner) environment(spec Spec, extra map[string]string) ([]string, erro
 	// which keeps failures reproducible.
 	names := make([]string, 0, len(extra))
 	for name := range extra {
-		if _, ok := allowed[name]; !ok {
-			return nil, fmt.Errorf("%w: %s may not set %s", ErrNotAllowed, spec.Name, name)
+		if !spec.AllowAnyEnv {
+			if _, ok := allowed[name]; !ok {
+				return nil, fmt.Errorf("%w: %s may not set %s", ErrNotAllowed, spec.Name, name)
+			}
 		}
 		names = append(names, name)
 	}

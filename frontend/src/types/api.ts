@@ -646,3 +646,85 @@ export interface DatabaseConsole {
   /** Why it cannot be installed, when it cannot. */
   detail?: string;
 }
+
+// ----------------------------------------------------------------- Node.js
+
+/** A Node.js runtime the host has. */
+export interface NodeVersion {
+  version: string;
+  full_version: string;
+  binary_path: string;
+  npm_version: string;
+}
+
+/** A release line the host could install. */
+export interface NodeOffer {
+  version: string;
+  package: string;
+  label: string;
+}
+
+export interface NodeVersions {
+  versions: NodeVersion[];
+  count: number;
+  available: boolean;
+  offers: NodeOffer[];
+  can_install: boolean;
+  package_manager: string;
+  /**
+   * "systemd" or "agent" — which mechanism runs applications on this host. It
+   * changes what the logs endpoint can return, so the panel says so.
+   */
+  managed_by: string;
+  detail?: string;
+}
+
+export type NodeAppStatus = 'stopped' | 'starting' | 'running' | 'failed';
+
+/** What an application is doing on the host right now. */
+export interface NodeRuntime {
+  state: string;
+  pid: number;
+  port: number;
+  uptime_seconds: number;
+  managed_by: string;
+  /** Separates "the process is up" from "it is answering". */
+  listening: boolean;
+  detail: string;
+}
+
+export interface NodeApp {
+  id: string;
+  server_id: string;
+  website_id: string;
+  name: string;
+  node_version: string;
+  application_root: string;
+  startup_file: string;
+  port: number;
+  status: NodeAppStatus;
+  systemd_service: string;
+  autostart: boolean;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  website_domain?: string;
+  system_user?: string;
+  runtime?: NodeRuntime;
+  /** The names that are set. The values are a separate, audited read. */
+  environment?: string[];
+}
+
+export interface NodeAppList {
+  applications: NodeApp[];
+  count: number;
+}
+
+export interface NodeLogs {
+  source: string;
+  lines: string[];
+  error_lines: string[];
+  out_path: string;
+  error_path: string;
+  detail: string;
+}

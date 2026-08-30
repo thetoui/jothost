@@ -47,6 +47,14 @@ type SiteConfig struct {
 	// a static site, and the PHP block is omitted entirely rather than pointing
 	// at a socket that does not exist.
 	PHPSocket string
+	// ProxyPort makes this site a reverse proxy to an application on
+	// 127.0.0.1. Zero serves files instead.
+	//
+	// It and PHPSocket are mutually exclusive: a site is served by an
+	// application or by files, and a configuration claiming both would pass
+	// some requests to PHP and the rest to Node depending on the URL, which is
+	// never what anybody meant.
+	ProxyPort int
 	// SSL is the site's certificate. Nil means HTTP only, and the HTTPS server
 	// block is omitted rather than pointing at a certificate that is not there
 	// — which nginx refuses to start with, taking every other site down too.
@@ -113,10 +121,16 @@ server {
         log_not_found off;
     }
 
+{{ if .ProxyPort }}` + proxyLocation + `{{ else }}
     location / {
         try_files $uri $uri/{{ if .PHPSocket }} /index.php?$query_string{{ end }} =404;
     }
-{{ if not .PHPSocket }}
+{{ end }}
+{{ if .ProxyPort }}
+    # Nothing here: the application above answers every path, including any
+    # that happens to end in .php. A deny block would be dead configuration,
+    # and a PHP block would name a socket this site does not have.
+{{ else if not .PHPSocket }}
     # PHP is off for this site, so a .php file is not content: serving it
     # would hand out the source, and a site that had PHP switched off still
     # has its config.php with the database password in it.
@@ -176,6 +190,18 @@ const defaultMaxBodySize = "64m"
 func Render(cfg SiteConfig) (string, error) {
 	if err := validate.Domain(cfg.PrimaryDomain); err != nil {
 		return "", err
+	}
+	if cfg.ProxyPort != 0 {
+		if err := validate.AppPort(cfg.ProxyPort); err != nil {
+			return "", err
+		}
+		// A site is served by an application or by files. A configuration
+		// claiming both would send some URLs to PHP and the rest to the
+		// application, which is never what anybody meant.
+		if cfg.PHPSocket != "" {
+			return "", fmt.Errorf("%w: a site cannot be both a PHP site and a reverse proxy",
+				ErrInvalidConfig)
+		}
 	}
 	for _, alias := range cfg.Aliases {
 		if err := validate.Domain(alias); err != nil {

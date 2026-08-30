@@ -277,34 +277,94 @@ created_at TIMESTAMPTZ NOT NULL
 
 # 14. node_apps
 
+**As implemented in migration 0009.**
+
 ```sql
 id UUID PRIMARY KEY
-website_id UUID REFERENCES websites(id)
-name VARCHAR(255) NOT NULL
+server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE
+website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE
+name VARCHAR(40) NOT NULL
 node_version VARCHAR(30) NOT NULL
 application_root TEXT NOT NULL
-startup_file TEXT
-port INTEGER
-status VARCHAR(30)
+startup_file TEXT NOT NULL
+port INTEGER NOT NULL
+status VARCHAR(30) NOT NULL DEFAULT 'stopped'
 systemd_service VARCHAR(255)
+autostart BOOLEAN NOT NULL DEFAULT TRUE
+last_error TEXT
 created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
+
+UNIQUE(website_id)
+UNIQUE(server_id, port)
+UNIQUE(server_id, name)
+CHECK (name ~ '^[a-z][a-z0-9_-]{0,39}$')
+CHECK (status IN ('stopped', 'starting', 'running', 'failed'))
+CHECK (application_root LIKE '/%' AND application_root NOT LIKE '%..%')
+CHECK (startup_file NOT LIKE '/%' AND startup_file NOT LIKE '%..%')
+CHECK (port BETWEEN 1024 AND 32767)
 ```
+
+`website_id` is `ON DELETE CASCADE`, unlike a database's. An application is the
+website's own process, not data that outlives it: deleting the site removes the
+vhost that reached it, so keeping the record would leave a process nothing
+could route to. It is unique, because a second application on one site would
+need a second vhost to reach it and the site has one domain.
+
+The port is unique **per server**, not per website. A port is a host-wide
+resource, and two applications on one of them means one is failing to bind
+while the panel cannot say which.
+
+It is bounded at 1024–32767 for two reasons that are easy to conflate. Below
+1024 needs root, which an application never has. From 32768 up is the range the
+kernel hands to outgoing connections, so an application asked to listen there
+starts fine most days and fails with "address already in use" on the day
+something else got there first — a fault that looks random and is not.
+
+`name` is bounded at 40 and constrained to the same character set as
+`shared/validate.AppName`, because this value becomes a systemd unit name and
+the database is the last place it can be constrained.
+
+`startup_file` must be relative and free of traversal. An absolute path would
+let an application be started from outside its own directory, which is the one
+thing the application root exists to prevent.
+
+`autostart` is separate from `status` on purpose. "It is stopped" and "it is
+meant to be stopped" are different facts, and conflating them is how a crashed
+application looks deliberate.
 
 ---
 
 # 15. node_environment
 
+**As implemented in migration 0009.**
+
 ```sql
 id UUID PRIMARY KEY
-node_app_id UUID REFERENCES node_apps(id)
-key VARCHAR(255) NOT NULL
+node_app_id UUID NOT NULL REFERENCES node_apps(id) ON DELETE CASCADE
+key VARCHAR(64) NOT NULL
 value_encrypted TEXT NOT NULL
 created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
 
 UNIQUE(node_app_id, key)
+CHECK (key ~ '^[A-Z_][A-Z0-9_]{0,63}$')
+CHECK (key NOT IN ('LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT', 'NODE_OPTIONS',
+                   'PATH', 'IFS', 'SHELL', 'BASH_ENV', 'ENV',
+                   'PORT', 'HOME', 'USER', 'PWD'))
 ```
+
+Values are AES-256-GCM encrypted and bound to their own row's id (section 30),
+so a ciphertext copied from another application's row fails to decrypt rather
+than revealing its secret. This is where a database URL with a password in it
+goes, and an API key, and a signing secret — a panel that stored them in plain
+text would make its own database the most valuable thing on the host.
+
+The reserved-key check refuses the names that change *what runs* rather than
+how it behaves — `LD_PRELOAD`, `NODE_OPTIONS`, `PATH`, `BASH_ENV` — together
+with the names the panel sets itself, so one value cannot contradict another.
+`shared/validate.EnvKey` refuses them first; this is the last line, for a row
+written by some future path that forgot.
 
 ---
 

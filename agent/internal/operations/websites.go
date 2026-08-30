@@ -18,6 +18,14 @@ type websiteCreatePayload struct {
 	DocumentRoot string   `json:"document_root"`
 	SystemUser   string   `json:"system_user"`
 	MaxBodySize  string   `json:"max_body_size"`
+	// ProxyPort points the vhost at an application on 127.0.0.1 instead of at
+	// files. Zero serves files, which is how a Node.js site becomes static
+	// again.
+	ProxyPort int `json:"proxy_port"`
+	// PHPSocket is passed through by the PHP operations; a website operation
+	// carrying both it and a proxy port is refused by the renderer, because a
+	// site is served by one thing or the other.
+	PHPSocket string `json:"php_socket"`
 }
 
 func (r *Registry) handleWebsiteCreate(ctx context.Context, req protocol.Request, reporter *jobs.Reporter) (map[string]any, error) {
@@ -184,6 +192,8 @@ func (r *Registry) handleWebsiteUpdate(ctx context.Context, req protocol.Request
 		Aliases:      payload.Aliases,
 		DocumentRoot: payload.DocumentRoot,
 		MaxBodySize:  payload.MaxBodySize,
+		PHPSocket:    payload.PHPSocket,
+		ProxyPort:    payload.ProxyPort,
 	}, reporterFunc(reporter))
 	if err != nil {
 		return nil, websiteError(err)

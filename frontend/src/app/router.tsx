@@ -7,6 +7,7 @@ import { AppLayout } from '@/layouts/AppLayout';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { DatabasesPage } from '@/pages/DatabasesPage';
 import { FilesPage } from '@/pages/FilesPage';
+import { NodePage } from '@/pages/NodePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PHPPage } from '@/pages/PHPPage';
 import { SSLPage } from '@/pages/SSLPage';
@@ -73,6 +74,7 @@ export const router = createBrowserRouter(
             },
             { path: 'php', element: <PHPPage /> },
             { path: 'databases', element: <DatabasesPage /> },
+            { path: 'node', element: <NodePage /> },
             { path: 'ssl', element: <SSLPage /> },
             { path: 'security', element: <SecurityPage /> },
             { path: '*', element: <NotFoundPage /> },

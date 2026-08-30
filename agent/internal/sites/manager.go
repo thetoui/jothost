@@ -77,6 +77,9 @@ type CreateRequest struct {
 	// the HTTPS block is omitted rather than naming a certificate that is not
 	// there, which nginx refuses to start with — taking every other site down.
 	SSL *nginx.SSLConfig
+	// ProxyPort makes this site a reverse proxy to an application on
+	// 127.0.0.1 rather than a directory of files.
+	ProxyPort int
 }
 
 // CreateResult is what provisioning produced.
@@ -163,6 +166,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 		ErrorLog:      layout.ErrorLog,
 		MaxBodySize:   req.MaxBodySize,
 		PHPSocket:     req.PHPSocket,
+		ProxyPort:     req.ProxyPort,
 		SSL:           req.SSL,
 	})
 	if err != nil {
@@ -411,6 +415,10 @@ type UpdateRequest struct {
 	// SSL is the certificate this site serves HTTPS with. Nil rewrites the
 	// vhost as HTTP only, which is how a certificate is withdrawn.
 	SSL *nginx.SSLConfig
+	// ProxyPort makes this site a reverse proxy to an application listening on
+	// 127.0.0.1. Zero serves files, which is how a Node.js site is turned back
+	// into a static one.
+	ProxyPort int
 }
 
 // UpdateResult reports what was rewritten.
@@ -462,6 +470,7 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 		ErrorLog:      layout.ErrorLog,
 		MaxBodySize:   req.MaxBodySize,
 		PHPSocket:     req.PHPSocket,
+		ProxyPort:     req.ProxyPort,
 		SSL:           req.SSL,
 	})
 	if err != nil {

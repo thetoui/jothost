@@ -29,6 +29,63 @@ if command -v nginx >/dev/null 2>&1; then
   fi
 fi
 
+# ------------------------------------------------------- system accounts
+#
+# Development only, and only because of how this container is built.
+#
+# The panel creates a Unix account per website. Those live in /etc/passwd,
+# which is part of the image's filesystem — so rebuilding the image deletes
+# every account while /var/www, which is a volume, keeps every site's files.
+# The result is a host whose sites exist on disk, are listed in the panel, and
+# cannot be served because the account that owns them is gone.
+#
+# On a real machine none of this applies: the host is not rebuilt from an image
+# and /etc/passwd is simply a file that persists. Here the panel-created lines
+# are copied to a volume and put back on start.
+#
+# Only accounts this panel creates are touched: web_* for websites and
+# jothost_* for the panel's own service accounts. Nothing the base image
+# defines is ever written.
+
+ACCOUNTS_DIR=/var/lib/jothost/accounts
+
+restore_accounts() {
+  [ -d "$ACCOUNTS_DIR" ] || return 0
+
+  for file in passwd group shadow; do
+    saved="$ACCOUNTS_DIR/$file"
+    [ -f "$saved" ] || continue
+
+    while IFS= read -r line; do
+      name="${line%%:*}"
+      [ -n "$name" ] || continue
+      # Already present in this image's copy: leave it alone.
+      if cut -d: -f1 "/etc/$file" | grep -qx "$name"; then
+        continue
+      fi
+      printf '%s\n' "$line" >> "/etc/$file"
+      echo "agent-entrypoint: restored $file entry for $name"
+    done < "$saved"
+  done
+}
+
+save_accounts() {
+  mkdir -p "$ACCOUNTS_DIR"
+  for file in passwd group shadow; do
+    grep -E '^(web_|jothost_)' "/etc/$file" > "$ACCOUNTS_DIR/$file.tmp" 2>/dev/null || true
+    mv "$ACCOUNTS_DIR/$file.tmp" "$ACCOUNTS_DIR/$file" 2>/dev/null || true
+  done
+  chmod 600 "$ACCOUNTS_DIR/shadow" 2>/dev/null || true
+}
+
+restore_accounts
+save_accounts
+
+# The panel creates accounts while running, and this container has no way to be
+# told when. A periodic copy is crude, but it is a development convenience
+# rather than a mechanism anything depends on.
+( while true; do sleep 30; save_accounts; done ) &
+
 # ------------------------------------------------------------------- MariaDB
 
 start_mariadb() {

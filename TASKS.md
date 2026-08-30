@@ -253,6 +253,36 @@ Only authorised callers may change it. verified: 401 anonymous, 403 without perm
 
 ---
 
+# PHASE 4.1 — Subdomain Manager (Plesk Style)
+
+- [ ] Subdomain database schema & parent website relationship
+- [ ] Document Root mapping options:
+Nested path (e.g., /var/www/vhosts/example.com/sub.example.com)
+Isolated path (e.g., /var/www/vhosts/sub.example.com)
+
+- [ ] Dedicated Nginx vhost & Apache VirtualHost generation for subdomains
+- [ ] PHP-FPM Pool strategy selector:
+Inherit parent site pool
+Dedicated isolated PHP-FPM pool & socket per subdomain
+
+- [ ] Dedicated SSL certificate issuance (Certbot / Let's Encrypt) per subdomain
+- [ ] Wildcard subdomain support (*.example.com) & Catch-all routing
+- [ ] Isolated Access & Error log files per subdomain
+- [ ] Automatic DNS record injection (A / AAAA / CNAME) into parent domain's zone
+- [ ] User permission model (Parent site user ownership vs Dedicated FTP/System user)
+- [ ] Subdomain API endpoints & UI management tab (Plesk-style collapsible site card)
+
+# PHASE 4.5 — Apache Hybrid Engine (Nginx + Apache)
+
+- [ ] Apache2 / httpd detection & provider
+- [ ] Nginx reverse proxy template (proxy_pass to Apache backend)
+- [ ] Apache mpm_event & PHP-FPM integration
+- [ ] Apache VirtualHost generator
+- [ ] Webserver mode switcher (Nginx Standalone vs Nginx + Apache Hybrid)
+- [ ] .htaccess support and custom rewrite rules handling
+- [ ] Real IP restoration via mod_remoteip
+- [ ] Backend port assignment and validation engine
+
 # PHASE 5 — PHP Manager
 
 **Status: COMPLETE** — see [docs/PHASE5.md](docs/PHASE5.md) for scope, decisions, and known limitations.
@@ -416,28 +446,41 @@ belongs to shown and editable in the list itself.
 
 # PHASE 9 — Node.js Manager
 
-- [ ] Node version detection
-- [ ] Node version installation
-- [ ] Node application model
-- [ ] Application creation
-- [ ] Application deletion
-- [ ] Environment variables
-- [ ] systemd service generation
-- [ ] Start
-- [ ] Stop
-- [ ] Restart
-- [ ] Logs
-- [ ] Port validation
-- [ ] Reverse proxy
-- [ ] Node UI
+- [x] Node version detection
+- [x] Node version installation
+- [x] Node application model
+- [x] Application creation
+- [x] Application deletion
+- [x] Environment variables
+- [x] systemd service generation
+- [x] Start
+- [x] Stop
+- [x] Restart
+- [x] Logs
+- [x] Port validation
+- [x] Reverse proxy
+- [x] Node UI
 
 Test:
 
 ```text
 Express
-NestJS
-Nuxt
 ```
+
+The integration suite deploys a real Express application and checks that the
+domain reaches it through nginx, under the website's own account, with the
+environment the panel gave it.
+
+NestJS and Nuxt are **not** covered, and the reason is worth stating rather than
+quietly dropping: both expect a build step, and this phase installs dependencies
+and starts an entry point without running one. A built NestJS or Nuxt
+application is an entry point like any other and runs here unchanged; building
+it is what the panel does not do. See docs/PHASE9.md section 6.
+
+An application runs under systemd where the host has it and under the Agent's
+own supervisor where it does not, and answers the same operations either way.
+The unit carries the confinement — NoNewPrivileges, ProtectSystem=strict,
+PrivateTmp, a bounded restart limit — which is the reason to prefer it.
 
 ---
 
@@ -485,18 +528,16 @@ Nuxt
 
 ---
 
-# PHASE 13 — DNS
+# PHASE 13 — DNS & Local Name Server
 
-- [ ] Cloudflare provider
-- [ ] API token encryption
-- [ ] A records
-- [ ] AAAA
-- [ ] CNAME
-- [ ] MX
-- [ ] TXT
-- [ ] CAA
-- [ ] SRV
-- [ ] DNS UI
+- [ ] BIND9 / PowerDNS provider
+- [ ] Zone file generator (Forward & Reverse zones)
+- [ ] Default DNS SOA and Name Server templates
+- [ ] DNS Master / Slave zone replication setup
+- [ ] DNSSEC automatic signing & key rollover
+- [ ] Local DNS zone editor UI
+- [ ] Cloudflare provider (Remote sync option)
+- [ ] A, AAAA, CNAME, MX, TXT, CAA, SRV record management
 
 ---
 
@@ -625,16 +666,16 @@ Later:
 
 ---
 
-# PHASE 22 — Multi-user
+# PHASE 22 — Multi-Tenant Hierarchy & Subscriptions
 
-- [ ] Hosting users
-- [ ] User websites
-- [ ] User databases
-- [ ] Resource limits
-- [ ] Disk limits
-- [ ] Website limits
-- [ ] Database limits
-- [ ] User dashboard
+- [ ] Tiered account model: Admin -> Reseller -> Customer
+- [ ] Service Plan (Package) builder (Disk, Bandwidth, Sites, DBs, Mailboxes)
+- [ ] Add-on Plan builder
+- [ ] Subscription creation and plan assignment
+- [ ] Quota enforcement middleware (Hard & Soft limits)
+- [ ] Resource isolation per subscription via cgroups (CPU, RAM, IOPS)
+- [ ] Impersonation mechanism (Login-as-Customer / Reseller)
+- [ ] Subscription dashboard & resource tracking UI
 
 ---
 
@@ -698,6 +739,33 @@ uninstall
 - [ ] Recovery documentation
 
 ---
+
+# PHASE 26 — Mail Server Ecosystem
+
+- [ ] Postfix MTA provider
+- [ ] Dovecot IMAP/POP3 provider
+- [ ] Mailbox schema & CRUD API
+- [ ] Automated DKIM key generation & DNS record publishing
+- [ ] SPF & DMARC policy auto-configuration
+- [ ] Rspamd / SpamAssassin integration
+- [ ] ClamAV virus scanning integration
+- [ ] Roundcube Webmail provider & automated vhost installer
+- [ ] Email forwarders, Catch-all, and Autoresponders
+- [ ] Mailbox quota limits & TLS security enforcement
+- [ ] Webmail UI integration
+
+# PHASE 27 — Git & Webhook Deployment Actions
+
+- [ ] Git repository manager per website
+- [ ] SSH deployment key generation
+- [ ] Webhook receiver endpoint & secret signature validation
+- [ ] Post-deployment script runner engine
+- [ ] Pre-built action templates (composer install, npm run build, php artisan migrate)
+- [ ] Custom shell script execution isolated per site user
+- [ ] Real-time deployment log streaming & execution history
+- [ ] Automatic rollback on script failure
+- [ ] Branch selection & Push-to-deploy trigger control
+- [ ] Deployment UI
 
 # Definition of Done
 

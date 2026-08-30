@@ -108,6 +108,10 @@ services:
       # Managed database data, kept for the same reason as the site content
       # above: rebuilding this image would otherwise silently destroy every
       # database while the panel went on listing them as active.
+      # The Unix accounts the panel creates per website. See the entrypoint:
+      # /etc/passwd is part of the image, so a rebuild would otherwise delete
+      # every site's owner while its files survive in the volume above.
+      - agent-accounts:/var/lib/jothost/accounts
       - agent-mysql:/var/lib/mysql
       - agent-pgdata:/var/lib/postgresql
       # The Phase 2 checks run inside this container, against a live Agent.
@@ -223,5 +227,6 @@ volumes:
   agent-socket:
   agent-audit:
   agent-sites:
+  agent-accounts:
   agent-mysql:
   agent-pgdata:

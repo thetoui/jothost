@@ -81,6 +81,20 @@ const (
 	OperationPHPMyAdminInstall   OperationType = "phpmyadmin.install"
 	OperationPHPMyAdminUninstall OperationType = "phpmyadmin.uninstall"
 
+	// Node.js. An application is somebody else's code, so every one of these
+	// runs it as the website's own account and never as the Agent's.
+	OperationNodeVersions   OperationType = "node.versions"
+	OperationNodeInstall    OperationType = "node.install"
+	OperationNodeUninstall  OperationType = "node.uninstall"
+	OperationNodeAppDeploy  OperationType = "node.app.deploy"
+	OperationNodeAppRemove  OperationType = "node.app.remove"
+	OperationNodeAppStart   OperationType = "node.app.start"
+	OperationNodeAppStop    OperationType = "node.app.stop"
+	OperationNodeAppRestart OperationType = "node.app.restart"
+	OperationNodeAppStatus  OperationType = "node.app.status"
+	OperationNodeAppLogs    OperationType = "node.app.logs"
+	OperationNodeAppInstall OperationType = "node.app.dependencies"
+
 	// File manager. Every one of these carries a caller-supplied path, so
 	// every handler resolves it through pathsec before touching the disk.
 	OperationFileList    OperationType = "file.list"
@@ -151,6 +165,17 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationPHPMyAdminStatus:     {},
 	OperationPHPMyAdminInstall:    {},
 	OperationPHPMyAdminUninstall:  {},
+	OperationNodeVersions:         {},
+	OperationNodeInstall:          {},
+	OperationNodeUninstall:        {},
+	OperationNodeAppDeploy:        {},
+	OperationNodeAppRemove:        {},
+	OperationNodeAppStart:         {},
+	OperationNodeAppStop:          {},
+	OperationNodeAppRestart:       {},
+	OperationNodeAppStatus:        {},
+	OperationNodeAppLogs:          {},
+	OperationNodeAppInstall:       {},
 	OperationFileList:             {},
 	OperationFileStat:             {},
 	OperationFileRead:             {},

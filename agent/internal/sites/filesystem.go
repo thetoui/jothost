@@ -232,17 +232,29 @@ func (p *Provisioner) Provision(layout Layout, uid, gid int) error {
 func (p *Provisioner) WritePlaceholder(layout Layout, domain string, uid, gid int) error {
 	index := filepath.Join(layout.Content, "index.html")
 
-	if _, err := os.Stat(index); err == nil {
-		// Content already exists; overwriting it would destroy a deployment.
-		return nil
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("stat index: %w", err)
-	}
-
 	// The placeholder is served by the web server, so it carries the same
 	// group ownership as the directory holding it.
 	if p.HasWebGroup() {
 		gid = p.webGID
+	}
+
+	if _, err := os.Stat(index); err == nil {
+		// Content already exists; overwriting it would destroy a deployment.
+		//
+		// Its ownership is still corrected. A directory left behind by a
+		// previous site holds files owned by an account that no longer exists,
+		// and nginx cannot read them — so the new site returns 403 from the
+		// moment it is created, which is precisely the outcome this function
+		// exists to prevent. Ownership is the panel's to set at creation; the
+		// content itself is not touched.
+		if uid >= 0 && gid >= 0 {
+			if err := os.Chown(index, uid, gid); err != nil {
+				return fmt.Errorf("own the existing index: %w", err)
+			}
+		}
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat index: %w", err)
 	}
 
 	// The domain is inserted into HTML, so it is escaped. It is already

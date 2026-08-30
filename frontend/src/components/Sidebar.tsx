@@ -8,6 +8,7 @@ import {
   Files,
   Globe,
   HardDrive,
+  Hexagon,
   LayoutDashboard,
   Lock,
   Server,
@@ -46,6 +47,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Websites', to: '/websites', icon: Globe, enabled: true },
       { label: 'PHP', to: '/php', icon: FileCode2, enabled: true },
+      { label: 'Node.js', to: '/node', icon: Hexagon, enabled: true },
       { label: 'Databases', to: '/databases', icon: Database, enabled: true },
       { label: 'SSL', to: '/ssl', icon: Lock, enabled: true },
     ],

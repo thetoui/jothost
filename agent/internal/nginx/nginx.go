@@ -118,6 +118,42 @@ func (p *Provider) WriteRedirect(ctx context.Context, redirect Redirect) (string
 	return p.install(ctx, redirect.Domain, rendered)
 }
 
+// ProxyMapName is the file holding the map every proxied site needs.
+//
+// A leading zero keeps it first in the include order. nginx reads conf.d in
+// sorted order and a server block referring to $connection_upgrade before the
+// map defines it is a configuration nginx refuses to start with.
+const ProxyMapName = "00-jothost-proxy.conf"
+
+// EnsureProxyMap writes the map a reverse-proxied site depends on.
+//
+// It is written once for the host rather than per site, because nginx refuses
+// to start with a duplicate map. Called at startup so a proxy vhost written
+// later always has it, rather than the first one failing validation for a
+// reason that has nothing to do with that site.
+func (p *Provider) EnsureProxyMap() error {
+	if p.sitesDir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(p.sitesDir, 0o755); err != nil {
+		return fmt.Errorf("create the sites directory: %w", err)
+	}
+
+	path := filepath.Join(p.sitesDir, ProxyMapName)
+	existing, err := os.ReadFile(path)
+	if err == nil && string(existing) == ConnectionUpgradeMap {
+		return nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+
+	if err := os.WriteFile(path, []byte(ConnectionUpgradeMap), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
 // WriteSiteRaw installs a configuration the caller has already rendered.
 //
 // It exists for a site the panel serves that is not a customer website — the

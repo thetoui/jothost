@@ -23,6 +23,7 @@ import (
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
+	"github.com/jothost/panel/agent/internal/nodejs"
 	"github.com/jothost/panel/agent/internal/operations"
 	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/pma"
@@ -185,6 +186,11 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	specs = append(specs, php.ManagerSpecs()...)
 	specs = append(specs, ssl.CertbotSpec()...)
 
+	// Node contributes an entry per tool actually present, found by a
+	// filesystem probe that executes nothing. An application the panel starts
+	// can therefore only ever be run by a binary resolved here.
+	specs = append(specs, nodejs.CommandSpecs()...)
+
 	// The two database clients. They are allowlisted unconditionally: an
 	// absent binary is reported by Runner.Available, which is how the panel
 	// learns the engine is not installed, and registering the path here is
@@ -346,6 +352,45 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Log:       log,
 	})
 
+	// Reverse-proxied sites need one map defined in the http block. Written
+	// here rather than per site, because nginx refuses to start with a
+	// duplicate — and because the first proxied site failing validation for a
+	// missing variable would look like a problem with that site.
+	if nginxProvider.Available() {
+		if err := nginxProvider.EnsureProxyMap(); err != nil {
+			log.Warn("could not write the reverse-proxy map; Node.js sites will not validate",
+				logger.KeyError, err.Error())
+		}
+	}
+
+	nodeDetector := nodejs.NewDetector(runner)
+	nodeInstaller := nodejs.NewInstaller(phpInstaller, nodeDetector)
+	nodeUsers := sites.NewUserProvider(runner)
+
+	nodeManager := nodejs.NewManager(nodejs.ManagerOptions{
+		Detector:   nodeDetector,
+		Installer:  nodeInstaller,
+		Systemd:    nodejs.NewSystemd(serviceProvider),
+		Supervisor: nodejs.NewSupervisor(runner, nodeUsers, log),
+		Runner:     runner,
+		Users:      nodeUsers,
+		Log:        log,
+	})
+
+	if versions := nodeDetector.Detect(context.Background()); len(versions) > 0 {
+		names := make([]string, 0, len(versions))
+		for _, version := range versions {
+			names = append(names, version.Full)
+		}
+		log.Info("node.js detected", "versions", names, "managed_by", nodeManager.Runtime())
+	} else {
+		// Not an error: a host serving only PHP and static sites needs no
+		// Node, and the panel offers to install one rather than hiding the
+		// feature.
+		log.Info("no node.js runtime was found",
+			"detail", "install one through the panel, or with the host's package manager")
+	}
+
 	jobRunner := jobs.NewRunner(jobs.Options{
 		MaxConcurrent: cfg.MaxConcurrentJobs,
 		MaxJobs:       cfg.MaxJobs,
@@ -368,6 +413,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		SSL:          sslManager,
 		Databases:    databaseManager,
 		PHPMyAdmin:   phpMyAdmin,
+		Node:         nodeManager,
 		Files:        fileManager,
 	})
 

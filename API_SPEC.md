@@ -466,20 +466,59 @@ not silently reset the others.
 # 10. Node.js
 
 ```http
-GET /node/versions
-POST /node/versions/install
-DELETE /node/versions/:version
+GET    /node/versions
+POST   /node/versions/install
+DELETE /node/versions/:package
 ```
+
+**As implemented in Phase 9.**
+
+`GET /node/versions` reports the runtimes installed, the release lines this
+host could install, whether it can install anything at all, and — importantly —
+`managed_by`: `systemd` or `agent`. That last one decides where an
+application's output goes, so the panel says which it is rather than leaving
+someone to work it out from an empty log.
+
+Install takes a **package**, not a version: the Agent keeps the only table of
+package names, and the value sent must be one it offered. There is no free-text
+version, because that string would otherwise reach a package manager running as
+root.
+
+Removing a runtime is refused while any application still uses it. The Agent
+would do as it was told and every one of them would stop at its next restart.
+
+Installing needs `server.manage`: it changes the whole host, not one site.
 
 Applications:
 
 ```http
-GET /node/apps
-GET /node/apps/:id
-POST /node/apps
-PATCH /node/apps/:id
+GET    /node/apps
+GET    /node/apps/:id
+POST   /node/apps
 DELETE /node/apps/:id
 ```
+
+**As implemented in Phase 9.** `PATCH` is not offered: the name is a systemd
+unit's identity and the website decides the account, the directory, and the
+vhost, so changing either of them is a new application rather than an edit.
+
+`POST` takes `website_id` and `port`, and optionally `name`, `node_version`, and
+`startup_file`. The name defaults to one derived from the domain, the version to
+the host's only runtime, and the startup file to `server.js`.
+
+It returns **201** with the application **stopped**. Creating and starting are
+separate: a deployment that is not ready to serve should be created, looked at,
+and started deliberately.
+
+One application per website, and one application per port on a server. A second
+on a site would need a second vhost to reach it; a second on a port means one of
+them is failing to bind and the panel would not know which.
+
+A site that serves PHP is refused, because a site is served by an application or
+by files, never both.
+
+Reading needs `website.view` and every change needs `website.update`: an
+application is what a website serves.
 
 ---
 
@@ -489,8 +528,50 @@ DELETE /node/apps/:id
 POST /node/apps/:id/start
 POST /node/apps/:id/stop
 POST /node/apps/:id/restart
-GET /node/apps/:id/logs
+GET  /node/apps/:id/logs
+POST /node/apps/:id/dependencies
 ```
+
+**As implemented in Phase 9.** Synchronous: the response says what actually
+happened rather than that the intent was recorded.
+
+Starting points the website's vhost at the application **only once it is
+listening** — the site was serving something before the request, and replacing
+that with a 502 while a process boots is worse than what was asked for.
+Stopping does the reverse first, so a deliberate stop does not look like an
+outage.
+
+`GET .../logs` takes `lines` (at most 2000). On a systemd host the output is in
+the journal, which this panel does not read; the response says so and names the
+`journalctl` command rather than returning an empty list.
+
+`POST .../dependencies` runs `npm install --omit=dev` as the website's own
+account, so what it writes into `node_modules` belongs to the account that will
+read it. It is the one slow call here and holds the request until it finishes.
+
+Environment:
+
+```http
+PUT    /node/apps/:id/environment
+DELETE /node/apps/:id/environment/:key
+GET    /node/apps/:id/environment
+```
+
+`PUT` sets one variable; `DELETE` removes one. Neither restarts the
+application — a process reads its environment once, at startup, so the change
+takes effect on the next restart, and restarting somebody's application as a
+side effect of editing a setting is not the panel's decision.
+
+Names that change *what runs* rather than how it behaves are refused:
+`LD_PRELOAD`, `LD_LIBRARY_PATH`, `NODE_OPTIONS`, `PATH`, `BASH_ENV`, and the
+names the panel sets itself (`PORT`, `HOME`, `USER`). A value containing a
+newline is refused, because it would close a line in a unit file and start a
+directive of the caller's choosing.
+
+Values are stored AES-256-GCM encrypted, bound to their own row. A listing names
+what is set and never what it is set to. `GET` returns the values and needs
+`server.manage`, is audited, and is sent `Cache-Control: no-store`: it hands
+back credentials.
 
 ---
 

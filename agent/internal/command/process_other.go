@@ -17,3 +17,6 @@ func killProcessGroup(cmd *exec.Cmd) error {
 	}
 	return cmd.Process.Kill()
 }
+
+// applyCredential is a no-op off Linux.
+func applyCredential(*exec.Cmd, int, int) {}

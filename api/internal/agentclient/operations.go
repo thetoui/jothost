@@ -676,3 +676,177 @@ func (c *Client) PHPMyAdmin(ctx context.Context, requestID string) (PHPMyAdminSt
 	err := c.call(ctx, requestID, protocol.OperationPHPMyAdminStatus, nil, &status)
 	return status, err
 }
+
+// ------------------------------------------------------------------ Node.js
+
+// NodeVersion is one Node.js runtime on the host.
+type NodeVersion struct {
+	Version    string `json:"version"`
+	Full       string `json:"full_version"`
+	BinaryPath string `json:"binary_path"`
+	NPMVersion string `json:"npm_version"`
+}
+
+// NodeOffer is a Node.js release line the host could install.
+type NodeOffer struct {
+	Version string `json:"version"`
+	Package string `json:"package"`
+	Label   string `json:"label"`
+}
+
+// NodeVersionsResult reports what the host runs and what it could run.
+type NodeVersionsResult struct {
+	Versions  []NodeVersion `json:"versions"`
+	Count     int           `json:"count"`
+	Available bool          `json:"available"`
+	Offers    []NodeOffer   `json:"offers"`
+	// CanInstall reports whether a package manager is present, so the panel
+	// hides the install control rather than offering one that always fails.
+	CanInstall     bool   `json:"can_install"`
+	PackageManager string `json:"package_manager"`
+	// ManagedBy is "systemd" or "agent": which mechanism runs applications on
+	// this host. It changes what "logs" can return, so the panel says so.
+	ManagedBy string `json:"managed_by"`
+}
+
+// NodeVersions reports the Node.js runtimes on the host.
+func (c *Client) NodeVersions(ctx context.Context, requestID string) (NodeVersionsResult, error) {
+	var result NodeVersionsResult
+	err := c.call(ctx, requestID, protocol.OperationNodeVersions, nil, &result)
+	return result, err
+}
+
+// NodeAppRequest describes an application to the Agent.
+//
+// Every field is validated again on the Agent, which is where it becomes a
+// unit file and a process. This struct exists so the API cannot send a payload
+// shaped differently from what the handler expects.
+type NodeAppRequest struct {
+	Name        string            `json:"name"`
+	Version     string            `json:"version"`
+	Root        string            `json:"root"`
+	Startup     string            `json:"startup_file"`
+	Port        int               `json:"port"`
+	User        string            `json:"user"`
+	Group       string            `json:"group"`
+	Environment map[string]string `json:"environment,omitempty"`
+}
+
+// NodeStatus is what an application is doing on the host.
+type NodeStatus struct {
+	Name   string `json:"name"`
+	State  string `json:"state"`
+	PID    int    `json:"pid"`
+	Port   int    `json:"port"`
+	Uptime int64  `json:"uptime_seconds"`
+	// ManagedBy is "systemd" or "agent".
+	ManagedBy string `json:"managed_by"`
+	// Listening separates "the process is up" from "it is answering", which
+	// are not the same thing and should not be reported as one.
+	Listening bool   `json:"listening"`
+	Detail    string `json:"detail"`
+	// Environment is what the process will actually see, read back from the
+	// host rather than echoed from the request.
+	Environment map[string]string `json:"environment,omitempty"`
+}
+
+// NodeLogs is the tail of an application's output.
+type NodeLogs struct {
+	Source     string   `json:"source"`
+	Lines      []string `json:"lines"`
+	ErrorLines []string `json:"error_lines"`
+	OutPath    string   `json:"out_path"`
+	ErrorPath  string   `json:"error_path"`
+	Detail     string   `json:"detail"`
+}
+
+func nodePayload(req NodeAppRequest) map[string]any {
+	payload := map[string]any{
+		"name": req.Name, "version": req.Version, "root": req.Root,
+		"startup_file": req.Startup, "port": req.Port,
+		"user": req.User, "group": req.Group,
+	}
+	if len(req.Environment) > 0 {
+		payload["environment"] = req.Environment
+	}
+	return payload
+}
+
+// NodeDeploy makes an application ready to run.
+func (c *Client) NodeDeploy(ctx context.Context, requestID string, req NodeAppRequest) error {
+	return c.call(ctx, requestID, protocol.OperationNodeAppDeploy, nodePayload(req), nil)
+}
+
+// NodeRemove takes an application's runtime state off the host.
+func (c *Client) NodeRemove(ctx context.Context, requestID string, req NodeAppRequest) error {
+	return c.call(ctx, requestID, protocol.OperationNodeAppRemove, nodePayload(req), nil)
+}
+
+// NodeStart, NodeStop, and NodeRestart drive the process.
+func (c *Client) NodeStart(ctx context.Context, requestID string, req NodeAppRequest) (NodeStatus, error) {
+	var status NodeStatus
+	err := c.call(ctx, requestID, protocol.OperationNodeAppStart, nodePayload(req), &status)
+	return status, err
+}
+
+func (c *Client) NodeStop(ctx context.Context, requestID string, req NodeAppRequest) (NodeStatus, error) {
+	var status NodeStatus
+	err := c.call(ctx, requestID, protocol.OperationNodeAppStop, nodePayload(req), &status)
+	return status, err
+}
+
+func (c *Client) NodeRestart(ctx context.Context, requestID string, req NodeAppRequest) (NodeStatus, error) {
+	var status NodeStatus
+	err := c.call(ctx, requestID, protocol.OperationNodeAppRestart, nodePayload(req), &status)
+	return status, err
+}
+
+// NodeStatusOf reports what an application is doing.
+func (c *Client) NodeStatusOf(ctx context.Context, requestID string, req NodeAppRequest) (NodeStatus, error) {
+	var status NodeStatus
+	err := c.call(ctx, requestID, protocol.OperationNodeAppStatus, nodePayload(req), &status)
+	return status, err
+}
+
+// NodeAppLogs returns the tail of an application's output.
+func (c *Client) NodeAppLogs(ctx context.Context, requestID string, req NodeAppRequest, lines int) (NodeLogs, error) {
+	payload := nodePayload(req)
+	payload["lines"] = lines
+
+	var logs NodeLogs
+	err := c.call(ctx, requestID, protocol.OperationNodeAppLogs, payload, &logs)
+	return logs, err
+}
+
+// NodeInstallDependencies runs npm install for an application.
+func (c *Client) NodeInstallDependencies(ctx context.Context, requestID string, req NodeAppRequest) error {
+	return c.call(ctx, requestID, protocol.OperationNodeAppInstall, nodePayload(req), nil)
+}
+
+// UpdateWebsite rewrites a website's vhost.
+//
+// The payload is passed through rather than typed, because the Node.js service
+// uses it for exactly one thing — pointing a site at an application or back at
+// its files — and a typed struct here would duplicate the website package's
+// own without either being the definition.
+func (c *Client) UpdateWebsite(ctx context.Context, requestID string, payload map[string]any) error {
+	return c.call(ctx, requestID, protocol.OperationWebsiteUpdate, payload, nil)
+}
+
+// NodeInstall adds a Node.js release line to the host.
+//
+// The package name comes from the offers the Agent itself reported, never from
+// a user's text: the Agent keeps the only table of package names, and this is
+// the value it handed back.
+func (c *Client) NodeInstall(ctx context.Context, requestID, pkg string) (NodeVersion, error) {
+	var version NodeVersion
+	err := c.call(ctx, requestID, protocol.OperationNodeInstall,
+		map[string]any{"package": pkg}, &version)
+	return version, err
+}
+
+// NodeUninstall removes a Node.js release line.
+func (c *Client) NodeUninstall(ctx context.Context, requestID, pkg string) error {
+	return c.call(ctx, requestID, protocol.OperationNodeUninstall,
+		map[string]any{"package": pkg}, nil)
+}

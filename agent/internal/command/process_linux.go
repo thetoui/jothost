@@ -32,3 +32,19 @@ func killProcessGroup(cmd *exec.Cmd) error {
 	}
 	return nil
 }
+
+// applyCredential runs the child under another account.
+//
+// The kernel applies it at exec, so the program never runs as the Agent's own
+// account even for an instant. Supplementary groups are cleared: a child of a
+// root daemon would otherwise inherit every group on the host.
+func applyCredential(cmd *exec.Cmd, uid, gid int) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Credential = &syscall.Credential{
+		Uid:    uint32(uid),
+		Gid:    uint32(gid),
+		Groups: []uint32{},
+	}
+}

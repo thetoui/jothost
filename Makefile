@@ -127,6 +127,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-files
 	$(MAKE) docker-test-editor
 	$(MAKE) docker-test-databases
+	$(MAKE) docker-test-node
 
 .PHONY: docker-test-integration
 docker-test-integration: ## Run integration tests against the running dev stack
@@ -192,6 +193,13 @@ docker-test-editor: create-integration-admin ## Run the Phase 7.5 code editor in
 .PHONY: docker-test-databases
 docker-test-databases: create-integration-admin ## Run the Phase 8 database integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase8_databases.sh
+
+# The Phase 9 checks run a real Express application and look at the process,
+# its account, and its logs. Only the managed host can see those, so they run
+# inside the agent container.
+.PHONY: docker-test-node
+docker-test-node: create-integration-admin ## Run the Phase 9 Node.js integration checks
+	$(COMPOSE) exec -T agent sh /tests/integration/phase9_node.sh
 
 # create-integration-admin provisions the account the auth checks sign in with.
 # Re-running is harmless: an existing username is reported and ignored.

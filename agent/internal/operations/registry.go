@@ -15,6 +15,7 @@ import (
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
+	"github.com/jothost/panel/agent/internal/nodejs"
 	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/pma"
 	"github.com/jothost/panel/agent/internal/services"
@@ -89,6 +90,10 @@ type Dependencies struct {
 	// cannot run it, which handlers report as unsupported.
 	PHPMyAdmin *pma.Manager
 
+	// Node runs Node.js applications. Nil where the host has no runtime,
+	// which handlers report as unsupported.
+	Node *nodejs.Manager
+
 	// Files serves the file manager. Nil, or configured with no roots, means
 	// file management is unavailable rather than unrestricted.
 	Files *files.Manager
@@ -161,6 +166,18 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationPHPMyAdminStatus, r.handlePHPMyAdminStatus)
 	r.mustRegister(protocol.OperationPHPMyAdminInstall, r.handlePHPMyAdminInstall)
 	r.mustRegister(protocol.OperationPHPMyAdminUninstall, r.handlePHPMyAdminUninstall)
+
+	r.mustRegister(protocol.OperationNodeVersions, r.handleNodeVersions)
+	r.mustRegister(protocol.OperationNodeInstall, r.handleNodeInstall)
+	r.mustRegister(protocol.OperationNodeUninstall, r.handleNodeUninstall)
+	r.mustRegister(protocol.OperationNodeAppDeploy, r.handleNodeAppDeploy)
+	r.mustRegister(protocol.OperationNodeAppRemove, r.handleNodeAppRemove)
+	r.mustRegister(protocol.OperationNodeAppStart, r.handleNodeAppStart)
+	r.mustRegister(protocol.OperationNodeAppStop, r.handleNodeAppStop)
+	r.mustRegister(protocol.OperationNodeAppRestart, r.handleNodeAppRestart)
+	r.mustRegister(protocol.OperationNodeAppStatus, r.handleNodeAppStatus)
+	r.mustRegister(protocol.OperationNodeAppLogs, r.handleNodeAppLogs)
+	r.mustRegister(protocol.OperationNodeAppInstall, r.handleNodeAppInstall)
 
 	r.mustRegister(protocol.OperationFileList, r.handleFileList)
 	r.mustRegister(protocol.OperationFileStat, r.handleFileStat)

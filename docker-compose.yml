@@ -53,6 +53,14 @@ services:
     # attached to a host that no longer exists. On a real machine the hostname
     # is stable; this makes development behave the same way.
     hostname: jothost-agent
+    # The firewall needs to read and write packet filter rules, which needs
+    # NET_ADMIN. It applies to this container's own network namespace only, so
+    # a rule the panel writes here affects nothing outside it — which is what
+    # makes the dangerous half of Phase 16 testable: connectivity can be broken
+    # on purpose and the rollback watched, without touching the machine running
+    # Docker. A real host gives the Agent this because it runs as root.
+    cap_add:
+      - NET_ADMIN
     environment:
       JOTHOST_ENV: development
       LOG_LEVEL: ${LOG_LEVEL:-debug}

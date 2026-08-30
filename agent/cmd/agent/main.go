@@ -22,6 +22,7 @@ import (
 	"github.com/jothost/panel/agent/internal/config"
 	"github.com/jothost/panel/agent/internal/database"
 	"github.com/jothost/panel/agent/internal/files"
+	"github.com/jothost/panel/agent/internal/firewall"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/nodejs"
@@ -177,6 +178,10 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		// hybrid mode can be enabled on a host that installs Apache later, and
 		// what stops any other program running in its place is that the path
 		// is fixed here rather than resolved from a request.
+		// ufw is allowlisted whether or not it is installed: a host may gain a
+		// firewall later, and what stops any other program running in its place
+		// is that the path is fixed here rather than resolved from a request.
+		{Name: firewall.CommandName, Path: cfg.UFWPath, Timeout: 30 * time.Second},
 		{Name: apache.CommandHTTPD, Path: cfg.ApachePath, Timeout: 20 * time.Second},
 		{Name: apache.CommandApache2, Path: cfg.Apache2Path, Timeout: 20 * time.Second},
 		{Name: sites.CommandUseradd, Path: cfg.UseraddPath, Timeout: 15 * time.Second},
@@ -247,6 +252,22 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		// perfectly configured.
 		WebGroup: provisioner.WebGroup(),
 	})
+
+	firewallProvider := firewall.NewProvider(firewall.Options{
+		Runner:       runner,
+		StateDir:     cfg.FirewallStateDir,
+		GuardedPorts: firewall.GuardedPortsFromEnv(cfg.FirewallGuardedPorts),
+		Log:          log,
+	})
+
+	// A firewall change is undone unless it is confirmed, and the timer that
+	// undoes it lives in memory. An Agent that restarted mid-window would
+	// otherwise leave the change standing forever — which is the one failure
+	// the whole protocol exists to prevent, arriving by the back door.
+	if err := firewallProvider.RecoverPending(context.Background()); err != nil {
+		log.Error("failed to recover a pending firewall change",
+			logger.KeyError, err.Error())
+	}
 
 	siteManager := sites.NewManager(sites.ManagerOptions{
 		Filesystem: provisioner,
@@ -429,6 +450,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Sites:        siteManager,
 		Nginx:        nginxProvider,
 		Apache:       apacheProvider,
+		Firewall:     firewallProvider,
 		Jobs:         jobRunner,
 		Log:          log,
 		PHP:          phpDetector,

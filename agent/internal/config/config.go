@@ -65,6 +65,16 @@ type Config struct {
 	// Apache is the backend in hybrid mode. Two binary names because
 	// distributions disagree: Alpine and RHEL ship "httpd", Debian ships
 	// "apache2". Both are allowlisted; whichever exists is used.
+	// UFWPath is the firewall front end. Absent means the panel reports that
+	// this host has no firewall it can manage, rather than failing requests.
+	UFWPath string
+	// FirewallStateDir holds rule backups and the pending-change marker, which
+	// is what lets an Agent restart finish a rollback it had armed.
+	FirewallStateDir string
+	// FirewallGuardedPorts are extra ports a change may never close, beyond
+	// the built-in 22, 80 and 443. A host with SSH elsewhere says so here.
+	FirewallGuardedPorts string
+
 	ApachePath      string
 	Apache2Path     string
 	ApacheConfigDir string
@@ -124,6 +134,10 @@ func Load() (Config, error) {
 		NginxPath:     getString("AGENT_NGINX_PATH", "/usr/sbin/nginx"),
 		NginxSitesDir: getString("AGENT_NGINX_SITES_DIR", "/etc/nginx/conf.d"),
 
+		UFWPath:              getString("AGENT_UFW_PATH", "/usr/sbin/ufw"),
+		FirewallStateDir:     getString("AGENT_FIREWALL_STATE_DIR", "/var/lib/jothost/firewall"),
+		FirewallGuardedPorts: getString("AGENT_FIREWALL_GUARDED_PORTS", ""),
+
 		ApachePath:      getString("AGENT_APACHE_PATH", "/usr/sbin/httpd"),
 		Apache2Path:     getString("AGENT_APACHE2_PATH", "/usr/sbin/apache2"),
 		ApacheConfigDir: getString("AGENT_APACHE_CONF_DIR", "/etc/apache2/conf.d"),
@@ -158,6 +172,8 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_SYSTEMCTL_PATH", cfg.SystemctlPath)...)
 	problems = append(problems, validateAbsolute("AGENT_NGINX_PATH", cfg.NginxPath)...)
 	problems = append(problems, validateAbsolute("AGENT_NGINX_SITES_DIR", cfg.NginxSitesDir)...)
+	problems = append(problems, validateAbsolute("AGENT_UFW_PATH", cfg.UFWPath)...)
+	problems = append(problems, validateAbsolute("AGENT_FIREWALL_STATE_DIR", cfg.FirewallStateDir)...)
 	problems = append(problems, validateAbsolute("AGENT_APACHE_PATH", cfg.ApachePath)...)
 	problems = append(problems, validateAbsolute("AGENT_APACHE2_PATH", cfg.Apache2Path)...)
 	problems = append(problems, validateAbsolute("AGENT_APACHE_CONF_DIR", cfg.ApacheConfigDir)...)

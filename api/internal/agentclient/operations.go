@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jothost/panel/shared/protocol"
 )
@@ -819,6 +820,90 @@ func (c *Client) ServiceAction(ctx context.Context, requestID, key, action strin
 		"service": key,
 		"action":  action,
 	}, &result)
+	return result, err
+}
+
+// FirewallRule is one rule as the panel and the Agent both understand it.
+type FirewallRule struct {
+	Action    string `json:"action"`
+	Direction string `json:"direction"`
+	Protocol  string `json:"protocol"`
+	Port      string `json:"port"`
+	Source    string `json:"source"`
+	Comment   string `json:"comment,omitempty"`
+}
+
+// FirewallPending is a change that has been applied and not yet confirmed.
+type FirewallPending struct {
+	ID     string       `json:"id"`
+	Kind   string       `json:"kind"`
+	Rule   FirewallRule `json:"rule"`
+	Policy string       `json:"policy,omitempty"`
+	// Deadline is when the Agent undoes the change if nothing confirms it.
+	Deadline time.Time `json:"deadline"`
+}
+
+// FirewallStatus is the firewall as it stands.
+type FirewallStatus struct {
+	Available       bool           `json:"available"`
+	Enabled         bool           `json:"enabled"`
+	DefaultIncoming string         `json:"default_incoming"`
+	DefaultOutgoing string         `json:"default_outgoing"`
+	Rules           []FirewallRule `json:"rules"`
+	Reason          string         `json:"reason,omitempty"`
+	// GuardedPorts are the ports no change may close.
+	GuardedPorts []int `json:"guarded_ports"`
+	// Pending is a change waiting to be confirmed, which is the most important
+	// thing on this response: it has a deadline.
+	Pending *FirewallPending `json:"pending,omitempty"`
+}
+
+// FirewallChange is one change to make.
+type FirewallChange struct {
+	Kind          string       `json:"kind"`
+	Rule          FirewallRule `json:"rule"`
+	Policy        string       `json:"policy,omitempty"`
+	Direction     string       `json:"direction,omitempty"`
+	WindowSeconds int          `json:"window_seconds,omitempty"`
+}
+
+// FirewallStatus reads the host's firewall.
+func (c *Client) FirewallStatus(ctx context.Context, requestID string) (FirewallStatus, error) {
+	var result FirewallStatus
+	err := c.call(ctx, requestID, protocol.OperationFirewallStatus, nil, &result)
+	return result, err
+}
+
+// FirewallChange applies a change provisionally.
+func (c *Client) FirewallChange(ctx context.Context, requestID string,
+	change FirewallChange,
+) (FirewallPending, error) {
+	payload := map[string]any{
+		"kind":           change.Kind,
+		"rule":           change.Rule,
+		"policy":         change.Policy,
+		"direction":      change.Direction,
+		"window_seconds": change.WindowSeconds,
+	}
+
+	var result FirewallPending
+	err := c.call(ctx, requestID, protocol.OperationFirewallChange, payload, &result)
+	return result, err
+}
+
+// FirewallConfirm commits a provisional change.
+func (c *Client) FirewallConfirm(ctx context.Context, requestID, changeID string) (FirewallPending, error) {
+	var result FirewallPending
+	err := c.call(ctx, requestID, protocol.OperationFirewallConfirm,
+		map[string]any{"change_id": changeID}, &result)
+	return result, err
+}
+
+// FirewallRollback undoes a provisional change now.
+func (c *Client) FirewallRollback(ctx context.Context, requestID, changeID string) (FirewallPending, error) {
+	var result FirewallPending
+	err := c.call(ctx, requestID, protocol.OperationFirewallRollback,
+		map[string]any{"change_id": changeID}, &result)
 	return result, err
 }
 

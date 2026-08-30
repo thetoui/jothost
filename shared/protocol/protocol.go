@@ -89,6 +89,14 @@ const (
 
 	// Node.js. An application is somebody else's code, so every one of these
 	// runs it as the website's own account and never as the Agent's.
+	// The firewall. Every change is applied provisionally and undone unless it
+	// is confirmed inside its window, which is why there are four operations
+	// here rather than one per verb (CLAUDE.md section 19).
+	OperationFirewallStatus   OperationType = "firewall.status"
+	OperationFirewallChange   OperationType = "firewall.change"
+	OperationFirewallConfirm  OperationType = "firewall.confirm"
+	OperationFirewallRollback OperationType = "firewall.rollback"
+
 	// Apache is the backend of the hybrid arrangement. Its per-site
 	// configuration is written by the website operations, which already carry
 	// everything a vhost needs; these two are about the server itself.
@@ -159,6 +167,10 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationPHPPoolDelete:        {},
 	OperationPHPPoolStatus:        {},
 	OperationPHPExtensions:        {},
+	OperationFirewallStatus:       {},
+	OperationFirewallChange:       {},
+	OperationFirewallConfirm:      {},
+	OperationFirewallRollback:     {},
 	OperationApacheStatus:         {},
 	OperationApacheInstall:        {},
 	OperationWebsitePHPSet:        {},

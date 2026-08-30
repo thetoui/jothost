@@ -19,6 +19,7 @@ import (
 	"github.com/jothost/panel/api/internal/dashboard"
 	databasespkg "github.com/jothost/panel/api/internal/databases"
 	filespkg "github.com/jothost/panel/api/internal/files"
+	firewallpkg "github.com/jothost/panel/api/internal/firewall"
 	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/api/internal/metrics"
@@ -57,6 +58,7 @@ type Server struct {
 	websites  *websites.Handler
 	webserver *webserverpkg.Handler
 	services  *servicespkg.Handler
+	firewall  *firewallpkg.Handler
 	jobs      *jobs.Handler
 	php       *phppkg.Handler
 	ssl       *sslpkg.Handler
@@ -294,6 +296,20 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// The host's packet filter. No state of the panel's own: the provisional
+	// change and the timer that undoes it live in the Agent, which is the only
+	// place they survive the API becoming unreachable — which is precisely
+	// what a bad firewall rule causes.
+	s.firewall = firewallpkg.NewHandler(firewallpkg.HandlerOptions{
+		Service: firewallpkg.NewService(firewallpkg.ServiceOptions{
+			Agent:    agent,
+			Audit:    auditRecorder,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		}),
+		Auth: authService,
+	})
+
 	// Which web server arrangement the host runs. It is a server-wide setting
 	// rather than a per-site one, because both servers are one process tree
 	// serving every site on the machine.
@@ -402,6 +418,7 @@ func (s *Server) routes() http.Handler {
 	s.websites.Routes(mux)
 	s.webserver.Routes(mux)
 	s.services.Routes(mux)
+	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)
 	s.ssl.Routes(mux)

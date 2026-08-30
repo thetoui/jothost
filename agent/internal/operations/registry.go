@@ -14,6 +14,7 @@ import (
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/database"
 	"github.com/jothost/panel/agent/internal/files"
+	"github.com/jothost/panel/agent/internal/firewall"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/nodejs"
@@ -67,8 +68,11 @@ type Dependencies struct {
 	// Apache is the hybrid backend. Nil, or present but not installed, on a
 	// host that serves everything from nginx — which is the default.
 	Apache *apache.Provider
-	Jobs   *jobs.Runner
-	Log    *slog.Logger
+	// Firewall manages the host's packet filter. Nil on a host where ufw is
+	// not installed, which handlers report as unsupported.
+	Firewall *firewall.Provider
+	Jobs     *jobs.Runner
+	Log      *slog.Logger
 
 	// PHP reports which versions the host has, PHPPools writes per-site FPM
 	// pools, and PHPInstaller adds and removes versions. Any of them may be
@@ -149,6 +153,10 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationPHPPoolDelete, r.handlePHPPoolDelete)
 	r.mustRegister(protocol.OperationPHPPoolStatus, r.handlePHPPoolStatus)
 	r.mustRegister(protocol.OperationPHPExtensions, r.handlePHPExtensions)
+	r.mustRegister(protocol.OperationFirewallStatus, r.handleFirewallStatus)
+	r.mustRegister(protocol.OperationFirewallChange, r.handleFirewallChange)
+	r.mustRegister(protocol.OperationFirewallConfirm, r.handleFirewallConfirm)
+	r.mustRegister(protocol.OperationFirewallRollback, r.handleFirewallRollback)
 	r.mustRegister(protocol.OperationApacheStatus, r.handleApacheStatus)
 	r.mustRegister(protocol.OperationApacheInstall, r.handleApacheInstall)
 	r.mustRegister(protocol.OperationWebsitePHPSet, r.handleWebsitePHPSet)

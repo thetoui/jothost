@@ -61,7 +61,10 @@ FROM alpine:3.21 AS runtime
 # This PostgreSQL is not the panel's own. The control-plane database is a
 # separate container, and the distinction matters: dropping a database on this
 # host must never be able to reach the panel's own tables.
-RUN apk add --no-cache ca-certificates tzdata nginx shadow \
+# ufw and iptables are the firewall the panel manages (Phase 16). They are in
+# the image rather than installed on demand because a firewall the panel can
+# only manage after a download is one that is missing exactly when it is needed.
+RUN apk add --no-cache ca-certificates tzdata nginx shadow       iptables ip6tables ufw \
       php82-fpm php83-fpm php84-fpm \
       php82-opcache php83-opcache php84-opcache \
       php82-session php83-session php84-session \

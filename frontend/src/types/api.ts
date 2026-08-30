@@ -296,6 +296,59 @@ export interface Website {
   subdomains?: Website[];
 }
 
+/** What a firewall rule does. */
+export type FirewallAction = 'allow' | 'deny' | 'reject' | 'limit';
+
+export interface FirewallRule {
+  action: FirewallAction;
+  direction: 'in' | 'out';
+  protocol: 'tcp' | 'udp' | 'any';
+  /** A port, an inclusive range ("7080:7090"), or empty for every port. */
+  port: string;
+  /** "any", an address, or a CIDR block. */
+  source: string;
+  comment?: string;
+}
+
+/** What the panel sends. The API fills in the defaults for what is left out. */
+export interface FirewallRuleInput {
+  action: FirewallAction;
+  direction?: 'in' | 'out';
+  protocol?: 'tcp' | 'udp' | 'any';
+  port?: string;
+  source?: string;
+  comment?: string;
+  /** How long before the change is undone unless it is confirmed. */
+  window_seconds?: number;
+}
+
+/**
+ * A change that has been applied and not yet confirmed.
+ *
+ * It is live on the host right now. If nothing confirms it before the deadline
+ * — which is what happens when the change cuts the panel off — the Agent puts
+ * the rules back on its own.
+ */
+export interface FirewallPending {
+  id: string;
+  kind: 'rule.add' | 'rule.delete' | 'enable' | 'disable' | 'default';
+  rule: FirewallRule;
+  policy?: string;
+  deadline: string;
+}
+
+export interface FirewallStatus {
+  available: boolean;
+  enabled: boolean;
+  default_incoming: string;
+  default_outgoing: string;
+  rules: FirewallRule[];
+  reason?: string;
+  /** Ports no change may close: how the host is administered. */
+  guarded_ports: number[];
+  pending?: FirewallPending;
+}
+
 /** The verbs a service may be given. */
 export type ServiceAction = 'start' | 'stop' | 'restart' | 'enable' | 'disable';
 

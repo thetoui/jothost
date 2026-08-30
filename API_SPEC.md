@@ -1023,6 +1023,59 @@ because "who tried to stop SSH" is a question worth being able to answer.
 
 ---
 
+# 20.1 Firewall
+
+```http
+GET    /firewall
+POST   /firewall/rules
+DELETE /firewall/rules
+POST   /firewall/enable
+POST   /firewall/disable
+PUT    /firewall/default
+POST   /firewall/changes/:id/confirm
+POST   /firewall/changes/:id/rollback
+```
+
+**As implemented in Phase 16.**
+
+Every change returns **202** with a change id and a deadline. The change is live
+immediately — it is a real rule, not a proposal — and the Agent has armed a
+timer to undo it. Confirming inside the window commits it; letting the window
+close restores the rules the host had before (CLAUDE.md section 19).
+
+**Confirming is the connectivity test.** It is an ordinary request, and that is
+the point: it has to cross the network the change governs. A panel that has just
+firewalled itself off cannot send it, so the change is undone. The Agent cannot
+perform that test itself — a connection to the host's own address is routed over
+loopback and allowed by a rule ufw installs for that purpose, so it would pass
+while the host was unreachable.
+
+`DELETE /firewall/rules` takes a body rather than an id in the path. A rule is
+identified by what it does; ufw's position numbers renumber on every change, so
+a path naming rule 3 would mean something different by the time it arrived.
+
+`GET /firewall` reports the rules, the default policies, the guarded ports, and
+any change waiting to be confirmed. While the firewall is off it reports the
+rules that are *staged* — ufw's own listing shows nothing then, because it
+describes what is being enforced.
+
+Refusals worth naming:
+
+- a change that would close a guarded port → **409**, naming the port. That
+  covers `deny 22`, a range covering it, a rule with no port at all, removing
+  the last rule that allows it, and switching the firewall on while its default
+  policy would close it.
+- a second change while one is unconfirmed → **409**
+- a port, address, or comment that could not be part of a rule → **422**
+- confirming a change that has expired or does not exist → **404**
+
+Reading needs `server.view`; every change needs `server.manage`. A firewall
+governs the whole machine. Every change is audited under `firewall.change`,
+`firewall.confirm` or `firewall.rollback` — including the refusals, because
+"who tried to close SSH" is a question worth being able to answer.
+
+---
+
 # 21. Processes
 
 ```http

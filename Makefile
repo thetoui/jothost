@@ -130,6 +130,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-subdomains
 	$(MAKE) docker-test-hybrid
 	$(MAKE) docker-test-services
+	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
 .PHONY: docker-test-integration
@@ -200,6 +201,10 @@ docker-test-databases: create-integration-admin ## Run the Phase 8 database inte
 # The Phase 9 checks run a real Express application and look at the process,
 # its account, and its logs. Only the managed host can see those, so they run
 # inside the agent container.
+.PHONY: docker-test-firewall
+docker-test-firewall: create-integration-admin ## Run the Phase 16 firewall integration checks
+	$(COMPOSE) exec -T agent sh /tests/integration/phase16_firewall.sh
+
 .PHONY: docker-test-services
 docker-test-services: create-integration-admin ## Run the Phase 12 service manager integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase12_services.sh

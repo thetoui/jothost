@@ -3,9 +3,15 @@
 A self-hosted Linux hosting control panel: websites, PHP and Node.js applications,
 databases, SSL, files, cron, backups, monitoring, and security from one web interface.
 
-**Status:** Phases 0 (foundation), 1 (authentication), 2 (Host Agent), and
-3 (dashboard) complete. See [TASKS.md](TASKS.md) for the phase plan, and the
-per-phase notes in [docs/](docs/) for what each does and does not include.
+**Status:** Phases 0–9 complete, plus 4.1 (subdomains) and 4.5 (the Apache
+hybrid arrangement): foundation, authentication, Host Agent, dashboard,
+websites, subdomains, the nginx + Apache engine, PHP, SSL, files, the code
+editor, databases, and Node.js applications.
+
+Next is Phase 12 (service manager). Phases are built in dependency order rather
+than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md for the
+sequence and why each phase sits where it does. The per-phase notes in
+[docs/](docs/) say what each one does and does not include.
 
 ---
 
@@ -154,7 +160,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design and boundaries |
 | [DATABASE.md](DATABASE.md) | Schema design |
 | [API_SPEC.md](API_SPEC.md) | Endpoint contract |
-| [TASKS.md](TASKS.md) | Phase plan and status |
+| [TASKS.md](TASKS.md) | Phase plan, build order, and status |
 | [CLAUDE.md](CLAUDE.md) | Engineering rules |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Day-to-day workflow |
 | [docs/PHASE0.md](docs/PHASE0.md) | Phase 0 scope, decisions, and known limitations |

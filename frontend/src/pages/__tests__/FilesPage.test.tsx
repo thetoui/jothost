@@ -323,3 +323,56 @@ describe('FilesPage file actions', () => {
     });
   });
 });
+
+describe('FilesPage deep link', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearTokens();
+    setRefreshToken('refresh-test');
+    setAccessToken('access-test');
+    useAuthStore.setState({ status: 'authenticated' });
+  });
+
+  // Websites & Domains links here with a site's document root, so "Files" on a
+  // domain has to land in that domain rather than at the top of the server.
+  it('opens the folder named in the query string', async () => {
+    const requested: string[] = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/auth/me')) {
+        return Promise.resolve(envelopeResponse(profile(['file.read'])));
+      }
+      requested.push(url);
+      return Promise.resolve(envelopeResponse(listing([entry()])));
+    }) as unknown as typeof fetch;
+
+    renderWithProviders(<FilesPage />, {
+      route: '/files?path=' + encodeURIComponent('/var/www/site/public'),
+    });
+
+    await screen.findByRole('button', { name: 'index.php' });
+    expect(requested.some((url) => url.includes(encodeURIComponent('/var/www/site/public')))).toBe(
+      true,
+    );
+  });
+
+  // A path outside the root would be refused by the Agent; opening on an error
+  // is a worse answer than opening at the root.
+  it('ignores a path outside the root', async () => {
+    const requested: string[] = [];
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/auth/me')) {
+        return Promise.resolve(envelopeResponse(profile(['file.read'])));
+      }
+      requested.push(url);
+      return Promise.resolve(envelopeResponse(listing([entry()])));
+    }) as unknown as typeof fetch;
+
+    renderWithProviders(<FilesPage />, { route: '/files?path=/etc/passwd' });
+
+    await screen.findByRole('button', { name: 'index.php' });
+    expect(requested.some((url) => url.includes('%2Fetc%2Fpasswd'))).toBe(false);
+    expect(requested.some((url) => url.includes(encodeURIComponent('/var/www')))).toBe(true);
+  });
+});

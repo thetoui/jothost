@@ -17,20 +17,34 @@ interface WrapperProps {
   children: ReactNode;
 }
 
-export function renderWithProviders(ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) {
+interface ProviderOptions extends Omit<RenderOptions, 'wrapper'> {
+  /**
+   * The URL the router starts at.
+   *
+   * Pages that read the query string — the file manager's ?path=, the editor's
+   * — cannot be tested at all without it.
+   */
+  route?: string;
+}
+
+export function renderWithProviders(ui: ReactElement, options?: ProviderOptions) {
   const queryClient = createTestQueryClient();
+  const { route = '/', ...renderOptions } = options ?? {};
 
   function Wrapper({ children }: WrapperProps) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <MemoryRouter
+          initialEntries={[route]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           {children}
         </MemoryRouter>
       </QueryClientProvider>
     );
   }
 
-  return { queryClient, ...render(ui, { wrapper: Wrapper, ...options }) };
+  return { queryClient, ...render(ui, { wrapper: Wrapper, ...renderOptions }) };
 }
 
 /** Builds a successful API envelope Response for fetch mocking. */

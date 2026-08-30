@@ -1,33 +1,45 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ExternalLink,
+  Clock,
+  Database,
   FileCode2,
-  Folder,
+  FolderOpen,
   Globe,
+  HardDrive,
+  Lock,
   Plus,
   Search,
-  Settings2,
-  UserRound,
+  ShieldCheck,
 } from 'lucide-react';
 
-import { StatusPill } from '@/components/StatusPill';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { Card, TintedIcon } from '@/components/ui/Card';
-import { EmptyState, ProgressBar, SkeletonRows } from '@/components/ui/Loading';
+import { Card } from '@/components/ui/Card';
+import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { CreateWebsiteForm } from '@/features/websites/components/CreateWebsiteForm';
+import { DomainList } from '@/features/websites/components/DomainList';
 import { useWebsites } from '@/features/websites/hooks';
-import { websiteStatusPill } from '@/features/websites/status';
+import { useDashboard } from '@/features/dashboard/hooks';
 import type { Website } from '@/types/api';
 
-/** WebsitesPage lists hosted sites and creates new ones. */
+/**
+ * WebsitesPage is the panel's "Websites & Domains" screen.
+ *
+ * The arrangement follows what a hosting operator already knows from Plesk: a
+ * list of domains that expands in place into that domain's tools, with the
+ * server's own summary kept to one side. The value is not the resemblance — it
+ * is that the shape is already in the muscle memory of the people who run these
+ * machines.
+ */
 export function WebsitesPage() {
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
   const { data, isPending, isError, error } = useWebsites();
 
   const websites = data?.websites ?? [];
@@ -39,18 +51,46 @@ export function WebsitesPage() {
       )
     : websites;
 
-  return (
-    <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Websites</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Sites hosted on this server. Each runs under its own system account.
-          </p>
-        </div>
+  const toggle = useCallback((id: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
-        <div className="flex items-center gap-2">
-          {websites.length > 0 && (
+  return (
+    <div className="space-y-4">
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-900">Websites &amp; Domains</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {websites.length} {websites.length === 1 ? 'item' : 'items'} total. Each site runs under
+          its own system account.
+        </p>
+      </header>
+
+      <div className="grid gap-4 xl:grid-cols-[1fr,17rem]">
+        <div className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <RequirePermission permission={Permission.WebsiteCreate}>
+                <Button
+                  variant="primary"
+                  onClick={() => setCreating(true)}
+                  icon={<Plus aria-hidden="true" className="h-4 w-4" />}
+                >
+                  Add Website
+                </Button>
+              </RequirePermission>
+              {/* Plesk offers Add Subdomain and Add Domain Alias beside this.
+                  They are not shown at all rather than shown dead: a button
+                  that does nothing is worse than an absent one. */}
+            </div>
+
             <div className="relative">
               <Search
                 aria-hidden="true"
@@ -60,83 +100,59 @@ export function WebsitesPage() {
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search domains"
-                aria-label="Search websites"
-                className="h-9 w-48 rounded-md border border-surface-border bg-surface pl-8 pr-3 text-sm shadow-card placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                placeholder="Find domain..."
+                aria-label="Find domain"
+                className="h-9 w-56 rounded-md border border-surface-border bg-surface pl-8 pr-3 text-sm shadow-card placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
               />
             </div>
+          </div>
+
+          {isError && (
+            <Alert tone="danger" title="The website list could not be loaded">
+              {error instanceof Error ? error.message : 'Try again in a moment.'}
+            </Alert>
           )}
 
-          <RequirePermission permission={Permission.WebsiteCreate}>
-            <Button
-              variant="primary"
-              onClick={() => setCreating(true)}
-              icon={<Plus aria-hidden="true" className="h-4 w-4" />}
-            >
-              New website
-            </Button>
-          </RequirePermission>
+          <Card label="Domains">
+            {isPending ? (
+              <SkeletonRows rows={4} />
+            ) : websites.length === 0 ? (
+              <EmptyState
+                icon={<Globe className="h-6 w-6" />}
+                title="No websites yet"
+                description="Add one to serve a domain from this server."
+                action={
+                  <RequirePermission permission={Permission.WebsiteCreate}>
+                    <Button
+                      variant="primary"
+                      onClick={() => setCreating(true)}
+                      icon={<Plus aria-hidden="true" className="h-4 w-4" />}
+                    >
+                      Add Website
+                    </Button>
+                  </RequirePermission>
+                }
+              />
+            ) : visible.length === 0 ? (
+              <EmptyState
+                icon={<Search className="h-6 w-6" />}
+                title="No matching domains"
+                description={`Nothing matches “${query.trim()}”.`}
+                action={<Button onClick={() => setQuery('')}>Clear search</Button>}
+              />
+            ) : (
+              <DomainList sites={visible} expanded={expanded} onToggle={toggle} />
+            )}
+          </Card>
         </div>
-      </header>
 
-      {isError && (
-        <Alert tone="danger" title="The website list could not be loaded">
-          {error instanceof Error ? error.message : 'Try again in a moment.'}
-        </Alert>
-      )}
-
-      {isPending && (
-        <Card>
-          <SkeletonRows rows={3} />
-        </Card>
-      )}
-
-      {!isPending && websites.length === 0 && !isError && (
-        <Card>
-          <EmptyState
-            icon={<Globe className="h-6 w-6" />}
-            title="No websites yet"
-            description="Create one to serve a domain from this server."
-            action={
-              <RequirePermission permission={Permission.WebsiteCreate}>
-                <Button
-                  variant="primary"
-                  onClick={() => setCreating(true)}
-                  icon={<Plus aria-hidden="true" className="h-4 w-4" />}
-                >
-                  New website
-                </Button>
-              </RequirePermission>
-            }
-          />
-        </Card>
-      )}
-
-      {!isPending && websites.length > 0 && visible.length === 0 && (
-        <Card>
-          <EmptyState
-            icon={<Search className="h-6 w-6" />}
-            title="No matching websites"
-            description={`Nothing matches “${query.trim()}”.`}
-            action={<Button onClick={() => setQuery('')}>Clear search</Button>}
-          />
-        </Card>
-      )}
-
-      {visible.length > 0 && (
-        <ul className="space-y-3">
-          {visible.map((site) => (
-            <li key={site.id}>
-              <WebsiteCard site={site} />
-            </li>
-          ))}
-        </ul>
-      )}
+        <ServerRail sites={websites} />
+      </div>
 
       <Modal
         open={creating}
         onClose={() => setCreating(false)}
-        title="New website"
+        title="Add Website"
         description="The site is provisioned with its own directory, system account, and web server configuration."
       >
         <CreateWebsiteForm onCreated={() => setCreating(false)} onCancel={() => setCreating(false)} />
@@ -146,89 +162,125 @@ export function WebsitesPage() {
 }
 
 /**
- * WebsiteCard is one site, with the shortcuts an operator reaches for.
- *
- * The tools row is the point: a hosting panel is judged by how few clicks it
- * takes to get from "which sites do I have" to "change this one".
+ * ServerRail is the column Plesk keeps to the right of the domain list: the
+ * shortcuts that apply to the whole server, then what the server itself is.
  */
-function WebsiteCard({ site }: { site: Website }) {
-  const pill = websiteStatusPill(site.status);
-  const settling = site.status === 'creating' || site.status === 'deleting';
+function ServerRail({ sites }: { sites: Website[] }) {
+  // The server's own facts come from the dashboard snapshot rather than a
+  // second endpoint: it is already cached, and this rail is a summary of the
+  // same thing the dashboard shows.
+  const dashboard = useDashboard();
+  const system = dashboard.data?.system;
+  const info = system?.available ? system.data : undefined;
+
+  const withPHP = sites.filter((site) => site.php_version !== null).length;
+  const withTLS = sites.filter((site) => site.ssl_enabled).length;
 
   return (
-    <Card className="overflow-hidden transition-shadow hover:shadow-raised">
-      <div className="flex flex-wrap items-start justify-between gap-4 p-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <TintedIcon
-            tone={site.status === 'failed' ? 'danger' : settling ? 'warn' : 'brand'}
-            icon={<Globe className="h-4 w-4" />}
-          />
+    <aside className="space-y-3" aria-label="Server">
+      <Card label="Shortcuts">
+        <nav className="p-2">
+          <RailLink to="/files" icon={<FolderOpen className="h-4 w-4" />} label="Files" />
+          <RailLink to="/editor" icon={<FileCode2 className="h-4 w-4" />} label="Code editor" />
+          <RailLink to="/php" icon={<FileCode2 className="h-4 w-4" />} label="PHP" />
+          <RailLink to="/ssl" icon={<Lock className="h-4 w-4" />} label="SSL/TLS" />
+          <RailDisabled icon={<Database className="h-4 w-4" />} label="Databases" phase="Phase 8" />
+          <RailDisabled icon={<Clock className="h-4 w-4" />} label="Scheduled tasks" phase="Phase 10" />
+          <RailDisabled icon={<HardDrive className="h-4 w-4" />} label="Backup & restore" phase="Phase 14" />
+        </nav>
+      </Card>
 
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                to={`/websites/${site.id}`}
-                className="truncate text-sm font-semibold text-slate-900 hover:text-brand-700"
-              >
-                {site.primary_domain}
-              </Link>
-              <StatusPill label={pill.label} tone={pill.tone} dot pulse={settling} />
-            </div>
-
-            {site.name && <p className="mt-0.5 truncate text-xs text-slate-500">{site.name}</p>}
-
-            <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
-              <div className="flex items-center gap-1.5">
-                <Folder aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
-                <dt className="sr-only">Document root</dt>
-                <dd className="font-mono">{site.document_root}</dd>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <UserRound aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
-                <dt className="sr-only">System user</dt>
-                <dd className="font-mono">{site.system_user}</dd>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <FileCode2 aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
-                <dt className="sr-only">PHP</dt>
-                <dd>{site.php_version ? `PHP ${site.php_version}` : 'Static'}</dd>
-              </div>
-            </dl>
-          </div>
+      <Card label="System overview">
+        <div className="space-y-2 p-3 text-sm">
+          <h3 className="text-sm font-semibold text-slate-900">System Overview</h3>
+          <dl className="space-y-1.5 text-xs">
+            <RailFact label="Hostname" value={info?.hostname ?? '—'} />
+            <RailFact
+              label="OS"
+              value={info ? `${info.os_name} ${info.os_version}` : '—'}
+            />
+            <RailFact label="Kernel" value={info?.kernel_version ?? '—'} />
+            <RailFact label="Sites" value={String(sites.length)} />
+            <RailFact label="Running PHP" value={`${withPHP} of ${sites.length}`} />
+            <RailFact label="Secured" value={`${withTLS} of ${sites.length}`} />
+          </dl>
         </div>
+      </Card>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            // Opened over plain HTTP because SSL is a later phase; noreferrer
-            // keeps the panel's URL out of the site's logs.
-            onClick={() => window.open(`http://${site.primary_domain}`, '_blank', 'noreferrer')}
-            icon={<ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />}
-          >
-            Open
-          </Button>
-          <Link to={`/websites/${site.id}`}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Settings2 aria-hidden="true" className="h-3.5 w-3.5" />}
-            >
-              Manage
-            </Button>
-          </Link>
+      <Card label="System security">
+        <div className="space-y-2 p-3">
+          <h3 className="text-sm font-semibold text-slate-900">System Security</h3>
+          {/* Only what this build actually enforces. Plesk lists ModSecurity
+              and IP banning here; claiming either would be a lie. */}
+          <ul className="space-y-1.5 text-xs">
+            <SecurityRow label="Per-site system accounts" on />
+            <SecurityRow label="HTTPS on every site" on={withTLS === sites.length && sites.length > 0} />
+            <SecurityRow label="Firewall" on={false} note="Phase 16" />
+            <SecurityRow label="Fail2Ban" on={false} note="Phase 18" />
+          </ul>
         </div>
-      </div>
+      </Card>
+    </aside>
+  );
+}
 
-      {/* A site mid-change gets a live bar rather than a static badge alone, so
-          the list shows that something is happening without being refreshed. */}
-      {settling && (
-        <ProgressBar
-          label={`${site.primary_domain} is ${site.status}`}
-          tone={site.status === 'deleting' ? 'danger' : 'brand'}
-          className="rounded-none"
-        />
-      )}
-    </Card>
+function RailLink({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 transition-colors hover:bg-surface-sunken hover:text-brand-700"
+    >
+      <span className="text-slate-400" aria-hidden="true">
+        {icon}
+      </span>
+      {label}
+    </Link>
+  );
+}
+
+function RailDisabled({
+  icon,
+  label,
+  phase,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  phase: string;
+}) {
+  return (
+    <span
+      title={`Added in ${phase}`}
+      className="flex cursor-not-allowed items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-400"
+    >
+      <span aria-hidden="true">{icon}</span>
+      {label}
+      <span className="ml-auto text-[11px]">{phase}</span>
+    </span>
+  );
+}
+
+function RailFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="truncate font-medium text-slate-800">{value}</dd>
+    </div>
+  );
+}
+
+function SecurityRow({ label, on, note }: { label: string; on: boolean; note?: string }) {
+  return (
+    <li className="flex items-center justify-between gap-2">
+      <span className="text-slate-600">{label}</span>
+      <span
+        className={[
+          'inline-flex items-center gap-1 font-medium',
+          on ? 'text-ok-700' : 'text-slate-400',
+        ].join(' ')}
+      >
+        <ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />
+        {on ? 'On' : (note ?? 'Off')}
+      </span>
+    </li>
   );
 }

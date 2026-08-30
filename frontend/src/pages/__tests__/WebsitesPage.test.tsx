@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { clearTokens, setAccessToken, setRefreshToken } from '@/features/auth/tokenStorage';
@@ -79,9 +79,11 @@ describe('WebsitesPage', () => {
 
     renderWithProviders(<WebsitesPage />);
 
-    expect(await screen.findByRole('link', { name: 'example.test' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'example.test' })).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
-    expect(screen.getByText('/var/www/example.test/public')).toBeInTheDocument();
+    // The document root is inside the row's panel, which starts collapsed:
+    // a list of twenty sites should not be a wall of paths.
+    expect(screen.queryByText('/var/www/example.test/public')).not.toBeInTheDocument();
   });
 
   it('says so when there are no websites yet', async () => {
@@ -124,7 +126,7 @@ describe('WebsitesPage', () => {
     renderWithProviders(<WebsitesPage />);
 
     await screen.findByText('No websites yet');
-    expect(screen.queryByRole('button', { name: /new website/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add website/i })).not.toBeInTheDocument();
   });
 
   it('creates a website and reports it as queued', async () => {
@@ -153,7 +155,7 @@ describe('WebsitesPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<WebsitesPage />);
 
-    await user.click(await screen.findByRole('button', { name: /new website/i }));
+    await user.click(await screen.findByRole('button', { name: /add website/i }));
     await user.type(screen.getByLabelText('Domain'), 'example.test');
     await user.click(screen.getByRole('button', { name: 'Create website' }));
 
@@ -181,7 +183,7 @@ describe('WebsitesPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<WebsitesPage />);
 
-    await user.click(await screen.findByRole('button', { name: /new website/i }));
+    await user.click(await screen.findByRole('button', { name: /add website/i }));
     await user.type(screen.getByLabelText('Domain'), 'example.test');
     await user.click(screen.getByRole('button', { name: 'Create website' }));
 
@@ -202,7 +204,7 @@ describe('WebsitesPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<WebsitesPage />);
 
-    await user.click(await screen.findByRole('button', { name: /new website/i }));
+    await user.click(await screen.findByRole('button', { name: /add website/i }));
     await user.type(screen.getByLabelText('Domain'), 'localhost');
     await user.click(screen.getByRole('button', { name: 'Create website' }));
 
@@ -227,5 +229,114 @@ describe('WebsitesPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('The website list is unavailable');
     });
+  });
+});
+
+describe('WebsitesPage domain panel', () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'fetch');
+    clearTokens();
+    setRefreshToken('refresh-test');
+    setAccessToken('access-test');
+    useAuthStore.setState({ status: 'authenticated' });
+  });
+
+  /** listing answers the profile and website calls, and nothing else. */
+  function listing(permissions: string[] = ['website.view', 'website.create']) {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/auth/me')) {
+        return mockProfile(permissions);
+      }
+      if (url.includes('/websites')) {
+        return envelopeResponse({ websites: [website()], count: 1 });
+      }
+      // The rail reads the dashboard snapshot; an unavailable one must not
+      // stop the page rendering.
+      return errorResponse('UNAVAILABLE', 'no agent', 503);
+    });
+  }
+
+  // The whole point of the arrangement: the tools open under the domain rather
+  // than a page away.
+  it('opens a domain panel in place', async () => {
+    const user = userEvent.setup();
+    listing();
+
+    renderWithProviders(<WebsitesPage />);
+    await user.click(await screen.findByRole('button', { name: 'example.test' }));
+
+    expect(await screen.findByRole('tab', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Hosting & DNS' })).toBeInTheDocument();
+    expect(screen.getByText('Files & Databases')).toBeInTheDocument();
+    expect(screen.getByText('Dev Tools')).toBeInTheDocument();
+    expect(screen.getByText('Security')).toBeInTheDocument();
+  });
+
+  // This is what someone actually came for: where does this domain live.
+  it('shows the document root, log directory and system user', async () => {
+    const user = userEvent.setup();
+    listing();
+
+    renderWithProviders(<WebsitesPage />);
+    await user.click(await screen.findByRole('button', { name: 'example.test' }));
+
+    expect(await screen.findByText('/var/www/example.test/logs')).toBeInTheDocument();
+    expect(screen.getByText('web_example_test_a1b2c3')).toBeInTheDocument();
+    expect(screen.getAllByText('/var/www/example.test/public').length).toBeGreaterThan(0);
+  });
+
+  it('links the files tool at that domain rather than the root', async () => {
+    const user = userEvent.setup();
+    listing();
+
+    renderWithProviders(<WebsitesPage />);
+    await user.click(await screen.findByRole('button', { name: 'example.test' }));
+
+    const link = await screen.findByRole('link', { name: /Files for example.test/i });
+    expect(link).toHaveAttribute(
+      'href',
+      '/files?path=' + encodeURIComponent('/var/www/example.test/public'),
+    );
+  });
+
+  // A tool this build does not have is shown inert with the reason. Hiding it
+  // makes the panel look complete and leaves someone hunting.
+  it('marks tools that are not built yet', async () => {
+    const user = userEvent.setup();
+    listing();
+
+    renderWithProviders(<WebsitesPage />);
+    await user.click(await screen.findByRole('button', { name: 'example.test' }));
+
+    expect(await screen.findByText('Added in Phase 8')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Databases$/ })).not.toBeInTheDocument();
+  });
+
+  it('closes the panel again', async () => {
+    const user = userEvent.setup();
+    listing();
+
+    renderWithProviders(<WebsitesPage />);
+    const row = await screen.findByRole('button', { name: 'example.test' });
+
+    await user.click(row);
+    expect(await screen.findByRole('tab', { name: 'Dashboard' })).toBeInTheDocument();
+
+    await user.click(row);
+    await waitFor(() => {
+      expect(screen.queryByRole('tab', { name: 'Dashboard' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('summarises the server beside the list', async () => {
+    listing();
+
+    renderWithProviders(<WebsitesPage />);
+
+    const rail = await screen.findByRole('complementary', { name: 'Server' });
+    expect(rail).toBeInTheDocument();
+    expect(within(rail).getByText('System Overview')).toBeInTheDocument();
+    expect(within(rail).getByText('System Security')).toBeInTheDocument();
   });
 });

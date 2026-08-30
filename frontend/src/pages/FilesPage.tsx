@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowUp,
   ChevronRight,
@@ -60,8 +60,24 @@ function message(error: unknown): string | null {
   return 'Something went wrong';
 }
 
+/**
+ * startingPath reads the folder a caller asked for.
+ *
+ * Websites & Domains links here with the site's document root, so "Files" on a
+ * domain lands in that domain rather than at the top of the server. Anything
+ * outside the root is ignored rather than passed on: the Agent would refuse it,
+ * and opening on an error is a worse answer than opening at the root.
+ */
+function startingPath(requested: string | null): string {
+  if (!requested || !requested.startsWith(ROOT) || requested.includes('..')) {
+    return ROOT;
+  }
+  return requested;
+}
+
 export function FilesPage() {
-  const [path, setPath] = useState(ROOT);
+  const [params] = useSearchParams();
+  const [path, setPath] = useState(() => startingPath(params.get('path')));
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');

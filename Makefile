@@ -128,6 +128,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-editor
 	$(MAKE) docker-test-databases
 	$(MAKE) docker-test-subdomains
+	$(MAKE) docker-test-hybrid
 	$(MAKE) docker-test-node
 
 .PHONY: docker-test-integration
@@ -198,6 +199,10 @@ docker-test-databases: create-integration-admin ## Run the Phase 8 database inte
 # The Phase 9 checks run a real Express application and look at the process,
 # its account, and its logs. Only the managed host can see those, so they run
 # inside the agent container.
+.PHONY: docker-test-hybrid
+docker-test-hybrid: create-integration-admin ## Run the Phase 4.5 Apache hybrid integration checks
+	$(COMPOSE) exec -T agent sh /tests/integration/phase45_hybrid.sh
+
 .PHONY: docker-test-subdomains
 docker-test-subdomains: create-integration-admin ## Run the Phase 4.1 subdomain integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase41_subdomains.sh

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"runtime/debug"
 
+	"github.com/jothost/panel/agent/internal/apache"
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/database"
 	"github.com/jothost/panel/agent/internal/files"
@@ -63,8 +64,11 @@ type Dependencies struct {
 	Services  *services.Provider
 	Sites     *sites.Manager
 	Nginx     *nginx.Provider
-	Jobs      *jobs.Runner
-	Log       *slog.Logger
+	// Apache is the hybrid backend. Nil, or present but not installed, on a
+	// host that serves everything from nginx — which is the default.
+	Apache *apache.Provider
+	Jobs   *jobs.Runner
+	Log    *slog.Logger
 
 	// PHP reports which versions the host has, PHPPools writes per-site FPM
 	// pools, and PHPInstaller adds and removes versions. Any of them may be
@@ -143,6 +147,8 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationPHPPoolDelete, r.handlePHPPoolDelete)
 	r.mustRegister(protocol.OperationPHPPoolStatus, r.handlePHPPoolStatus)
 	r.mustRegister(protocol.OperationPHPExtensions, r.handlePHPExtensions)
+	r.mustRegister(protocol.OperationApacheStatus, r.handleApacheStatus)
+	r.mustRegister(protocol.OperationApacheInstall, r.handleApacheInstall)
 	r.mustRegister(protocol.OperationWebsitePHPSet, r.handleWebsitePHPSet)
 	r.mustRegister(protocol.OperationWebsitePHPUnset, r.handleWebsitePHPUnset)
 

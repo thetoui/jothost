@@ -545,3 +545,85 @@ func TestWorkerReportsAnUnavailableAgentSafely(t *testing.T) {
 		t.Fatalf("error = %v, want the agent-unavailable message", job.Error)
 	}
 }
+
+// A busy Agent means "not yet", not "never".
+//
+// Switching the host's web server arrangement queues one job per website at
+// once, and the Agent runs a bounded number at a time. Before this, any burst
+// larger than that limit was reported as a row of failed websites — work that
+// had never been attempted, described as broken.
+func TestBusyAgentDefersRatherThanFails(t *testing.T) {
+	deps := testsupport.Require(t)
+	deps.Reset(t)
+
+	repo := jobs.NewRepository(deps.Pool)
+	ctx := context.Background()
+
+	queued, err := repo.Create(ctx, jobs.CreateParams{Type: jobs.TypeWebsiteUpdate})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	claimed, err := repo.Claim(ctx)
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	if claimed.ID != queued.ID {
+		t.Fatalf("claimed %s, want %s", claimed.ID, queued.ID)
+	}
+
+	if err := repo.Requeue(ctx, claimed.ID); err != nil {
+		t.Fatalf("Requeue: %v", err)
+	}
+
+	back, err := repo.Get(ctx, queued.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if back.Status != jobs.StatePending {
+		t.Fatalf("status = %q, want PENDING", back.Status)
+	}
+	// started_at is cleared with it, or the row would look like it had been
+	// running since the first attempt and be requeued again as stale.
+	if back.StartedAt != nil {
+		t.Fatalf("started_at = %v, want nil", back.StartedAt)
+	}
+
+	// And it is claimable again, which is the whole point.
+	again, err := repo.Claim(ctx)
+	if err != nil {
+		t.Fatalf("second Claim: %v", err)
+	}
+	if again.ID != queued.ID {
+		t.Fatalf("claimed %s, want the requeued %s", again.ID, queued.ID)
+	}
+}
+
+// Requeue only applies to work that was actually claimed. A finished job put
+// back in the queue would be run a second time.
+func TestRequeueRefusesAJobThatIsNotRunning(t *testing.T) {
+	deps := testsupport.Require(t)
+	deps.Reset(t)
+
+	repo := jobs.NewRepository(deps.Pool)
+	ctx := context.Background()
+
+	queued, err := repo.Create(ctx, jobs.CreateParams{Type: jobs.TypeWebsiteUpdate})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := repo.Requeue(ctx, queued.ID); !errors.Is(err, jobs.ErrNotFound) {
+		t.Fatalf("requeue of a pending job = %v, want ErrNotFound", err)
+	}
+
+	claimed, err := repo.Claim(ctx)
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	if err := repo.Complete(ctx, claimed.ID, nil); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if err := repo.Requeue(ctx, claimed.ID); !errors.Is(err, jobs.ErrNotFound) {
+		t.Fatalf("requeue of a finished job = %v, want ErrNotFound", err)
+	}
+}

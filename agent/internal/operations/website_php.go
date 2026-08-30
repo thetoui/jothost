@@ -32,10 +32,16 @@ type websitePHPPayload struct {
 	// and refused with it set: a site is served by an application or by PHP,
 	// never both. The API refuses first; this is the boundary that cannot be
 	// skipped.
-	ProxyPort   int    `json:"proxy_port"`
-	PoolName    string `json:"pool_name"`
-	SocketPath  string `json:"socket_path"`
-	MaxBodySize string `json:"max_body_size"`
+	ProxyPort int `json:"proxy_port"`
+	// The hybrid arrangement. Carried here because these operations rewrite
+	// the whole configuration: without them, choosing a PHP version would take
+	// a site out of Apache and lose its .htaccess handling.
+	ApachePort    int    `json:"apache_port"`
+	AllowOverride bool   `json:"allow_override"`
+	MaxBodyBytes  int64  `json:"max_body_bytes"`
+	PoolName      string `json:"pool_name"`
+	SocketPath    string `json:"socket_path"`
+	MaxBodySize   string `json:"max_body_size"`
 
 	MemoryLimit       string `json:"memory_limit"`
 	UploadMaxFilesize string `json:"upload_max_filesize"`
@@ -165,12 +171,15 @@ func (r *Registry) handleWebsitePHPSet(ctx context.Context, req protocol.Request
 	report(progressReport, 85, "Pointing the website at PHP")
 	workersBefore := r.nginxWorkers()
 	result, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
-		Domain:       payload.Domain,
-		Aliases:      payload.Aliases,
-		DocumentRoot: payload.DocumentRoot,
-		MaxBodySize:  payload.MaxBodySize,
-		SSL:          payload.sslConfig(),
-		PHPSocket:    pool.SocketPath,
+		Domain:        payload.Domain,
+		Aliases:       payload.Aliases,
+		DocumentRoot:  payload.DocumentRoot,
+		MaxBodySize:   payload.MaxBodySize,
+		SSL:           payload.sslConfig(),
+		PHPSocket:     pool.SocketPath,
+		ApachePort:    payload.ApachePort,
+		AllowOverride: payload.AllowOverride,
+		MaxBodyBytes:  payload.MaxBodyBytes,
 	}, nil)
 	if err != nil {
 		return nil, websiteError(err)
@@ -241,11 +250,14 @@ func (r *Registry) handleWebsitePHPUnset(ctx context.Context, req protocol.Reque
 	// No socket in the request, so the rendered vhost omits the PHP block.
 	workersBefore := r.nginxWorkers()
 	result, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
-		Domain:       payload.Domain,
-		Aliases:      payload.Aliases,
-		DocumentRoot: payload.DocumentRoot,
-		MaxBodySize:  payload.MaxBodySize,
-		SSL:          payload.sslConfig(),
+		Domain:        payload.Domain,
+		Aliases:       payload.Aliases,
+		DocumentRoot:  payload.DocumentRoot,
+		MaxBodySize:   payload.MaxBodySize,
+		SSL:           payload.sslConfig(),
+		ApachePort:    payload.ApachePort,
+		AllowOverride: payload.AllowOverride,
+		MaxBodyBytes:  payload.MaxBodyBytes,
 	}, nil)
 	if err != nil {
 		return nil, websiteError(err)

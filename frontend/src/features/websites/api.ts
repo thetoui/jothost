@@ -92,6 +92,13 @@ export const websitesApi = {
       },
     }),
 
+  /** Turns .htaccess on or off for a site, which rewrites its Apache vhost. */
+  setAllowOverride: (websiteId: string, allow: boolean) =>
+    request<Website>(`/websites/${encodeURIComponent(websiteId)}`, {
+      method: 'PATCH',
+      body: { allow_override: allow },
+    }),
+
   removeDomain: (domainId: string) =>
     request<JobAccepted>(`/domains/${encodeURIComponent(domainId)}`, { method: 'DELETE' }),
 };

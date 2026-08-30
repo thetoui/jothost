@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jothost/panel/agent/internal/apache"
 	"github.com/jothost/panel/agent/internal/audit"
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/command"
@@ -172,6 +173,12 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	specs := []command.Spec{
 		{Name: services.CommandName, Path: cfg.SystemctlPath, Timeout: 10 * time.Second},
 		{Name: nginx.CommandName, Path: cfg.NginxPath, Timeout: 15 * time.Second},
+		// Both Apache names, allowlisted whether or not the binary is there:
+		// hybrid mode can be enabled on a host that installs Apache later, and
+		// what stops any other program running in its place is that the path
+		// is fixed here rather than resolved from a request.
+		{Name: apache.CommandHTTPD, Path: cfg.ApachePath, Timeout: 20 * time.Second},
+		{Name: apache.CommandApache2, Path: cfg.Apache2Path, Timeout: 20 * time.Second},
 		{Name: sites.CommandUseradd, Path: cfg.UseraddPath, Timeout: 15 * time.Second},
 		{Name: sites.CommandAdduser, Path: cfg.AdduserPath, Timeout: 15 * time.Second},
 		{Name: sites.CommandUserdel, Path: cfg.UserdelPath, Timeout: 15 * time.Second},
@@ -231,10 +238,21 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		return nil, nil, fmt.Errorf("prepare site root: %w", err)
 	}
 
+	apacheProvider := apache.NewProvider(apache.Options{
+		Runner:     runner,
+		SitesDir:   cfg.ApacheConfigDir,
+		MainConfig: cfg.ApacheMainConf,
+		// Apache reads site content through the same group nginx does. Without
+		// it every request in hybrid mode would be a 403 on a site that looks
+		// perfectly configured.
+		WebGroup: provisioner.WebGroup(),
+	})
+
 	siteManager := sites.NewManager(sites.ManagerOptions{
 		Filesystem: provisioner,
 		Users:      sites.NewUserProvider(runner),
 		Nginx:      nginxProvider,
+		Apache:     apacheProvider,
 		Log:        log,
 	})
 
@@ -244,6 +262,12 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	}
 	if !capabilities.Users {
 		log.Warn("website management is unavailable: no user management tool found")
+	}
+	if !capabilities.Apache {
+		// Not a warning about something broken: most hosts run nginx alone,
+		// and this is what the panel reports when hybrid mode is asked for.
+		log.Info("the hybrid web server arrangement is unavailable: apache not found",
+			"httpd", cfg.ApachePath, "apache2", cfg.Apache2Path)
 	}
 	if !provisioner.HasWebGroup() {
 		// A site provisioned without this is created successfully and then
@@ -404,6 +428,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Services:     serviceProvider,
 		Sites:        siteManager,
 		Nginx:        nginxProvider,
+		Apache:       apacheProvider,
 		Jobs:         jobRunner,
 		Log:          log,
 		PHP:          phpDetector,

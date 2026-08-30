@@ -66,6 +66,22 @@ type Layout struct {
 	ErrorLog  string `json:"error_log"`
 }
 
+// ApacheAccessLog and ApacheErrorLog are where the backend writes in hybrid
+// mode.
+//
+// Separate files rather than the ones above, because both servers are in the
+// path and each records a different half of the truth: nginx sees the request
+// arrive and the proxy hop, Apache sees what was actually served, which
+// .htaccess rewrote it, and what PHP did. Interleaving them into one file
+// would produce two lines per request that look like two requests.
+func (l Layout) ApacheAccessLog() string {
+	return filepath.Join(l.Logs, "apache-access.log")
+}
+
+func (l Layout) ApacheErrorLog() string {
+	return filepath.Join(l.Logs, "apache-error.log")
+}
+
 // Provisioner creates and removes site directories.
 type Provisioner struct {
 	validator *pathsec.Validator

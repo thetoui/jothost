@@ -43,6 +43,17 @@ type websiteCreatePayload struct {
 	CertificatePath string `json:"certificate_path"`
 	PrivateKeyPath  string `json:"private_key_path"`
 	RedirectToHTTPS bool   `json:"redirect_to_https"`
+
+	// ApachePort puts Apache in front of this site's files, with nginx
+	// proxying to it — the hybrid arrangement. Zero is nginx serving the site
+	// itself, which is the default and what every earlier phase did.
+	ApachePort int `json:"apache_port"`
+	// AllowOverride enables .htaccess, which only means anything with Apache
+	// in the path.
+	AllowOverride bool `json:"allow_override"`
+	// MaxBodyBytes caps uploads at the Apache layer, in bytes. nginx has its
+	// own limit expressed the way nginx expresses it.
+	MaxBodyBytes int64 `json:"max_body_bytes"`
 }
 
 // sslConfig builds the vhost's certificate section from the payload.
@@ -81,14 +92,17 @@ func (r *Registry) handleWebsiteCreate(ctx context.Context, req protocol.Request
 	}
 
 	result, err := r.deps.Sites.Create(ctx, sites.CreateRequest{
-		Domain:       payload.Domain,
-		Aliases:      payload.Aliases,
-		DocumentRoot: payload.DocumentRoot,
-		SystemUser:   payload.SystemUser,
-		MaxBodySize:  payload.MaxBodySize,
-		PHPSocket:    payload.PHPSocket,
-		ProxyPort:    payload.ProxyPort,
-		SSL:          payload.sslConfig(),
+		Domain:        payload.Domain,
+		Aliases:       payload.Aliases,
+		DocumentRoot:  payload.DocumentRoot,
+		SystemUser:    payload.SystemUser,
+		MaxBodySize:   payload.MaxBodySize,
+		PHPSocket:     payload.PHPSocket,
+		ProxyPort:     payload.ProxyPort,
+		SSL:           payload.sslConfig(),
+		ApachePort:    payload.ApachePort,
+		AllowOverride: payload.AllowOverride,
+		MaxBodyBytes:  payload.MaxBodyBytes,
 	}, reporterFunc(reporter))
 	if err != nil {
 		return nil, websiteError(err)
@@ -236,13 +250,16 @@ func (r *Registry) handleWebsiteUpdate(ctx context.Context, req protocol.Request
 	}
 
 	result, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
-		Domain:       payload.Domain,
-		Aliases:      payload.Aliases,
-		DocumentRoot: payload.DocumentRoot,
-		MaxBodySize:  payload.MaxBodySize,
-		PHPSocket:    payload.PHPSocket,
-		ProxyPort:    payload.ProxyPort,
-		SSL:          payload.sslConfig(),
+		Domain:        payload.Domain,
+		Aliases:       payload.Aliases,
+		DocumentRoot:  payload.DocumentRoot,
+		MaxBodySize:   payload.MaxBodySize,
+		PHPSocket:     payload.PHPSocket,
+		ProxyPort:     payload.ProxyPort,
+		SSL:           payload.sslConfig(),
+		ApachePort:    payload.ApachePort,
+		AllowOverride: payload.AllowOverride,
+		MaxBodyBytes:  payload.MaxBodyBytes,
 	}, reporterFunc(reporter))
 	if err != nil {
 		return nil, websiteError(err)

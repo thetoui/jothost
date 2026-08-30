@@ -61,6 +61,14 @@ type Website struct {
 	PHPPoolMode      *string `json:"php_pool_mode"`
 	SystemUserMode   *string `json:"system_user_mode"`
 
+	// ApachePort is the loopback port Apache serves this site on in hybrid
+	// mode. It is kept when the host goes back to nginx alone, so the number
+	// stays this site's for as long as it exists.
+	ApachePort *int `json:"apache_port"`
+	// AllowOverride is whether Apache reads .htaccess for this site. It means
+	// nothing while the host serves everything from nginx.
+	AllowOverride bool `json:"allow_override"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -137,6 +145,7 @@ const websiteColumns = `
 	system_username AS system_user,
 	php_version, status, ssl_enabled, https_redirect,
 	parent_website_id::text, document_root_mode, php_pool_mode, system_user_mode,
+	apache_port, allow_override,
 	created_at, updated_at`
 
 func scanWebsite(row pgx.Row) (Website, error) {
@@ -145,7 +154,8 @@ func scanWebsite(row pgx.Row) (Website, error) {
 		&site.DocumentRoot, &site.SystemUser, &site.PHPVersion, &site.Status,
 		&site.SSLEnabled, &site.HTTPSRedirect,
 		&site.ParentWebsiteID, &site.DocumentRootMode, &site.PHPPoolMode,
-		&site.SystemUserMode, &site.CreatedAt, &site.UpdatedAt)
+		&site.SystemUserMode, &site.ApachePort, &site.AllowOverride,
+		&site.CreatedAt, &site.UpdatedAt)
 	return site, err
 }
 
@@ -402,6 +412,10 @@ func (r *Repository) SetStatus(ctx context.Context, id, status string) error {
 type UpdateParams struct {
 	Name          *string
 	HTTPSRedirect *bool
+	// AllowOverride turns .htaccess on or off for this site. It only takes
+	// effect on a host running the hybrid arrangement; nginx has no equivalent
+	// and never reads the file.
+	AllowOverride *bool
 }
 
 // Update applies mutable fields to a website.
@@ -410,9 +424,11 @@ func (r *Repository) Update(ctx context.Context, id string, params UpdateParams)
 		UPDATE websites
 		SET name           = COALESCE($2, name),
 		    https_redirect = COALESCE($3, https_redirect),
+		    allow_override = COALESCE($4, allow_override),
 		    updated_at     = now()
 		WHERE id = $1::uuid
-		RETURNING `+websiteColumns, id, params.Name, params.HTTPSRedirect)
+		RETURNING `+websiteColumns,
+		id, params.Name, params.HTTPSRedirect, params.AllowOverride)
 
 	site, err := scanWebsite(row)
 	if errors.Is(err, pgx.ErrNoRows) {

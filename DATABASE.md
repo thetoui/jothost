@@ -163,6 +163,20 @@ hostname UNIQUE
 
 The unique hostname is what makes registration an idempotent upsert: the API
 refreshes the existing row at startup rather than adding one per restart.
+
+**Extended in migration 0011 (Phase 4.5):**
+
+```sql
+webserver_mode VARCHAR(20) NOT NULL DEFAULT 'nginx'
+
+CHECK (webserver_mode IN ('nginx', 'hybrid'))
+```
+
+Which web server arrangement this host runs. It is a property of the host and
+not of a site: both servers are one process tree serving every site on the
+machine, so a panel that let one site opt in would be running Apache for that
+site and charging every other site the memory. Changing it rewrites every
+site's configuration.
 Facts the Agent could not determine are stored as NULL, so "unknown" and
 "empty" stay distinguishable.
 
@@ -247,6 +261,34 @@ the `websites_no_nested_subdomains` trigger. This cannot be a CHECK constraint:
 the rule is about another row, and a CHECK may not run a subquery. A name
 several levels down is still reachable — the label may contain dots, so
 `dev.shop.example.com` is one subdomain of `example.com`.
+
+**Extended in migration 0011 (Phase 4.5).** The hybrid arrangement:
+
+```sql
+apache_port INTEGER
+allow_override BOOLEAN NOT NULL DEFAULT TRUE
+
+CHECK (apache_port IS NULL OR apache_port BETWEEN 7080 AND 7979)
+UNIQUE(server_id, apache_port) WHERE apache_port IS NOT NULL
+```
+
+`apache_port` is the loopback port Apache serves this site on. It is **kept**
+when the host goes back to nginx alone rather than cleared: the number is this
+site's for as long as it exists, so switching arrangement twice does not
+renumber every backend and rewrite every configuration file for no reason.
+
+Unique per server, because a backend port is a host-wide resource: two sites on
+one port means one Apache virtual host silently serving the other's traffic —
+the first `VirtualHost` on a port answers for every name that matches no other.
+
+The range overlaps `node_apps.port` (1024-32767), and two tables cannot be
+constrained against each other without a trigger on both. The check is in Go,
+in both directions, and names what holds a port when it refuses. See
+docs/PHASE4.5.md section 2.6.
+
+`allow_override` is whether Apache reads `.htaccess` for this site. It defaults
+to on, because `.htaccess` is what hybrid mode is turned on for; it is per-site
+because reading the file in every directory of every request is not free.
 
 **Note on `system_username`.** This field was specified as `system_user`.
 PostgreSQL 16 made `SYSTEM_USER` a reserved keyword (SQL:2023), so that name is

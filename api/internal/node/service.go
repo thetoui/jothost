@@ -225,6 +225,18 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (App, error) {
 		return App{}, err
 	}
 
+	// An Apache backend is on the same host, and its range sits inside the
+	// range an application may ask for. Two tables cannot be constrained
+	// against each other in SQL without a trigger on both, so the check lives
+	// here — and it names what holds the port, because "port in use" on a host
+	// the user believes is idle is not an answer.
+	if holder, err := s.websites.BackendPortTaken(ctx, s.serverID, req.Port); err != nil {
+		return App{}, err
+	} else if holder != "" {
+		return App{}, fmt.Errorf("%w: port %d is the Apache backend for %s",
+			ErrPortTaken, req.Port, holder)
+	}
+
 	app, err := s.repo.Create(ctx, CreateParams{
 		ServerID:  s.serverID,
 		WebsiteID: site.ID,

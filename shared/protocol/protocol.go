@@ -83,6 +83,12 @@ const (
 
 	// Node.js. An application is somebody else's code, so every one of these
 	// runs it as the website's own account and never as the Agent's.
+	// Apache is the backend of the hybrid arrangement. Its per-site
+	// configuration is written by the website operations, which already carry
+	// everything a vhost needs; these two are about the server itself.
+	OperationApacheStatus  OperationType = "apache.status"
+	OperationApacheInstall OperationType = "apache.install"
+
 	OperationNodeVersions   OperationType = "node.versions"
 	OperationNodeInstall    OperationType = "node.install"
 	OperationNodeUninstall  OperationType = "node.uninstall"
@@ -145,6 +151,8 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationPHPPoolDelete:        {},
 	OperationPHPPoolStatus:        {},
 	OperationPHPExtensions:        {},
+	OperationApacheStatus:         {},
+	OperationApacheInstall:        {},
 	OperationWebsitePHPSet:        {},
 	OperationWebsitePHPUnset:      {},
 	OperationSSLIssue:             {},

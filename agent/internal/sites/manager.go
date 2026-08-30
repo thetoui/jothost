@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jothost/panel/agent/internal/apache"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/validate"
@@ -24,7 +25,10 @@ type Manager struct {
 	fs    *Provisioner
 	users *UserProvider
 	nginx *nginx.Provider
-	log   *slog.Logger
+	// apache is the backend in hybrid mode. Nil, or present but unavailable,
+	// on a host that serves everything from nginx — which is the default.
+	apache *apache.Provider
+	log    *slog.Logger
 }
 
 // ManagerOptions configures a Manager.
@@ -32,23 +36,28 @@ type ManagerOptions struct {
 	Filesystem *Provisioner
 	Users      *UserProvider
 	Nginx      *nginx.Provider
+	Apache     *apache.Provider
 	Log        *slog.Logger
 }
 
 // NewManager builds a Manager.
 func NewManager(opts ManagerOptions) *Manager {
 	return &Manager{
-		fs:    opts.Filesystem,
-		users: opts.Users,
-		nginx: opts.Nginx,
-		log:   opts.Log,
+		fs:     opts.Filesystem,
+		users:  opts.Users,
+		nginx:  opts.Nginx,
+		apache: opts.Apache,
+		log:    opts.Log,
 	}
 }
 
 // Capabilities reports what this host can actually do.
 type Capabilities struct {
 	Nginx bool `json:"nginx"`
-	Users bool `json:"users"`
+	// Apache reports whether this host can run the hybrid arrangement. It is
+	// advertised rather than discovered from a failed mode switch.
+	Apache bool `json:"apache"`
+	Users  bool `json:"users"`
 	// WebGroup reports whether site directories can be made readable by the
 	// web server. Without it a site is created and then serves nothing.
 	WebGroup bool `json:"web_group"`
@@ -58,6 +67,7 @@ type Capabilities struct {
 func (m *Manager) Capabilities() Capabilities {
 	return Capabilities{
 		Nginx:    m.nginx != nil && m.nginx.Available(),
+		Apache:   m.apache != nil && m.apache.Available(),
 		Users:    m.users != nil && m.users.Available(),
 		WebGroup: m.fs != nil && m.fs.HasWebGroup(),
 	}
@@ -80,6 +90,18 @@ type CreateRequest struct {
 	// ProxyPort makes this site a reverse proxy to an application on
 	// 127.0.0.1 rather than a directory of files.
 	ProxyPort int
+	// ApachePort puts Apache in front of the files, with nginx proxying to it.
+	// Zero is nginx serving the site itself, which is the default arrangement.
+	//
+	// An application takes precedence: a site served by one needs neither
+	// .htaccess nor PHP, so Apache stays out of the path entirely.
+	ApachePort int
+	// AllowOverride enables .htaccess for this site, which is what hybrid mode
+	// is usually turned on for.
+	AllowOverride bool
+	// MaxBodyBytes caps uploads at the Apache layer. Zero means Apache's own
+	// default; nginx has its own limit from MaxBodySize.
+	MaxBodyBytes int64
 }
 
 // CreateResult is what provisioning produced.
@@ -91,6 +113,9 @@ type CreateResult struct {
 	// Reloaded reports whether nginx picked the site up. A site can be fully
 	// written and still not served if the reload failed.
 	Reloaded bool `json:"reloaded"`
+	// ApachePort is the backend this site is served through, or zero when
+	// nginx serves it directly.
+	ApachePort int `json:"apache_port,omitempty"`
 }
 
 // ErrUnsupported means the host cannot provision websites.
@@ -157,6 +182,21 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 		return CreateResult{}, err
 	}
 
+	if err := validateBackendPort(req.ApachePort); err != nil {
+		return CreateResult{}, err
+	}
+	serve := resolveBackend(req.ProxyPort, req.ApachePort, req.PHPSocket)
+
+	// Apache first, so nginx is never pointed at a backend that is not there.
+	if serve.apachePort != 0 {
+		progress(report, 60, "Configuring the Apache backend")
+		if err := m.applyApache(ctx, apacheConfigFor(domain, aliases, layout,
+			serve.apachePort, req.PHPSocket, req.MaxBodyBytes, req.AllowOverride),
+			true); err != nil {
+			return CreateResult{}, err
+		}
+	}
+
 	progress(report, 70, "Writing the web server configuration")
 	configPath, err := m.nginx.WriteSite(ctx, nginx.SiteConfig{
 		PrimaryDomain: domain,
@@ -165,8 +205,8 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 		AccessLog:     layout.AccessLog,
 		ErrorLog:      layout.ErrorLog,
 		MaxBodySize:   req.MaxBodySize,
-		PHPSocket:     req.PHPSocket,
-		ProxyPort:     req.ProxyPort,
+		PHPSocket:     serve.phpSocket,
+		ProxyPort:     serve.proxyPort,
 		SSL:           req.SSL,
 	})
 	if err != nil {
@@ -187,6 +227,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 		Account:    account,
 		ConfigPath: configPath,
 		Reloaded:   true,
+		ApachePort: serve.apachePort,
 	}, nil
 }
 
@@ -206,9 +247,11 @@ type DeleteRequest struct {
 type DeleteResult struct {
 	Domain        string `json:"domain"`
 	ConfigRemoved bool   `json:"config_removed"`
-	FilesRemoved  bool   `json:"files_removed"`
-	UserRemoved   bool   `json:"user_removed"`
-	Reloaded      bool   `json:"reloaded"`
+	// ApacheRemoved reports whether the Apache backend was taken down with it.
+	ApacheRemoved bool `json:"apache_removed"`
+	FilesRemoved  bool `json:"files_removed"`
+	UserRemoved   bool `json:"user_removed"`
+	Reloaded      bool `json:"reloaded"`
 }
 
 // Delete removes a website.
@@ -223,6 +266,22 @@ func (m *Manager) Delete(ctx context.Context, req DeleteRequest, report func(int
 	}
 
 	result := DeleteResult{Domain: domain}
+
+	// The backend goes first, before nginx stops proxying to it: a request in
+	// flight should meet a closed site rather than a proxy pointing at a vhost
+	// that has just been taken away.
+	if m.apache != nil && m.apache.Available() {
+		progress(report, 10, "Removing the Apache backend")
+		if err := m.removeApacheSite(ctx, domain); err != nil {
+			// Logged, not fatal: refusing to delete a website because a
+			// backend file would not unlink leaves the user with a site they
+			// cannot get rid of.
+			m.log.Warn("the Apache backend could not be removed while deleting a website",
+				"domain", domain, logger.KeyError, err.Error())
+		} else {
+			result.ApacheRemoved = true
+		}
+	}
 
 	if m.nginx != nil && m.nginx.Available() {
 		progress(report, 20, "Removing the web server configuration")
@@ -419,6 +478,13 @@ type UpdateRequest struct {
 	// 127.0.0.1. Zero serves files, which is how a Node.js site is turned back
 	// into a static one.
 	ProxyPort int
+	// ApachePort puts Apache in front of the files. Zero takes it back out,
+	// which is how hybrid mode is switched off for a site.
+	ApachePort int
+	// AllowOverride enables .htaccess for this site.
+	AllowOverride bool
+	// MaxBodyBytes caps uploads at the Apache layer.
+	MaxBodyBytes int64
 }
 
 // UpdateResult reports what was rewritten.
@@ -426,6 +492,9 @@ type UpdateResult struct {
 	Domain     string `json:"domain"`
 	ConfigPath string `json:"config_path"`
 	Reloaded   bool   `json:"reloaded"`
+	// ApachePort is the backend this site is served through, or zero when
+	// nginx serves it directly.
+	ApachePort int `json:"apache_port,omitempty"`
 }
 
 // Update rewrites a website's configuration.
@@ -461,6 +530,23 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 		return UpdateResult{}, err
 	}
 
+	if err := validateBackendPort(req.ApachePort); err != nil {
+		return UpdateResult{}, err
+	}
+	serve := resolveBackend(req.ProxyPort, req.ApachePort, req.PHPSocket)
+	apacheCfg := apacheConfigFor(domain, aliases, layout, serve.apachePort,
+		req.PHPSocket, req.MaxBodyBytes, req.AllowOverride)
+
+	// Bringing Apache in happens before nginx is repointed; taking it out
+	// happens after. A site must never be proxied to a backend that is not
+	// there yet, and must never lose its backend while it is still proxied to.
+	if serve.apachePort != 0 {
+		progress(report, 40, "Configuring the Apache backend")
+		if err := m.applyApache(ctx, apacheCfg, true); err != nil {
+			return UpdateResult{}, err
+		}
+	}
+
 	progress(report, 60, "Rewriting the web server configuration")
 	configPath, err := m.nginx.WriteSite(ctx, nginx.SiteConfig{
 		PrimaryDomain: domain,
@@ -469,8 +555,8 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 		AccessLog:     layout.AccessLog,
 		ErrorLog:      layout.ErrorLog,
 		MaxBodySize:   req.MaxBodySize,
-		PHPSocket:     req.PHPSocket,
-		ProxyPort:     req.ProxyPort,
+		PHPSocket:     serve.phpSocket,
+		ProxyPort:     serve.proxyPort,
 		SSL:           req.SSL,
 	})
 	if err != nil {
@@ -482,8 +568,25 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 		return UpdateResult{}, fmt.Errorf("configuration written but not applied: %w", err)
 	}
 
+	if serve.apachePort == 0 {
+		// nginx is now serving this site itself, or proxying it to an
+		// application, so the backend can go. A failure here is logged rather
+		// than returned: the site is already being served correctly, and
+		// refusing the operation would report a change that did happen as one
+		// that did not.
+		if err := m.applyApache(ctx, apacheCfg, false); err != nil {
+			m.log.Warn("the site was updated but its Apache backend could not be removed",
+				"domain", domain, logger.KeyError, err.Error())
+		}
+	}
+
 	progress(report, 100, "Website updated")
-	return UpdateResult{Domain: domain, ConfigPath: configPath, Reloaded: true}, nil
+	return UpdateResult{
+		Domain:     domain,
+		ConfigPath: configPath,
+		Reloaded:   true,
+		ApachePort: serve.apachePort,
+	}, nil
 }
 
 // LookupAccount returns a site's system account.

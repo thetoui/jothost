@@ -42,6 +42,15 @@ type ServingState struct {
 	ProxyPort int
 	// SSL is the certificate the site serves HTTPS with. Nil means HTTP only.
 	SSL *ServingSSL
+	// ApachePort is the loopback port Apache serves this site on, in the
+	// hybrid arrangement. Zero means nginx serves it directly.
+	//
+	// It is zero on a site served by an application even in hybrid mode: the
+	// application answers every path, and Apache is there for .htaccess and
+	// PHP, neither of which an application uses.
+	ApachePort int
+	// AllowOverride is whether Apache reads .htaccess for this site.
+	AllowOverride bool
 }
 
 // ServingSSL is a site's certificate as the vhost needs it.
@@ -153,6 +162,21 @@ func (r *Repository) ServingState(ctx context.Context, site Website) (ServingSta
 		state.PHPSocket = ""
 	}
 
+	// The hybrid arrangement, if this host runs it and nothing else is already
+	// in front of the files. The Agent decides who consumes the PHP socket
+	// from this: with a backend port it is Apache's, without one it is
+	// nginx's.
+	if state.ProxyPort == 0 && site.ApachePort != nil {
+		mode, err := r.WebserverMode(ctx, site.ServerID)
+		if err != nil {
+			return ServingState{}, fmt.Errorf("resolve webserver mode: %w", err)
+		}
+		if mode == validate.WebserverHybrid {
+			state.ApachePort = *site.ApachePort
+			state.AllowOverride = site.AllowOverride
+		}
+	}
+
 	if r.serving.Certificates != nil {
 		cert, key, ok, err := r.serving.Certificates.CertificateFor(ctx, site.ID)
 		if err != nil {
@@ -206,6 +230,10 @@ func (r *Repository) VhostPayload(ctx context.Context, site Website) (map[string
 		payload["certificate_path"] = state.SSL.CertificatePath
 		payload["private_key_path"] = state.SSL.PrivateKeyPath
 		payload["redirect_to_https"] = state.SSL.RedirectToHTTPS
+	}
+	if state.ApachePort != 0 {
+		payload["apache_port"] = state.ApachePort
+		payload["allow_override"] = state.AllowOverride
 	}
 	return payload, nil
 }

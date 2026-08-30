@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jothost/panel/api/internal/agentclient"
@@ -79,6 +80,9 @@ type Worker struct {
 
 	stopped chan struct{}
 	once    sync.Once
+	// deferred records that the Agent refused work because it is full, so the
+	// drain loop stops pushing until the next tick.
+	deferred atomic.Bool
 }
 
 // NewWorker builds a Worker, applying defaults for unset options.
@@ -139,6 +143,13 @@ func (w *Worker) Run(ctx context.Context) {
 			if err != nil || !claimed {
 				break
 			}
+			if w.deferred.Load() {
+				// The Agent said it is full. Draining harder would only
+				// produce more of the same answer, so the rest of the queue
+				// waits for the next tick.
+				w.deferred.Store(false)
+				break
+			}
 		}
 
 		select {
@@ -196,6 +207,26 @@ func (w *Worker) execute(ctx context.Context, job Job) {
 	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer finishCancel()
 
+	if state == StateDeferred {
+		w.deferred.Store(true)
+		// The Agent is already running as many jobs as it allows. That is not
+		// a failure of this work: the job goes back to the queue and is taken
+		// again on a later tick.
+		//
+		// Without this, any burst larger than the Agent's limit fails rather
+		// than waits — and a burst is normal: switching the host's web server
+		// arrangement queues one job per website at once.
+		if err := w.repo.Requeue(finishCtx, job.ID); err != nil {
+			log.Error("failed to requeue a deferred job", logger.KeyError, err.Error())
+			if failErr := w.repo.Fail(finishCtx, job.ID, failure); failErr != nil {
+				log.Error("failed to record job failure", logger.KeyError, failErr.Error())
+			}
+			return
+		}
+		log.Info("job deferred: the agent is at its job limit")
+		return
+	}
+
 	switch state {
 	case StateSuccess:
 		if err := w.repo.Complete(finishCtx, job.ID, result); err != nil {
@@ -226,6 +257,9 @@ func (w *Worker) dispatch(ctx context.Context, job Job) (State, map[string]any, 
 
 	agentJobID, err := w.dispatcher.SubmitAsync(ctx, requestID, operation, job.Payload)
 	if err != nil {
+		if agentclient.IsBusy(err) {
+			return StateDeferred, nil, describeFailure(err)
+		}
 		return StateFailed, nil, describeFailure(err)
 	}
 

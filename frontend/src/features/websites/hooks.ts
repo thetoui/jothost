@@ -181,3 +181,22 @@ export function useDeleteSubdomain(parentId: string) {
     },
   });
 }
+
+/**
+ * useSetAllowOverride turns .htaccess on or off for one site.
+ *
+ * It rewrites the site's Apache configuration, so the site's own caches are
+ * invalidated: the detail page would otherwise show the setting it had a
+ * moment ago while the host is being reconfigured.
+ */
+export function useSetAllowOverride(websiteId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (allow: boolean) => websitesApi.setAllowOverride(websiteId, allow),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(websiteId) });
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.list() });
+    },
+  });
+}

@@ -11,6 +11,7 @@ import {
   Hexagon,
   LayoutDashboard,
   Lock,
+  Layers,
   Server,
   ShieldCheck,
   UserCog,
@@ -64,6 +65,7 @@ const navGroups: NavGroup[] = [
   {
     label: 'Server',
     items: [
+      { label: 'Web server', to: '/webserver', icon: Layers, enabled: true },
       { label: 'Server', to: '/server', icon: Server, enabled: false },
       { label: 'Monitoring', to: '/monitoring', icon: Activity, enabled: false },
       { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: false },

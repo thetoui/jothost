@@ -469,6 +469,49 @@ Reading needs `website.view`, creating `website.create`, removing
 
 ---
 
+# 7.2 Web server
+
+```http
+GET  /webserver
+PUT  /webserver
+POST /webserver/apache/install
+```
+
+**As implemented in Phase 4.5.**
+
+`GET` reports the arrangement the panel has recorded, what Apache is actually
+doing on the host — installed, running, version, how many sites are behind it,
+and whether it could be installed — and how many websites a mode change would
+rewrite. The record and the host are reported separately on purpose: the two
+disagreeing is exactly what an operator needs to see.
+
+`PUT` takes `{"mode": "nginx" | "hybrid"}` and returns **202** with one job per
+website. The arrangement is a property of the host, not of a site — both
+servers are one process tree serving every site on the machine — so changing it
+rewrites every site's configuration. Sites keep serving throughout: each is
+reconfigured and reloaded in turn, and a site whose reload fails keeps the
+configuration it already had.
+
+Refusals: `hybrid` on a host without Apache is **409**, named rather than
+discovered by each site's job failing in turn; the arrangement already in use
+is **409**; anything that is not one of the two modes is **422**.
+
+`POST /webserver/apache/install` installs Apache and the FastCGI proxy module.
+It sends no package name — the Agent holds the only list, because a name from a
+request would be an argument to a package manager running as root — and it does
+**not** change the arrangement: installing a package and rewriting every site
+on the machine are different decisions.
+
+Reading needs `server.view`; both changes need `server.manage`. Authority over
+one website is not authority over how the host serves all of them.
+
+Per-site: `PATCH /websites/:id` accepts `allow_override`, which is whether
+Apache reads `.htaccess` for that site. It rewrites the site's vhost like any
+other configuration change; on a host running nginx alone nothing reads the
+file, and the panel does not offer the switch.
+
+---
+
 # 8. PHP
 
 ```http

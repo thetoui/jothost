@@ -308,14 +308,41 @@ Wildcard catch-all
 
 # PHASE 4.5 — Apache Hybrid Engine (Nginx + Apache)
 
-- [ ] Apache2 / httpd detection & provider
-- [ ] Nginx reverse proxy template (proxy_pass to Apache backend)
-- [ ] Apache mpm_event & PHP-FPM integration
-- [ ] Apache VirtualHost generator
-- [ ] Webserver mode switcher (Nginx Standalone vs Nginx + Apache Hybrid)
-- [ ] .htaccess support and custom rewrite rules handling
-- [ ] Real IP restoration via mod_remoteip
-- [ ] Backend port assignment and validation engine
+**Status: COMPLETE** — see [docs/PHASE4.5.md](docs/PHASE4.5.md) for scope,
+decisions, and known limitations.
+
+- [x] Apache2 / httpd detection & provider
+- [x] Nginx reverse proxy template (proxy_pass to Apache backend)
+- [x] Apache mpm_event & PHP-FPM integration
+- [x] Apache VirtualHost generator
+- [x] Webserver mode switcher (Nginx Standalone vs Nginx + Apache Hybrid)
+- [x] .htaccess support and custom rewrite rules handling
+- [x] Real IP restoration via mod_remoteip
+- [x] Backend port assignment and validation engine
+
+This also closes the Apache half of Phase 4.1's deferred work: a subdomain is a
+website, so it gets an Apache virtual host like any other site.
+
+nginx proxies *everything* to Apache rather than serving static files itself.
+Letting nginx answer first is how a `.htaccess` rule gets bypassed — the file
+is read by only one of the two servers. See docs/PHASE4.5.md §2.2.
+
+Additionally required by the above:
+
+- [x] `servers.webserver_mode` and `websites.apache_port` schema
+- [x] A busy Agent defers a job rather than failing it. A mode switch queues one
+  job per website at once, and the Agent runs a bounded number: without this,
+  switching arrangement on any host with more than a handful of sites reported
+  half of them broken (docs/PHASE4.5.md §3)
+- [x] Two-way port checking between Apache backends and Node applications
+
+Test:
+
+```text
+A site served by nginx, then by Apache, then by nginx again
+.htaccess deny and redirect
+PHP through mod_proxy_fcgi
+```
 
 # PHASE 5 — PHP Manager
 

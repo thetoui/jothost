@@ -10,6 +10,7 @@ import { FilesPage } from '@/pages/FilesPage';
 import { NodePage } from '@/pages/NodePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PHPPage } from '@/pages/PHPPage';
+import { WebserverPage } from '@/pages/WebserverPage';
 import { SSLPage } from '@/pages/SSLPage';
 import { WebsiteDetailPage } from '@/pages/WebsiteDetailPage';
 import { WebsitesPage } from '@/pages/WebsitesPage';
@@ -73,6 +74,7 @@ export const router = createBrowserRouter(
               ),
             },
             { path: 'php', element: <PHPPage /> },
+            { path: 'webserver', element: <WebserverPage /> },
             { path: 'databases', element: <DatabasesPage /> },
             { path: 'node', element: <NodePage /> },
             { path: 'ssl', element: <SSLPage /> },

@@ -34,6 +34,15 @@ const (
 	StateCancelled State = "CANCELLED"
 )
 
+// StateDeferred is not a stored state.
+//
+// It is what the worker returns when the Agent refused the work because it is
+// already running as many jobs as it allows. The row goes back to PENDING and
+// is taken again later, so a burst larger than the Agent's limit is paced
+// rather than failed — and no job ever sits in the database saying "deferred",
+// which would be a state nothing ever moves out of.
+const StateDeferred State = "DEFERRED"
+
 // Terminal reports whether a job has finished and will not change again.
 func (s State) Terminal() bool {
 	switch s {
@@ -261,6 +270,26 @@ func (r *Repository) Claim(ctx context.Context) (Job, error) {
 		return Job{}, fmt.Errorf("claim job: %w", err)
 	}
 	return job, nil
+}
+
+// Requeue puts a claimed job back in the queue.
+//
+// Used when the Agent is at its job limit: the work has not been attempted, so
+// it keeps its place rather than being recorded as an attempt that failed.
+// started_at is cleared with it, or the row would look like it had been
+// running since the first try and be requeued again as stale.
+func (r *Repository) Requeue(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE jobs
+		SET status = 'PENDING', started_at = NULL, progress = 0, message = NULL
+		WHERE id = $1::uuid AND status = 'RUNNING'`, id)
+	if err != nil {
+		return fmt.Errorf("requeue job: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Progress records how far a running job has got.

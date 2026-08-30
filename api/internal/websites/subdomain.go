@@ -150,6 +150,11 @@ func (s *Service) CreateSubdomain(ctx context.Context, req CreateSubdomainReques
 		return CreateResult{}, err
 	}
 
+	site, err = s.joinArrangement(ctx, site)
+	if err != nil {
+		return CreateResult{}, err
+	}
+
 	// The payload is built from the record rather than by hand, so an
 	// inherited PHP pool is already in it: a subdomain of a PHP site serves
 	// PHP from the moment it is created, which is what inheriting means.

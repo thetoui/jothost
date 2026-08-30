@@ -492,6 +492,20 @@ func registerSecondWebsite(t *testing.T, pool *pgxpool.Pool, serverID string) st
 	return id
 }
 
+func registerThirdWebsite(t *testing.T, pool *pgxpool.Pool, serverID string) string {
+	t.Helper()
+
+	var id string
+	err := pool.QueryRow(context.Background(), `
+		INSERT INTO websites (server_id, primary_domain, document_root, system_username, status)
+		VALUES ($1::uuid, 'third.example', '/var/www/third.example/public', 'web_third', 'active')
+		RETURNING id::text`, serverID).Scan(&id)
+	if err != nil {
+		t.Fatalf("register website: %v", err)
+	}
+	return id
+}
+
 func contains(haystack []string, needle string) bool {
 	return indexOf(haystack, needle) >= 0
 }
@@ -545,5 +559,56 @@ func TestRemoveRuntimeIsRefusedWhileAnApplicationUsesIt(t *testing.T) {
 	err := f.service.RemoveRuntime(ctx, "req", "nodejs", node.Actor{})
 	if !errors.Is(err, node.ErrRuntimeInUse) {
 		t.Fatalf("RemoveRuntime = %v, want ErrRuntimeInUse", err)
+	}
+}
+
+// A backend port is a host-wide resource. Apache's range sits inside the range
+// an application may ask for, and two tables cannot be constrained against each
+// other in SQL without a trigger on both — so the rule lives in Go, and this is
+// what proves it is actually applied.
+func TestCreateRefusesAPortHeldByTheApacheBackend(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	websiteRepo := websites.NewRepository(f.pool)
+	site, err := websiteRepo.Get(ctx, f.website)
+	if err != nil {
+		t.Fatalf("get website: %v", err)
+	}
+
+	port, err := websiteRepo.AssignBackendPort(ctx, site)
+	if err != nil {
+		t.Fatalf("assign backend port: %v", err)
+	}
+
+	second := registerSecondWebsite(t, f.pool, f.server)
+	_, err = f.service.Create(ctx, node.CreateRequest{WebsiteID: second, Port: port})
+	if !errors.Is(err, node.ErrPortTaken) {
+		t.Fatalf("Create on the Apache backend port = %v, want ErrPortTaken", err)
+	}
+	// The message names what holds it: "port in use" on a host the user
+	// believes is idle is not an answer.
+	if !strings.Contains(err.Error(), "Apache backend") {
+		t.Fatalf("the refusal does not say what holds the port: %v", err)
+	}
+
+	// And the other direction: a port an application already holds is not
+	// handed to Apache.
+	if _, err := f.service.Create(ctx, node.CreateRequest{
+		WebsiteID: second, Port: 3100,
+	}); err != nil {
+		t.Fatalf("create application: %v", err)
+	}
+	third := registerThirdWebsite(t, f.pool, f.server)
+	thirdSite, err := websiteRepo.Get(ctx, third)
+	if err != nil {
+		t.Fatalf("get third website: %v", err)
+	}
+	assigned, err := websiteRepo.AssignBackendPort(ctx, thirdSite)
+	if err != nil {
+		t.Fatalf("assign backend port: %v", err)
+	}
+	if assigned == 3100 {
+		t.Fatal("Apache was given a port an application already holds")
 	}
 }

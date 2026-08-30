@@ -24,6 +24,7 @@ import { Permission } from '@/features/auth/permissions';
 import { WebsitePHPPanel } from '@/features/php/components/WebsitePHPPanel';
 import { WebsiteSSLPanel } from '@/features/ssl/components/WebsiteSSLPanel';
 import { SubdomainPanel } from '@/features/websites/components/SubdomainPanel';
+import { HtaccessPanel } from '@/features/websites/components/HtaccessPanel';
 import {
   isJobRunning,
   useAddDomain,
@@ -162,6 +163,7 @@ export function WebsiteDetailPage() {
             </CardBody>
           </Card>
 
+          <HtaccessPanel site={site} />
           <WebsiteSSLPanel websiteId={site.id} domain={site.primary_domain} />
           <WebsitePHPPanel websiteId={site.id} />
           {/* A subdomain is a site of its own, so it belongs on the parent's

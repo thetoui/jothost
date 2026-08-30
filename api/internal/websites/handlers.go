@@ -171,6 +171,10 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 type updateBody struct {
 	Name          *string `json:"name"`
 	HTTPSRedirect *bool   `json:"https_redirect"`
+	// AllowOverride turns .htaccess on or off for this site. It changes the
+	// Apache vhost, so it is applied through the same rewrite every other
+	// configuration change goes through rather than by editing a file.
+	AllowOverride *bool `json:"allow_override"`
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -197,9 +201,14 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	site, err := h.repo.Update(ctx, id, UpdateParams{
+	site, err := h.service.Update(ctx, id, UpdateParams{
 		Name:          body.Name,
 		HTTPSRedirect: body.HTTPSRedirect,
+		AllowOverride: body.AllowOverride,
+	}, UpdateActor{
+		Actor:     actorID(r),
+		IPAddress: clientIP(r),
+		UserAgent: r.UserAgent(),
 	})
 	if err != nil {
 		httpx.Error(w, r, translate(err))
@@ -494,6 +503,12 @@ func validStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+// actorID returns the user making the request, for the audit trail.
+func actorID(r *http.Request) string {
+	claims, _ := auth.ClaimsFromContext(r.Context())
+	return claims.UserID
 }
 
 func clientIP(r *http.Request) string {

@@ -62,11 +62,18 @@ type Config struct {
 	// than a name resolved through PATH, for the same reason.
 	NginxPath     string
 	NginxSitesDir string
-	SiteRoot      string
-	UseraddPath   string
-	AdduserPath   string
-	UserdelPath   string
-	DeluserPath   string
+	// Apache is the backend in hybrid mode. Two binary names because
+	// distributions disagree: Alpine and RHEL ship "httpd", Debian ships
+	// "apache2". Both are allowlisted; whichever exists is used.
+	ApachePath      string
+	Apache2Path     string
+	ApacheConfigDir string
+	ApacheMainConf  string
+	SiteRoot        string
+	UseraddPath     string
+	AdduserPath     string
+	UserdelPath     string
+	DeluserPath     string
 	// WebGroup is the group the web server runs as. Site directories are
 	// group-owned by it so the server can read what it serves. Empty probes
 	// the conventional names.
@@ -116,12 +123,17 @@ func Load() (Config, error) {
 
 		NginxPath:     getString("AGENT_NGINX_PATH", "/usr/sbin/nginx"),
 		NginxSitesDir: getString("AGENT_NGINX_SITES_DIR", "/etc/nginx/conf.d"),
-		SiteRoot:      getString("AGENT_SITE_ROOT", "/var/www"),
-		UseraddPath:   getString("AGENT_USERADD_PATH", "/usr/sbin/useradd"),
-		AdduserPath:   getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
-		UserdelPath:   getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
-		DeluserPath:   getString("AGENT_DELUSER_PATH", "/usr/sbin/deluser"),
-		WebGroup:      getString("AGENT_WEB_GROUP", ""),
+
+		ApachePath:      getString("AGENT_APACHE_PATH", "/usr/sbin/httpd"),
+		Apache2Path:     getString("AGENT_APACHE2_PATH", "/usr/sbin/apache2"),
+		ApacheConfigDir: getString("AGENT_APACHE_CONF_DIR", "/etc/apache2/conf.d"),
+		ApacheMainConf:  getString("AGENT_APACHE_MAIN_CONF", "/etc/apache2/httpd.conf"),
+		SiteRoot:        getString("AGENT_SITE_ROOT", "/var/www"),
+		UseraddPath:     getString("AGENT_USERADD_PATH", "/usr/sbin/useradd"),
+		AdduserPath:     getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
+		UserdelPath:     getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
+		DeluserPath:     getString("AGENT_DELUSER_PATH", "/usr/sbin/deluser"),
+		WebGroup:        getString("AGENT_WEB_GROUP", ""),
 
 		// The MariaDB client is preferred because a MariaDB host ships it
 		// under this name and a MySQL host symlinks the same name to its own.
@@ -146,6 +158,10 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_SYSTEMCTL_PATH", cfg.SystemctlPath)...)
 	problems = append(problems, validateAbsolute("AGENT_NGINX_PATH", cfg.NginxPath)...)
 	problems = append(problems, validateAbsolute("AGENT_NGINX_SITES_DIR", cfg.NginxSitesDir)...)
+	problems = append(problems, validateAbsolute("AGENT_APACHE_PATH", cfg.ApachePath)...)
+	problems = append(problems, validateAbsolute("AGENT_APACHE2_PATH", cfg.Apache2Path)...)
+	problems = append(problems, validateAbsolute("AGENT_APACHE_CONF_DIR", cfg.ApacheConfigDir)...)
+	problems = append(problems, validateAbsolute("AGENT_APACHE_MAIN_CONF", cfg.ApacheMainConf)...)
 	problems = append(problems, validateAbsolute("AGENT_SITE_ROOT", cfg.SiteRoot)...)
 	problems = append(problems, validateAbsolute("AGENT_USERADD_PATH", cfg.UseraddPath)...)
 	problems = append(problems, validateAbsolute("AGENT_ADDUSER_PATH", cfg.AdduserPath)...)

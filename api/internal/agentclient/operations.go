@@ -35,6 +35,18 @@ func IsUnsupported(err error) bool {
 	return errors.As(err, &failed) && failed.Code == protocol.CodeUnsupported
 }
 
+// IsBusy reports whether the Agent refused because it is already running as
+// many jobs as it allows.
+//
+// It is not a failure of the work: the same request a moment later succeeds.
+// Callers put the job back in the queue rather than marking it failed, which
+// is the difference between a burst of work being paced and half of it being
+// reported broken.
+func IsBusy(err error) bool {
+	var failed *ErrOperationFailed
+	return errors.As(err, &failed) && failed.Code == protocol.CodeBusy
+}
+
 // call runs an operation and decodes its result into dst.
 func (c *Client) call(ctx context.Context, requestID string, op protocol.OperationType, payload map[string]any, dst any) error {
 	resp, err := c.Do(ctx, protocol.Request{
@@ -710,6 +722,36 @@ type NodeVersionsResult struct {
 }
 
 // NodeVersions reports the Node.js runtimes on the host.
+// ApacheStatusResult is what the host reports about the hybrid backend.
+type ApacheStatusResult struct {
+	Available bool   `json:"available"`
+	Running   bool   `json:"running"`
+	Version   string `json:"version"`
+	Sites     int    `json:"sites"`
+	// CanInstall reports whether the Agent has a package manager it could
+	// install Apache with, which is a different question from whether Apache
+	// is there.
+	CanInstall bool `json:"can_install"`
+}
+
+// ApacheStatus asks the host what the hybrid arrangement can do.
+func (c *Client) ApacheStatus(ctx context.Context, requestID string) (ApacheStatusResult, error) {
+	var result ApacheStatusResult
+	err := c.call(ctx, requestID, protocol.OperationApacheStatus, nil, &result)
+	return result, err
+}
+
+// ApacheInstall installs Apache and the modules the arrangement needs.
+//
+// It sends no package name: the Agent holds the only list, because a name from
+// here would be an argument to a package manager running as root.
+func (c *Client) ApacheInstall(ctx context.Context, requestID string) (ApacheStatusResult, error) {
+	var result ApacheStatusResult
+	err := c.call(ctx, requestID, protocol.OperationApacheInstall,
+		map[string]any{}, &result)
+	return result, err
+}
+
 func (c *Client) NodeVersions(ctx context.Context, requestID string) (NodeVersionsResult, error) {
 	var result NodeVersionsResult
 	err := c.call(ctx, requestID, protocol.OperationNodeVersions, nil, &result)

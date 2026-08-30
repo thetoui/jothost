@@ -33,6 +33,7 @@ import (
 	sslpkg "github.com/jothost/panel/api/internal/ssl"
 	"github.com/jothost/panel/api/internal/twofactor"
 	"github.com/jothost/panel/api/internal/users"
+	webserverpkg "github.com/jothost/panel/api/internal/webserver"
 	"github.com/jothost/panel/api/internal/websites"
 	"github.com/jothost/panel/shared/version"
 )
@@ -53,6 +54,7 @@ type Server struct {
 	sampler   *metrics.Sampler
 
 	websites  *websites.Handler
+	webserver *webserverpkg.Handler
 	jobs      *jobs.Handler
 	php       *phppkg.Handler
 	ssl       *sslpkg.Handler
@@ -278,6 +280,21 @@ func New(opts Options) (*Server, error) {
 	// effect of adding an alias (see websites/serving.go).
 	websiteRepo.SetServingSources(servingSources(phpRepo, sslRepo, nodeRepo))
 
+	// Which web server arrangement the host runs. It is a server-wide setting
+	// rather than a per-site one, because both servers are one process tree
+	// serving every site on the machine.
+	s.webserver = webserverpkg.NewHandler(webserverpkg.HandlerOptions{
+		Service: webserverpkg.NewService(webserverpkg.ServiceOptions{
+			Websites: websiteRepo,
+			Jobs:     jobRepo,
+			Agent:    agent,
+			Audit:    auditRecorder,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		}),
+		Auth: authService,
+	})
+
 	if opts.LocalServerID != "" {
 		// The worker reconciles websites through the service, so a finished
 		// job moves the site to active or failed rather than leaving it in
@@ -369,6 +386,7 @@ func (s *Server) routes() http.Handler {
 	auth.NewHandler(s.auth).Routes(mux)
 	s.dashboard.Routes(mux)
 	s.websites.Routes(mux)
+	s.webserver.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)
 	s.ssl.Routes(mux)

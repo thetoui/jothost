@@ -278,6 +278,13 @@ export interface Website {
   https_redirect: boolean;
   /** Set on a subdomain; null on a top-level site. */
   parent_website_id: string | null;
+  /**
+   * The loopback port Apache serves this site on in the hybrid arrangement.
+   * Kept when the host goes back to nginx alone, so it stays this site's.
+   */
+  apache_port: number | null;
+  /** Whether Apache reads .htaccess for this site. Only meaningful in hybrid. */
+  allow_override: boolean;
   /** The three modes are set together on a subdomain, or all null. */
   document_root_mode: DocumentRootMode | null;
   php_pool_mode: PHPPoolMode | null;
@@ -287,6 +294,29 @@ export interface Website {
   domains?: WebsiteDomain[];
   /** Present on a top-level site loaded on its own. */
   subdomains?: Website[];
+}
+
+/** Which web server arrangement a host runs. */
+export type WebserverMode = 'nginx' | 'hybrid';
+
+export interface ApacheStatus {
+  available: boolean;
+  running: boolean;
+  version?: string;
+  sites: number;
+  can_install: boolean;
+}
+
+export interface WebserverStatus {
+  mode: WebserverMode;
+  apache: ApacheStatus;
+  /** How many websites a mode change would rewrite. */
+  sites: number;
+}
+
+export interface WebserverModeChanged {
+  mode: WebserverMode;
+  jobs: Job[];
 }
 
 export interface SubdomainList {

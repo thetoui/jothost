@@ -140,13 +140,23 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 		return CreateResult{}, err
 	}
 
+	// A site created on a host running the hybrid arrangement is served
+	// through Apache from the moment it exists. Leaving it out until the next
+	// mode change would make "which sites use Apache" depend on when they were
+	// created, which is not a fact anyone could reason about.
+	site, err = s.joinArrangement(ctx, site)
+	if err != nil {
+		return CreateResult{}, err
+	}
+
+	payload, err := s.repo.VhostPayload(ctx, site)
+	if err != nil {
+		return CreateResult{}, err
+	}
+
 	job, err := s.jobs.Create(ctx, jobs.CreateParams{
-		Type: jobs.TypeWebsiteCreate,
-		Payload: map[string]any{
-			"domain":        domain,
-			"document_root": documentRoot,
-			"system_user":   systemUser,
-		},
+		Type:         jobs.TypeWebsiteCreate,
+		Payload:      payload,
 		CreatedBy:    req.Actor,
 		ResourceType: ResourceTypeWebsite,
 		ResourceID:   site.ID,
@@ -471,4 +481,44 @@ func (s *Service) record(ctx context.Context, actor, action, resourceID, status 
 		Status:       status,
 		Metadata:     metadata,
 	})
+}
+
+// UpdateActor identifies who asked, for the audit trail.
+type UpdateActor struct {
+	Actor     string
+	IPAddress string
+	UserAgent string
+}
+
+// Update applies a website's mutable settings.
+//
+// Most of them are records the host never reads. .htaccess is not: it is a
+// line in the Apache vhost, so changing it queues the same rewrite every other
+// configuration change goes through. A setting stored and never applied would
+// be a switch in the panel that does nothing to the site.
+func (s *Service) Update(ctx context.Context, id string, params UpdateParams,
+	actor UpdateActor,
+) (Website, error) {
+	site, err := s.repo.Update(ctx, id, params)
+	if err != nil {
+		return Website{}, err
+	}
+
+	if params.AllowOverride == nil {
+		return site, nil
+	}
+
+	job, err := s.queueVhostUpdate(ctx, site, actor.Actor)
+	if err != nil {
+		return Website{}, err
+	}
+
+	s.record(ctx, actor.Actor, ActionWebsiteUpdate, site.ID, audit.StatusSuccess,
+		map[string]any{
+			"domain":         site.PrimaryDomain,
+			"allow_override": *params.AllowOverride,
+			"job_id":         job.ID,
+		}, actor.IPAddress, actor.UserAgent)
+
+	return site, nil
 }

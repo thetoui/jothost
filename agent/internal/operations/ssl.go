@@ -52,6 +52,12 @@ type sslPayload struct {
 	// PrivateKeyPath is carried for symmetry with the rest of the payload; the
 	// key this operation installs is the one the provider just wrote.
 	PrivateKeyPath string `json:"private_key_path"`
+	// The hybrid arrangement, for the same reason as the port above: issuing a
+	// certificate rewrites the whole configuration, and a site would otherwise
+	// come out of it served by nginx alone.
+	ApachePort    int   `json:"apache_port"`
+	AllowOverride bool  `json:"allow_override"`
+	MaxBodyBytes  int64 `json:"max_body_bytes"`
 	// RedirectToHTTPS sends plain HTTP to the secure site once the certificate
 	// is live.
 	RedirectToHTTPS bool `json:"redirect_to_https"`
@@ -175,12 +181,15 @@ func (r *Registry) handleSSLRevoke(ctx context.Context, req protocol.Request, re
 	reloaded := false
 	if payload.DocumentRoot != "" {
 		updated, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
-			Domain:       payload.Domain,
-			Aliases:      payload.Aliases,
-			DocumentRoot: payload.DocumentRoot,
-			MaxBodySize:  payload.MaxBodySize,
-			PHPSocket:    payload.PHPSocket,
-			ProxyPort:    payload.ProxyPort,
+			Domain:        payload.Domain,
+			Aliases:       payload.Aliases,
+			DocumentRoot:  payload.DocumentRoot,
+			MaxBodySize:   payload.MaxBodySize,
+			PHPSocket:     payload.PHPSocket,
+			ProxyPort:     payload.ProxyPort,
+			ApachePort:    payload.ApachePort,
+			AllowOverride: payload.AllowOverride,
+			MaxBodyBytes:  payload.MaxBodyBytes,
 			// No SSL: the rendered vhost drops the HTTPS block entirely.
 		}, nil)
 		if err != nil {
@@ -249,12 +258,15 @@ func (r *Registry) applyCertificate(ctx context.Context, payload sslPayload, cer
 	// follow, and issuing Let's Encrypt on that site could never succeed. The
 	// block costs one location and serves nothing but transient tokens.
 	updated, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
-		Domain:       payload.Domain,
-		Aliases:      payload.Aliases,
-		DocumentRoot: payload.DocumentRoot,
-		MaxBodySize:  payload.MaxBodySize,
-		PHPSocket:    payload.PHPSocket,
-		ProxyPort:    payload.ProxyPort,
+		Domain:        payload.Domain,
+		Aliases:       payload.Aliases,
+		DocumentRoot:  payload.DocumentRoot,
+		MaxBodySize:   payload.MaxBodySize,
+		PHPSocket:     payload.PHPSocket,
+		ProxyPort:     payload.ProxyPort,
+		ApachePort:    payload.ApachePort,
+		AllowOverride: payload.AllowOverride,
+		MaxBodyBytes:  payload.MaxBodyBytes,
 		SSL: &nginx.SSLConfig{
 			CertificatePath: certificate.CertPath,
 			PrivateKeyPath:  certificate.KeyPath,

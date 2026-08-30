@@ -112,6 +112,61 @@ and "who read this, and when" has to stay answerable.
 
 ---
 
+## 2.8 phpMyAdmin
+
+It exists because browsing table contents is what people actually want a
+database console for, and the panel does not provide one of its own.
+
+It is also among the most probed paths on the public internet, so every
+decision about it is a decision about that:
+
+- **Installed from the host's package manager**, never downloaded. The package
+  name is a constant in the Agent; nothing from a request reaches the
+  installer.
+- **Not installed by default.** An operator asks for it, and names the host it
+  answers on. There is no default name — a database console on an address
+  nobody chose is one somebody else finds first.
+- **No credentials in its configuration.** Authentication is cookie mode, so a
+  visitor signs in with a database account the panel created. Reaching the page
+  proves nothing on its own. `AllowNoPassword` is off, and `AllowRoot` is off:
+  administering the server is the panel's job.
+- **Its own system account and FPM pool**, like every website. open_basedir
+  covers its files and its scratch space and nothing else, and its sessions are
+  kept away from every site's.
+- **The blowfish secret is generated per host** and reused across reinstalls —
+  it encrypts the cookie carrying a signed-in user's database password, so
+  replacing it logs everyone out for no reason.
+
+The panel installs the PHP extensions it needs as well as the package. That is
+not a detail: phpMyAdmin without `mysqli` renders one line of text saying so,
+which is what installing the package alone produces.
+
+Removing it takes away the vhost first, then the pool, then the package, then
+the state. The reverse order leaves nginx pointing at a directory that is no
+longer there, which looks like a broken panel rather than a removed feature.
+
+---
+
+## 2.9 The screen
+
+The Databases screen follows the arrangement of Plesk's own, because the shape
+is already in the muscle memory of the people who run these machines: two tabs
+(**Databases** and **User Management**), a list whose rows expand in place into
+that database's tools, and the site each database belongs to shown — and
+editable — in the list itself rather than behind a settings page. "Which site
+is this for" is the question people actually have when looking at a list of
+databases named `db11` and `elmp`.
+
+A tool this build does not have is shown greyed with the phase that adds it
+rather than hidden. Hiding makes the panel look finished and leaves someone
+hunting.
+
+Two things Plesk shows are deliberately absent: a table count, which would cost
+a query per database on every page load, and per-database disk quotas, which
+the panel does not enforce.
+
+---
+
 ## 3. What the live checks found
 
 Each of these passed unit tests and failed against a real server. They are
@@ -167,6 +222,28 @@ a response rather than the first; a `not_contains` check whose needle was empty,
 which matches everything; and a shell function assigning `user_id` without a
 prefix, silently overwriting its caller's variable.
 
+phpMyAdmin added four of its own, all found by loading the page rather than by
+checking that the install returned success:
+
+**9. Writing a pool file does nothing on its own.** FPM has to be told to read
+it and the socket has to exist before nginx is pointed at it, or the first
+request is a 502 against a configuration that looks entirely correct.
+
+**10. `MkdirAll` creates the parent chain with the mode it is given, owned by
+root.** Created 0700 that way, PHP could not traverse into the session
+directory and every request died at `session_start` with nothing but
+"permission denied" to go on.
+
+**11. The package alone is not a working installation.** phpMyAdmin without the
+`mysqli` extension renders a single line saying so. The panel now installs the
+extensions it needs for whichever PHP version it picked.
+
+**12. The dev stack forked its own identity.** Docker names a container by its
+id, the panel identifies the host it manages by hostname, so every rebuild
+looked like a different server and left the previous one's databases attached
+to a host that no longer existed. The compose file now pins both hostnames, as
+a real machine would have.
+
 ---
 
 ## 4. The development environment
@@ -221,6 +298,9 @@ What it actually verifies, beyond status codes:
 - injection attempts, reserved names, and unoffered privileges are refused, and
   nothing is created by any of them
 - deletion removes the database from the server, not just from the panel
+- phpMyAdmin installs, serves a login page, and an account the panel created
+  can sign in with the password the panel returned and see its own database
+- the server's root account cannot sign in to phpMyAdmin at all
 
 ---
 
@@ -236,6 +316,10 @@ What it actually verifies, beyond status codes:
 - **No quotas.** A database can grow until the disk is full.
 - **`ON DELETE SET NULL` for websites is one-way.** A database whose website was
   deleted becomes unlinked and cannot be relinked through the panel.
+- **phpMyAdmin is MySQL and MariaDB only.** That is what it is; PostgreSQL
+  databases are managed through the panel and have no console of their own.
+- **phpMyAdmin is served over plain HTTP** until a certificate is issued for
+  its name through the SSL page. It should not be published without one.
 - **MySQL host patterns are limited to `localhost` and `%`.** A specific address
   is a legitimate thing to want, and is not offered — deliberately, since a
   free-text host field is how a typo becomes a database exposed to a subnet.

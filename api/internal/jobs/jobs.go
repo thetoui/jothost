@@ -59,6 +59,12 @@ const (
 	TypeSSLIssue  = "ssl.issue"
 	TypeSSLRenew  = "ssl.renew"
 	TypeSSLRevoke = "ssl.revoke"
+
+	// Installing phpMyAdmin is a package install, an account, an FPM pool, and
+	// a vhost. It is the one database operation that does not finish inside a
+	// request, so it is the one that goes through the queue.
+	TypePHPMyAdminInstall   = "phpmyadmin.install"
+	TypePHPMyAdminUninstall = "phpmyadmin.uninstall"
 )
 
 // Job is one unit of durable work.

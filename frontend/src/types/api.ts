@@ -631,3 +631,18 @@ export interface DatabaseUserCreated {
 export interface DatabasePassword {
   password: string;
 }
+
+/** phpMyAdmin as the managed host has it. */
+export interface DatabaseConsole {
+  installed: boolean;
+  /** True once the panel has written its vhost, which is what makes it reachable. */
+  served: boolean;
+  webroot?: string;
+  server_name?: string;
+  url?: string;
+  php_version?: string;
+  /** Whether the host has what installation needs. */
+  can_install: boolean;
+  /** Why it cannot be installed, when it cannot. */
+  detail?: string;
+}

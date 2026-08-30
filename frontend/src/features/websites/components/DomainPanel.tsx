@@ -20,7 +20,7 @@ import {
   Terminal,
 } from 'lucide-react';
 
-import { ToolGroup, ToolTile } from '@/features/websites/components/ToolTile';
+import { ToolGroup, ToolTile } from '@/components/ui/ToolTile';
 import type { Website } from '@/types/api';
 
 interface DomainPanelProps {

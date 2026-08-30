@@ -81,6 +81,7 @@ function mockApi(overrides: {
   databases?: Database[];
   users?: DatabaseUser[];
   enginesData?: unknown;
+  console?: unknown;
   permissions?: string[];
 } = {}) {
   const databases = overrides.databases ?? [database()];
@@ -93,6 +94,9 @@ function mockApi(overrides: {
     }
     if (url.includes('/databases/engines')) {
       return envelopeResponse(overrides.enginesData ?? engines);
+    }
+    if (url.includes('/databases/console')) {
+      return envelopeResponse(overrides.console ?? { installed: false, served: false, can_install: true });
     }
     if (/\/databases\/[^/]+$/.test(url)) {
       return envelopeResponse({ database: databases[0], users });
@@ -131,10 +135,10 @@ describe('DatabasesPage', () => {
     mockApi();
     renderWithProviders(<DatabasesPage />);
 
-    // An absent engine is shown with its reason rather than hidden: hiding it
-    // makes the panel look complete and leaves someone hunting.
-    expect(await screen.findByText('PostgreSQL')).toBeInTheDocument();
-    expect(screen.getByText('unavailable')).toBeInTheDocument();
+    // An absent engine is named rather than hidden: hiding it makes the panel
+    // look like it only knows about one, and leaves someone hunting.
+    expect(await screen.findByText(/MariaDB 11\.4\.2/)).toBeInTheDocument();
+    expect(screen.getByText(/PostgreSQL unavailable/)).toBeInTheDocument();
   });
 
   it('says so when the host runs no database server at all', async () => {
@@ -173,14 +177,29 @@ describe('DatabasesPage', () => {
     expect(await screen.findByText('Not measured')).toBeInTheDocument();
   });
 
-  it('opens a database in place and lists the accounts that may reach it', async () => {
+  it('opens a database in place and shows its tools and facts', async () => {
     mockApi();
     renderWithProviders(<DatabasesPage />);
 
     await screen.findByText('shop');
     await userEvent.click(screen.getByRole('button', { name: 'Expand shop' }));
 
-    expect(await screen.findByRole('heading', { name: 'Users' })).toBeInTheDocument();
+    expect(await screen.findByText('Connection info')).toBeInTheDocument();
+    // A tool this build does not have is named with the phase that adds it,
+    // rather than hidden.
+    // Both Export and Import dump name the phase that adds them.
+    expect(screen.getAllByText('Added in Phase 14')).toHaveLength(2);
+    // The facts strip answers "who can reach this" without opening anything.
+    expect(await screen.findByText('shop', { selector: 'dd' })).toBeInTheDocument();
+  });
+
+  it('shows the account that may reach a database on the users tab', async () => {
+    mockApi();
+    renderWithProviders(<DatabasesPage />);
+
+    await screen.findByText('shop');
+    await userEvent.click(screen.getByRole('tab', { name: 'User Management' }));
+
     expect(await screen.findByText('Full access')).toBeInTheDocument();
     // The account is named with the host it may connect from.
     expect(screen.getByText('@localhost')).toBeInTheDocument();
@@ -191,7 +210,7 @@ describe('DatabasesPage', () => {
     renderWithProviders(<DatabasesPage />);
 
     await screen.findByText('shop');
-    await userEvent.click(screen.getByRole('button', { name: 'Expand shop' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'User Management' }));
 
     // Reading a credential writes an audit record, so it must never happen as
     // a side effect of a page loading.
@@ -216,6 +235,12 @@ describe('DatabasesPage', () => {
       if (/\/database-users\/[^/]+\/password$/.test(url)) {
         return envelopeResponse({ password: 'Revealed-Password_1' });
       }
+      if (url.includes('/databases/console')) {
+        return envelopeResponse({ installed: false, served: false, can_install: true });
+      }
+      if (url.includes('/database-users')) {
+        return envelopeResponse({ users: [user()], count: 1 });
+      }
       if (/\/databases\/[^/]+$/.test(url)) {
         return envelopeResponse({ database: database(), users: [user()] });
       }
@@ -224,7 +249,7 @@ describe('DatabasesPage', () => {
 
     renderWithProviders(<DatabasesPage />);
     await screen.findByText('shop');
-    await userEvent.click(screen.getByRole('button', { name: 'Expand shop' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'User Management' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Show' }));
 
     expect(await screen.findByText('Revealed-Password_1')).toBeInTheDocument();

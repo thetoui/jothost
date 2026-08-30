@@ -1,0 +1,152 @@
+import { useState } from 'react';
+import {
+  ArrowLeftRight,
+  CopyPlus,
+  Download,
+  Plug,
+  RefreshCw,
+  Table2,
+  Upload,
+  Wrench,
+} from 'lucide-react';
+
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { SkeletonRows } from '@/components/ui/Loading';
+import { ToolGroup, ToolTile } from '@/components/ui/ToolTile';
+import { RequirePermission } from '@/features/auth/components/RequirePermission';
+import { Permission } from '@/features/auth/permissions';
+import { ConnectionInfo } from '@/features/databases/components/ConnectionInfo';
+import {
+  useDatabase,
+  useDatabaseConsole,
+  useRefreshDatabaseSize,
+} from '@/features/databases/hooks';
+import { engineLabel, formatBytes } from '@/features/databases/status';
+import type { Database } from '@/types/api';
+
+/**
+ * DatabasePanel is what opens under a database in the list.
+ *
+ * The arrangement is the one a Plesk operator already knows: the things you can
+ * do to a database as a grid of tiles, and the facts about it as a single line
+ * underneath. A tool this build does not have is shown greyed with the phase
+ * that adds it rather than hidden — hiding it makes the panel look finished and
+ * leaves someone hunting for it.
+ */
+export function DatabasePanel({ database }: { database: Database }) {
+  const detail = useDatabase(database.id);
+  const refresh = useRefreshDatabaseSize();
+  const console_ = useDatabaseConsole();
+  const [showingConnection, setShowingConnection] = useState(false);
+
+  const users = detail.data?.users ?? [];
+  const consoleURL = console_.data?.served ? console_.data.url : undefined;
+
+  return (
+    <div className="border-t border-surface-border bg-surface-sunken/40 px-5 py-4">
+      <ToolGroup title="Tools">
+        <ToolTile
+          icon={<Table2 className="h-4 w-4" />}
+          label="phpMyAdmin"
+          {...(consoleURL
+            ? { detail: 'Browse and edit tables', tone: 'blue' as const, href: consoleURL }
+            : { unavailable: 'Install it below to use this' })}
+        />
+        <ToolTile
+          icon={<Plug className="h-4 w-4" />}
+          label="Connection info"
+          detail="Host, port, and account"
+          tone="violet"
+          onClick={() => setShowingConnection(true)}
+        />
+        <ToolTile
+          icon={<Download className="h-4 w-4" />}
+          label="Export dump"
+          unavailable="Added in Phase 14"
+        />
+        <ToolTile
+          icon={<Upload className="h-4 w-4" />}
+          label="Import dump"
+          unavailable="Added in Phase 14"
+        />
+        <ToolTile
+          icon={<CopyPlus className="h-4 w-4" />}
+          label="Copy database"
+          unavailable="Not part of this build"
+        />
+        <ToolTile
+          icon={<Wrench className="h-4 w-4" />}
+          label="Check and repair"
+          unavailable="Not part of this build"
+        />
+        <ToolTile
+          icon={<ArrowLeftRight className="h-4 w-4" />}
+          label="Move to another site"
+          detail="Use the Website column"
+          tone="slate"
+        />
+      </ToolGroup>
+
+      {/* The facts strip Plesk puts under a database. It answers "where is this,
+          who can reach it, and how big is it" without opening anything. */}
+      <dl className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-surface-border pt-3 text-xs text-slate-500">
+        <Fact label="Host" value={`localhost (${engineLabel(database.engine)})`} />
+        <Fact
+          label="Users"
+          value={
+            detail.isPending
+              ? '…'
+              : users.length === 0
+                ? 'none'
+                : users.map((user) => user.username).join(', ')
+          }
+        />
+        <Fact label="Character set" value={database.charset ?? 'server default'} />
+        <Fact label="Collation" value={database.collation ?? 'server default'} />
+        <div className="flex items-center gap-1.5">
+          <dt>Size</dt>
+          <dd className="font-medium text-slate-700">{formatBytes(database.size_bytes)}</dd>
+          <RequirePermission permission={Permission.DatabaseManage}>
+            <button
+              type="button"
+              onClick={() => refresh.mutate(database.id)}
+              disabled={refresh.isPending}
+              title="Measure it again"
+              aria-label={`Re-measure ${database.name}`}
+              className="rounded p-0.5 text-slate-400 transition-colors hover:bg-surface-border hover:text-slate-700 disabled:opacity-50"
+            >
+              <RefreshCw
+                aria-hidden="true"
+                className={`h-3 w-3 ${refresh.isPending ? 'animate-spin' : ''}`}
+              />
+            </button>
+          </RequirePermission>
+        </div>
+      </dl>
+
+      {detail.isPending && <SkeletonRows rows={1} />}
+
+      <Modal
+        open={showingConnection}
+        onClose={() => setShowingConnection(false)}
+        title={`Connect to ${database.name}`}
+        description="What an application needs to reach this database."
+      >
+        <ConnectionInfo database={database} users={users} />
+        <div className="mt-4 flex justify-end border-t border-surface-border pt-3">
+          <Button onClick={() => setShowingConnection(false)}>Close</Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-1.5">
+      <dt>{label}</dt>
+      <dd className="font-medium text-slate-700">{value}</dd>
+    </div>
+  );
+}

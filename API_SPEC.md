@@ -606,6 +606,26 @@ Everything here needs `database.manage`, reads included. The split some other
 resources use would be a mistake here: a role that can list accounts is one
 step from a role that can read their passwords.
 
+`PATCH /databases/:id` changes which website a database is related to; an empty
+`website_id` unlinks it. Nothing on the database server changes — the link
+exists so the panel can show a database on the site that uses it.
+
+```http
+GET    /databases/console
+POST   /databases/console
+DELETE /databases/console
+```
+
+phpMyAdmin. It is **not installed** until somebody asks, and `POST` requires a
+`server_name`: there is no default, because a database console reachable on a
+name nobody chose is one somebody else finds first. Both `POST` and `DELETE`
+return **202** with a job — installation is a package download, a system
+account, an FPM pool, and a vhost, and it is the only operation in this section
+that does not finish inside the request.
+
+`GET` reports `installed`, `served`, the address, the PHP version behind it,
+and — when it cannot be installed — why.
+
 ---
 
 # 15. Database Users

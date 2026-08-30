@@ -1,13 +1,15 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ChevronDown,
   ChevronRight,
   Database as DatabaseIcon,
-  Globe,
   KeyRound,
+  Pencil,
   Plus,
-  RefreshCw,
+  Search,
+  Server,
+  Table2,
   Trash2,
   UserPlus,
 } from 'lucide-react';
@@ -15,24 +17,25 @@ import {
 import { StatusPill } from '@/components/StatusPill';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { Card, CardHeader } from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SelectField } from '@/components/ui/Field';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
-import { SelectField, TextField } from '@/components/ui/Field';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
+import { ConsoleCard } from '@/features/databases/components/ConsoleCard';
 import { CreateDatabaseForm } from '@/features/databases/components/CreateDatabaseForm';
+import { DatabasePanel } from '@/features/databases/components/DatabasePanel';
 import { PasswordReveal } from '@/features/databases/components/PasswordReveal';
 import {
-  useAddDatabaseUser,
-  useDatabase,
+  useAssignDatabase,
+  useDatabaseConsole,
   useDatabaseEngines,
+  useDatabaseUsers,
   useDatabases,
   useDeleteDatabase,
   useDeleteDatabaseUser,
-  useRefreshDatabaseSize,
-  useSetDatabaseGrant,
   useSetDatabasePassword,
 } from '@/features/databases/hooks';
 import {
@@ -40,22 +43,28 @@ import {
   engineLabel,
   engineVersion,
   formatBytes,
-  privilegeDescriptions,
   privilegeLabels,
   privilegeTone,
 } from '@/features/databases/status';
-import type { Database, DatabaseCreated, DatabasePrivilege, DatabaseUser } from '@/types/api';
+import { useWebsites } from '@/features/websites/hooks';
+import type { Database, DatabaseCreated, DatabasePrivilege } from '@/types/api';
+
+type Tab = 'databases' | 'users';
 
 /**
- * DatabasesPage lists the databases on this server and what may reach them.
+ * DatabasesPage lists the databases on this server and the accounts that reach
+ * them.
  *
- * It follows the same shape as Websites & Domains: a list whose rows expand in
- * place into the thing you came to do, rather than a page per database. A
- * database has few enough properties that a whole route for one would be mostly
- * empty space.
+ * The arrangement follows what a hosting operator already knows from Plesk: two
+ * tabs, a list whose rows expand in place into that database's tools, and the
+ * site each one belongs to shown and editable in the list itself. The value is
+ * not the resemblance — it is that the shape is already in the muscle memory of
+ * the people who run these machines.
  */
 export function DatabasesPage() {
+  const [tab, setTab] = useState<Tab>('databases');
   const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Database | null>(null);
   // Held after creation so the generated password can be shown once, in the
@@ -69,6 +78,15 @@ export function DatabasesPage() {
   const databases = data?.databases ?? [];
   const unavailable = engines.data && !engines.data.available;
 
+  const term = query.trim().toLowerCase();
+  const visible = term
+    ? databases.filter(
+        (database) =>
+          database.name.includes(term) ||
+          (database.website_domain ?? '').toLowerCase().includes(term),
+      )
+    : databases;
+
   const onCreated = (result: DatabaseCreated) => {
     setCreating(false);
     setJustCreated(result);
@@ -77,26 +95,51 @@ export function DatabasesPage() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Databases</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {databases.length} {databases.length === 1 ? 'database' : 'databases'}
-            {data ? `, ${formatBytes(data.total_size_bytes)} in total` : ''}. Each has its own
-            accounts and grants.
-          </p>
-        </div>
-        <RequirePermission permission={Permission.DatabaseManage}>
-          <Button
-            variant="primary"
-            onClick={() => setCreating(true)}
-            disabled={unavailable}
-            icon={<Plus aria-hidden="true" className="h-4 w-4" />}
-          >
-            Add Database
-          </Button>
-        </RequirePermission>
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-900">Databases</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {databases.length} {databases.length === 1 ? 'item' : 'items'} total
+          {data && data.total_size_bytes > 0 ? `, ${formatBytes(data.total_size_bytes)}` : ''}. Each
+          has its own accounts and grants.
+        </p>
       </header>
+
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-surface-border">
+        <div role="tablist" aria-label="Databases sections" className="flex gap-5">
+          <TabButton active={tab === 'databases'} onClick={() => setTab('databases')}>
+            Databases
+          </TabButton>
+          <TabButton active={tab === 'users'} onClick={() => setTab('users')}>
+            User Management
+          </TabButton>
+        </div>
+
+        {/* Plesk puts "Database Servers" and "Backup Manager" here. Only the
+            first has a counterpart in this build, and what it would show is
+            short enough to be the line itself rather than a page of its own.
+            An engine this host does not run is named and greyed rather than
+            omitted: leaving it out makes the panel look like it only knows
+            about one, and leaves someone hunting for the other. */}
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-2 text-xs">
+          <Server aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
+          {(engines.data?.engines ?? []).length === 0 ? (
+            <span className="text-slate-500">no database server</span>
+          ) : (
+            engines.data?.engines.map((engine, index) => (
+              <Fragment key={engine.engine}>
+                {index > 0 && <span className="text-slate-300">·</span>}
+                <span
+                  title={engine.detail}
+                  className={engine.available ? 'text-slate-600' : 'text-slate-400'}
+                >
+                  {engineLabel(engine.engine)}{' '}
+                  {engine.available ? engineVersion(engine.version) : 'unavailable'}
+                </span>
+              </Fragment>
+            ))
+          )}
+        </p>
+      </div>
 
       {isError && (
         <Alert tone="danger" title="The database list could not be loaded">
@@ -118,7 +161,7 @@ export function DatabasesPage() {
         <Alert tone="success" title={`${justCreated.database.name} is ready`}>
           <p className="mb-2">
             This password is shown once. The server stores only a hash of it, so copy it now —
-            afterwards it can still be read from the account below, but every read is recorded.
+            afterwards it can still be read from the account, but every read is recorded.
           </p>
           {justCreated.user && (
             <PasswordReveal userId={justCreated.user.id} initial={justCreated.password} />
@@ -126,38 +169,79 @@ export function DatabasesPage() {
         </Alert>
       )}
 
-      <EngineSummary />
+      {tab === 'databases' ? (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <RequirePermission permission={Permission.DatabaseManage}>
+              <Button
+                variant="primary"
+                onClick={() => setCreating(true)}
+                disabled={unavailable}
+                icon={<Plus aria-hidden="true" className="h-4 w-4" />}
+              >
+                Add Database
+              </Button>
+            </RequirePermission>
 
-      <Card label="Databases">
-        {isPending ? (
-          <SkeletonRows rows={4} />
-        ) : databases.length === 0 ? (
-          <EmptyState
-            icon={<DatabaseIcon className="h-6 w-6" />}
-            title="No databases yet"
-            description="Add one to give a website somewhere to store its data."
-            action={
-              <RequirePermission permission={Permission.DatabaseManage}>
-                <Button
-                  variant="primary"
-                  onClick={() => setCreating(true)}
-                  disabled={unavailable}
-                  icon={<Plus aria-hidden="true" className="h-4 w-4" />}
-                >
-                  Add Database
-                </Button>
-              </RequirePermission>
-            }
-          />
-        ) : (
-          <DatabaseTable
-            databases={databases}
-            expanded={expanded}
-            onToggle={(id) => setExpanded((current) => (current === id ? null : id))}
-            onDelete={setConfirmDelete}
-          />
-        )}
-      </Card>
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Find database..."
+                aria-label="Find database"
+                className="h-9 w-56 rounded-md border border-surface-border bg-surface pl-8 pr-3 text-sm shadow-card placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+              />
+            </div>
+          </div>
+
+          <Card label="Databases">
+            {isPending ? (
+              <SkeletonRows rows={4} />
+            ) : databases.length === 0 ? (
+              <EmptyState
+                icon={<DatabaseIcon className="h-6 w-6" />}
+                title="No databases yet"
+                description="Add one to give a website somewhere to store its data."
+                action={
+                  <RequirePermission permission={Permission.DatabaseManage}>
+                    <Button
+                      variant="primary"
+                      onClick={() => setCreating(true)}
+                      disabled={unavailable}
+                      icon={<Plus aria-hidden="true" className="h-4 w-4" />}
+                    >
+                      Add Database
+                    </Button>
+                  </RequirePermission>
+                }
+              />
+            ) : visible.length === 0 ? (
+              <EmptyState
+                icon={<Search className="h-6 w-6" />}
+                title="No matching databases"
+                description={`Nothing matches “${query.trim()}”.`}
+                action={<Button onClick={() => setQuery('')}>Clear search</Button>}
+              />
+            ) : (
+              <DatabaseTable
+                databases={visible}
+                expanded={expanded}
+                onToggle={(id) => setExpanded((current) => (current === id ? null : id))}
+                onDelete={setConfirmDelete}
+              />
+            )}
+          </Card>
+
+          <ConsoleCard />
+        </>
+      ) : (
+        <UserManagement />
+      )}
 
       <Modal
         open={creating}
@@ -196,34 +280,30 @@ export function DatabasesPage() {
   );
 }
 
-/** EngineSummary names what the host actually runs. */
-function EngineSummary() {
-  const engines = useDatabaseEngines();
-  const list = engines.data?.engines ?? [];
-
-  if (list.length === 0) {
-    return null;
-  }
-
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-wrap gap-2">
-      {list.map((engine) => (
-        <span
-          key={engine.engine}
-          title={engine.detail}
-          className={[
-            'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs',
-            engine.available
-              ? 'border-surface-border bg-surface text-slate-700'
-              : 'border-dashed border-surface-border bg-surface-sunken text-slate-400',
-          ].join(' ')}
-        >
-          <DatabaseIcon aria-hidden="true" className="h-3.5 w-3.5" />
-          <span className="font-medium">{engineLabel(engine.engine)}</span>
-          <span>{engine.available ? engineVersion(engine.version) : 'unavailable'}</span>
-        </span>
-      ))}
-    </div>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={[
+        '-mb-px border-b-2 px-0.5 pb-2 text-sm transition-colors',
+        active
+          ? 'border-brand-600 font-medium text-slate-900'
+          : 'border-transparent text-slate-500 hover:text-slate-800',
+      ].join(' ')}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -235,6 +315,9 @@ interface DatabaseTableProps {
 }
 
 function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTableProps) {
+  const consoleStatus = useDatabaseConsole();
+  const consoleURL = consoleStatus.data?.served ? consoleStatus.data.url : undefined;
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[46rem] border-collapse text-sm">
@@ -244,16 +327,10 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
               <span className="sr-only">Expand</span>
             </th>
             <th scope="col" className="px-3 py-2 font-medium">
-              Name
+              Database
             </th>
             <th scope="col" className="px-3 py-2 font-medium">
-              Engine
-            </th>
-            <th scope="col" className="px-3 py-2 font-medium">
-              Website
-            </th>
-            <th scope="col" className="px-3 py-2 font-medium">
-              Users
+              Related to
             </th>
             <th scope="col" className="px-3 py-2 font-medium">
               Size
@@ -295,31 +372,29 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
                       )}
                     </button>
                   </td>
+
                   <td className="px-3 py-2">
-                    <button
-                      type="button"
-                      onClick={() => onToggle(database.id)}
-                      className="font-mono font-medium text-slate-800 hover:text-brand-700 hover:underline"
-                    >
-                      {database.name}
-                    </button>
-                  </td>
-                  <td className="px-3 py-2 text-slate-600">{engineLabel(database.engine)}</td>
-                  <td className="px-3 py-2">
-                    {database.website_id && database.website_domain ? (
-                      <Link
-                        to={`/websites/${database.website_id}`}
-                        className="inline-flex items-center gap-1 text-brand-700 hover:underline"
+                    <div className="flex items-center gap-2">
+                      <DatabaseIcon aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-500" />
+                      <button
+                        type="button"
+                        onClick={() => onToggle(database.id)}
+                        className="truncate font-mono font-medium text-slate-800 hover:text-brand-700 hover:underline"
                       >
-                        <Globe aria-hidden="true" className="h-3.5 w-3.5" />
-                        {database.website_domain}
-                      </Link>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
+                        {database.name}
+                      </button>
+                      <span className="shrink-0 text-xs text-slate-400">
+                        {engineLabel(database.engine)}
+                      </span>
+                    </div>
                   </td>
-                  <td className="px-3 py-2 text-slate-600">{database.user_count}</td>
+
+                  <td className="px-3 py-2">
+                    <RelatedTo database={database} />
+                  </td>
+
                   <td className="px-3 py-2 text-slate-600">{formatBytes(database.size_bytes)}</td>
+
                   <td className="px-3 py-2">
                     <StatusPill
                       label={pill.label}
@@ -328,18 +403,32 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
                       pulse={database.status === 'creating' || database.status === 'deleting'}
                     />
                   </td>
+
+                  {/* The quick actions Plesk puts at the end of a row. */}
                   <td className="px-3 py-2">
-                    <div className="flex items-center justify-end">
+                    <div className="flex items-center justify-end gap-1">
+                      {consoleURL && (
+                        <a
+                          href={consoleURL}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          aria-label={`Open ${database.name} in phpMyAdmin`}
+                          title="Open in phpMyAdmin"
+                          className="rounded p-1.5 text-slate-400 transition-colors hover:bg-surface-border hover:text-slate-700"
+                        >
+                          <Table2 aria-hidden="true" className="h-4 w-4" />
+                        </a>
+                      )}
                       <RequirePermission permission={Permission.DatabaseManage}>
-                        <Button
-                          size="sm"
-                          variant="ghost"
+                        <button
+                          type="button"
                           onClick={() => onDelete(database)}
                           aria-label={`Delete ${database.name}`}
-                          icon={<Trash2 aria-hidden="true" className="h-4 w-4" />}
+                          title="Delete"
+                          className="rounded p-1.5 text-slate-400 transition-colors hover:bg-danger-50 hover:text-danger-600"
                         >
-                          Delete
-                        </Button>
+                          <Trash2 aria-hidden="true" className="h-4 w-4" />
+                        </button>
                       </RequirePermission>
                     </div>
                   </td>
@@ -347,7 +436,7 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
 
                 {open && (
                   <tr>
-                    <td colSpan={8} className="p-0">
+                    <td colSpan={6} className="p-0">
                       <DatabasePanel database={database} />
                     </td>
                   </tr>
@@ -361,272 +450,238 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
   );
 }
 
-/** DatabasePanel is the accounts and grants that open under a database. */
-function DatabasePanel({ database }: { database: Database }) {
-  const detail = useDatabase(database.id);
-  const refresh = useRefreshDatabaseSize();
-  const [adding, setAdding] = useState(false);
+/**
+ * RelatedTo shows and changes the website a database belongs to.
+ *
+ * Editable in the list rather than behind a settings page, which is where Plesk
+ * puts it — and it is the right place: "which site is this for" is the question
+ * people actually have when looking at a list of databases named db11 and elmp.
+ */
+function RelatedTo({ database }: { database: Database }) {
+  const [editing, setEditing] = useState(false);
+  const websites = useWebsites();
+  const assign = useAssignDatabase();
 
-  const users = detail.data?.users ?? [];
+  const options = useMemo(() => websites.data?.websites ?? [], [websites.data]);
 
-  return (
-    <div className="space-y-3 border-t border-surface-border bg-surface-sunken/40 px-4 py-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-slate-500">
-          <Fact label="Character set" value={database.charset ?? 'server default'} />
-          <Fact label="Collation" value={database.collation ?? 'server default'} />
-          <Fact
-            label="Size"
-            value={`${formatBytes(database.size_bytes)}${
-              database.size_checked_at
-                ? ` · measured ${new Date(database.size_checked_at).toLocaleString()}`
-                : ''
-            }`}
-          />
-        </dl>
-        <Button
-          size="sm"
-          onClick={() => refresh.mutate(database.id)}
-          loading={refresh.isPending}
-          icon={<RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />}
+  if (editing) {
+    return (
+      <div className="flex items-end gap-1">
+        <SelectField
+          id={`related-${database.id}`}
+          label="Related to"
+          value={database.website_id ?? ''}
+          onChange={(event) =>
+            assign.mutate(
+              { id: database.id, websiteId: event.target.value },
+              { onSuccess: () => setEditing(false) },
+            )
+          }
         >
-          Re-measure
+          <option value="">Not related to a website</option>
+          {options.map((website) => (
+            <option key={website.id} value={website.id}>
+              {website.primary_domain}
+            </option>
+          ))}
+        </SelectField>
+        <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+          Cancel
         </Button>
       </div>
+    );
+  }
 
-      <Card>
-        <CardHeader
-          title="Users"
-          description="Accounts that may connect to this database, and how much they may do."
-          action={
-            <RequirePermission permission={Permission.DatabaseManage}>
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() => setAdding((current) => !current)}
-                icon={<UserPlus aria-hidden="true" className="h-3.5 w-3.5" />}
-              >
-                Add user
-              </Button>
-            </RequirePermission>
-          }
-        />
-
-        {adding && (
-          <div className="border-b border-surface-border p-4">
-            <AddUserForm database={database} onDone={() => setAdding(false)} />
-          </div>
-        )}
-
-        {detail.isPending ? (
-          <SkeletonRows rows={2} />
-        ) : users.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-slate-500">
-            No account can reach this database yet, so nothing can use it.
-          </p>
-        ) : (
-          <ul className="divide-y divide-surface-border">
-            {users.map((user) => (
-              <UserRow key={user.id} databaseId={database.id} user={user} />
-            ))}
-          </ul>
-        )}
-      </Card>
+  return (
+    <div className="flex items-center gap-1.5">
+      {database.website_id && database.website_domain ? (
+        <>
+          <span className="text-slate-600">Related to</span>
+          <Link
+            to={`/websites/${database.website_id}`}
+            className="truncate text-brand-700 hover:underline"
+          >
+            {database.website_domain}
+          </Link>
+          <RequirePermission permission={Permission.DatabaseManage}>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label={`Change the website for ${database.name}`}
+              title="Change"
+              className="rounded p-0.5 text-slate-400 transition-colors hover:bg-surface-border hover:text-slate-700"
+            >
+              <Pencil aria-hidden="true" className="h-3 w-3" />
+            </button>
+          </RequirePermission>
+        </>
+      ) : (
+        <RequirePermission
+          permission={Permission.DatabaseManage}
+          fallback={<span className="text-slate-400">—</span>}
+        >
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-brand-700 hover:underline"
+          >
+            Assign this database to a website
+          </button>
+        </RequirePermission>
+      )}
     </div>
   );
 }
 
-function UserRow({
-  databaseId,
-  user,
-}: {
-  databaseId: string;
-  user: DatabaseUser;
-}) {
-  const setGrant = useSetDatabaseGrant();
-  const setPassword = useSetDatabasePassword();
+/**
+ * UserManagement is the second tab: every account on the server, and what each
+ * one can reach.
+ */
+function UserManagement() {
+  const { data, isPending } = useDatabaseUsers();
   const removeUser = useDeleteDatabaseUser();
-  const [rotated, setRotated] = useState<string | undefined>(undefined);
-  const [confirming, setConfirming] = useState(false);
+  const setPassword = useSetDatabasePassword();
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [rotated, setRotated] = useState<Record<string, string>>({});
 
-  const privilege = (user.grants?.[0]?.privilege ?? 'readonly') as DatabasePrivilege;
+  const users = data?.users ?? [];
+  const target = users.find((user) => user.id === confirming);
 
   return (
-    <li className="space-y-2 px-5 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-sm text-slate-800">
-            {user.username}
-            {user.host && <span className="text-slate-400">@{user.host}</span>}
-          </p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Password last changed {new Date(user.password_updated_at).toLocaleString()}
-          </p>
-        </div>
+    <>
+      <Card label="Database users">
+        {isPending ? (
+          <SkeletonRows rows={4} />
+        ) : users.length === 0 ? (
+          <EmptyState
+            icon={<UserPlus className="h-6 w-6" />}
+            title="No database users yet"
+            description="An account is created with each database, or added to one from its row on the Databases tab."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[46rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Name
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Database
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Database server
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Password
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusPill label={privilegeLabels[privilege]} tone={privilegeTone(privilege)} />
-          <RequirePermission permission={Permission.DatabaseManage}>
-            <SelectField
-              id={`grant-${user.id}`}
-              label="Access"
-              value={privilege}
-              onChange={(event) =>
-                setGrant.mutate({
-                  databaseId,
-                  userId: user.id,
-                  privilege: event.target.value as DatabasePrivilege,
-                })
-              }
-            >
-              {(Object.keys(privilegeLabels) as DatabasePrivilege[]).map((level) => (
-                <option key={level} value={level}>
-                  {privilegeDescriptions[level]}
-                </option>
-              ))}
-            </SelectField>
-          </RequirePermission>
-        </div>
-      </div>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id} className="border-b border-surface-border/60">
+                    <td className="px-3 py-2">
+                      <span className="font-mono text-slate-800">
+                        {user.username}
+                        {user.host && <span className="text-slate-400">@{user.host}</span>}
+                      </span>
+                    </td>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <PasswordReveal userId={user.id} initial={rotated} />
-        <RequirePermission permission={Permission.DatabaseManage}>
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              loading={setPassword.isPending}
-              onClick={() =>
-                setPassword.mutate(
-                  { userId: user.id },
-                  { onSuccess: (result) => setRotated(result.password) },
-                )
-              }
-              icon={<KeyRound aria-hidden="true" className="h-3.5 w-3.5" />}
-            >
-              New password
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirming(true)}
-              icon={<Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
-            >
-              Remove
-            </Button>
+                    <td className="px-3 py-2">
+                      {user.grants && user.grants.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          {user.grants.map((grant) => (
+                            <span
+                              key={grant.database_id}
+                              className="inline-flex items-center gap-1"
+                            >
+                              <span className="font-mono text-slate-700">
+                                {grant.database_name}
+                              </span>
+                              <StatusPill
+                                label={privilegeLabels[grant.privilege as DatabasePrivilege]}
+                                tone={privilegeTone(grant.privilege as DatabasePrivilege)}
+                              />
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        // An account with no grant can sign in and reach
+                        // nothing. Saying so is more use than an empty cell.
+                        <span className="text-slate-400">No access granted</span>
+                      )}
+                    </td>
+
+                    <td className="px-3 py-2 text-slate-600">
+                      localhost ({engineLabel(user.engine)})
+                    </td>
+
+                    <td className="px-3 py-2">
+                      <PasswordReveal userId={user.id} initial={rotated[user.id]} />
+                    </td>
+
+                    <td className="px-3 py-2">
+                      <RequirePermission permission={Permission.DatabaseManage}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            loading={setPassword.isPending}
+                            onClick={() =>
+                              setPassword.mutate(
+                                { userId: user.id },
+                                {
+                                  onSuccess: (result) =>
+                                    setRotated((current) => ({
+                                      ...current,
+                                      [user.id]: result.password,
+                                    })),
+                                },
+                              )
+                            }
+                            icon={<KeyRound aria-hidden="true" className="h-3.5 w-3.5" />}
+                          >
+                            New password
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setConfirming(user.id)}
+                            icon={<Trash2 aria-hidden="true" className="h-3.5 w-3.5" />}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </RequirePermission>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </RequirePermission>
-      </div>
-
-      {setGrant.isError && (
-        <p className="text-xs text-danger-600">
-          {setGrant.error instanceof Error ? setGrant.error.message : 'The grant did not change.'}
-        </p>
-      )}
+        )}
+      </Card>
 
       <ConfirmDialog
-        open={confirming}
-        onClose={() => setConfirming(false)}
-        onConfirm={() =>
-          removeUser.mutate(user.id, { onSuccess: () => setConfirming(false) })
-        }
-        title={`Remove ${user.username}?`}
+        open={confirming !== null}
+        onClose={() => setConfirming(null)}
+        onConfirm={() => {
+          if (!confirming) {
+            return;
+          }
+          removeUser.mutate(confirming, { onSuccess: () => setConfirming(null) });
+        }}
+        title={`Remove ${target?.username ?? 'this account'}?`}
         description="The account is dropped from the database server. Anything connecting with it stops working immediately."
         confirmLabel="Remove user"
         destructive
         loading={removeUser.isPending}
         error={removeUser.isError ? String((removeUser.error as Error).message) : null}
       />
-    </li>
-  );
-}
-
-function AddUserForm({ database, onDone }: { database: Database; onDone: () => void }) {
-  const add = useAddDatabaseUser();
-  const engines = useDatabaseEngines();
-  const [username, setUsername] = useState('');
-  const [host, setHost] = useState('localhost');
-  const [privilege, setPrivilege] = useState<DatabasePrivilege>('full');
-
-  const engine = engines.data?.engines.find((item) => item.engine === database.engine);
-  const usesHostPatterns = engine?.supports_host_patterns ?? false;
-
-  return (
-    <form
-      className="space-y-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        add.mutate(
-          {
-            databaseId: database.id,
-            ...(username ? { username: username.trim().toLowerCase() } : {}),
-            ...(usesHostPatterns ? { host } : {}),
-            privilege,
-          },
-          { onSuccess: onDone },
-        );
-      }}
-    >
-      {add.isError && (
-        <Alert tone="danger" title="The user could not be added">
-          {add.error instanceof Error ? add.error.message : 'Try again in a moment.'}
-        </Alert>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <TextField
-          id={`add-user-${database.id}`}
-          label="User name"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          placeholder={database.name}
-          autoComplete="off"
-          spellCheck={false}
-          suffix="optional"
-        />
-        {usesHostPatterns && (
-          <SelectField
-            id={`add-host-${database.id}`}
-            label="Connect from"
-            value={host}
-            onChange={(event) => setHost(event.target.value)}
-          >
-            <option value="localhost">This server only</option>
-            <option value="%">Any host</option>
-          </SelectField>
-        )}
-        <SelectField
-          id={`add-privilege-${database.id}`}
-          label="Access"
-          value={privilege}
-          onChange={(event) => setPrivilege(event.target.value as DatabasePrivilege)}
-        >
-          {(Object.keys(privilegeLabels) as DatabasePrivilege[]).map((level) => (
-            <option key={level} value={level}>
-              {privilegeDescriptions[level]}
-            </option>
-          ))}
-        </SelectField>
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <Button type="button" size="sm" onClick={onDone} disabled={add.isPending}>
-          Cancel
-        </Button>
-        <Button type="submit" size="sm" variant="primary" loading={add.isPending}>
-          Add user
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex gap-1.5">
-      <dt>{label}</dt>
-      <dd className="font-medium text-slate-700">{value}</dd>
-    </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import { request } from '@/services/apiClient';
 import type {
   Database,
+  DatabaseConsole,
   DatabaseCreated,
   DatabaseDetail,
   DatabaseEngineName,
@@ -72,6 +73,13 @@ export const databasesApi = {
       method: 'POST',
     }),
 
+  /** An empty websiteId unlinks the database from whichever site it had. */
+  assign: (id: string, websiteId: string) =>
+    request<{ database: Database }>(`/databases/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: { website_id: websiteId },
+    }),
+
   users: (signal?: AbortSignal) =>
     request<DatabaseUserList>('/database-users', signal ? { signal } : {}),
 
@@ -108,4 +116,19 @@ export const databasesApi = {
    */
   revealPassword: (userId: string) =>
     request<DatabasePassword>(`/database-users/${encodeURIComponent(userId)}/password`),
+};
+
+/** phpMyAdmin, which the panel installs on request and never by default. */
+export const consoleApi = {
+  status: (signal?: AbortSignal) =>
+    request<DatabaseConsole>('/databases/console', signal ? { signal } : {}),
+
+  install: (serverName: string) =>
+    request<{ job: unknown }>('/databases/console', {
+      method: 'POST',
+      body: { server_name: serverName },
+    }),
+
+  uninstall: () =>
+    request<{ job: unknown }>('/databases/console', { method: 'DELETE' }),
 };

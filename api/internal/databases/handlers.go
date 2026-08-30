@@ -57,12 +57,17 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/databases", guarded(h.create))
 	mux.Handle("GET /api/v1/databases/engines", guarded(h.engines))
 	mux.Handle("GET /api/v1/databases/{id}", guarded(h.get))
+	mux.Handle("PATCH /api/v1/databases/{id}", guarded(h.assign))
 	mux.Handle("DELETE /api/v1/databases/{id}", guarded(h.delete))
 	mux.Handle("POST /api/v1/databases/{id}/size", guarded(h.refreshSize))
 
 	mux.Handle("GET /api/v1/databases/{id}/users", guarded(h.listUsers))
 	mux.Handle("POST /api/v1/databases/{id}/users", guarded(h.addUser))
 	mux.Handle("PATCH /api/v1/databases/{id}/users/{userId}", guarded(h.setGrant))
+
+	mux.Handle("GET /api/v1/databases/console", guarded(h.consoleStatus))
+	mux.Handle("POST /api/v1/databases/console", guarded(h.installConsole))
+	mux.Handle("DELETE /api/v1/databases/console", guarded(h.uninstallConsole))
 
 	mux.Handle("GET /api/v1/database-users", guarded(h.listAllUsers))
 	mux.Handle("DELETE /api/v1/database-users/{id}", guarded(h.deleteUser))
@@ -193,6 +198,40 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	// 201, not 202: the database exists on the host by the time this is
 	// written, so there is nothing for the caller to wait for.
 	httpx.Created(w, r, userPayload(result.Database, result.User, result.Password))
+}
+
+// assignBody links a database to a website.
+type assignBody struct {
+	// An empty id unlinks it. There is no separate endpoint for that: to a
+	// user it is one control with an empty option.
+	WebsiteID string `json:"website_id"`
+}
+
+func (h *Handler) assign(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	id, ok := pathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+
+	var body assignBody
+	if err := decode(w, r, &body); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if body.WebsiteID != "" && !isUUID(body.WebsiteID) {
+		httpx.Error(w, r, httpx.BadRequest("website_id must be a UUID"))
+		return
+	}
+
+	record, err := h.service.Assign(ctx, id, body.WebsiteID, actorFrom(r))
+	if err != nil {
+		httpx.Error(w, r, Translate(err))
+		return
+	}
+	httpx.OK(w, r, map[string]any{"database": record})
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +435,72 @@ func (h *Handler) setGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, r, map[string]any{"privilege": body.Privilege, "updated": true})
+}
+
+// consoleStatus reports whether phpMyAdmin is installed and where it is served.
+func (h *Handler) consoleStatus(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	status, err := h.service.ConsoleStatus(ctx, httpx.RequestIDFromContext(ctx))
+	if err != nil {
+		// A host the Agent cannot answer for cannot run the console either,
+		// which the page renders rather than showing as an error.
+		httpx.OK(w, r, map[string]any{
+			"installed":   false,
+			"served":      false,
+			"can_install": false,
+			"detail":      "the agent could not be reached, so phpMyAdmin cannot be managed",
+		})
+		return
+	}
+	httpx.OK(w, r, status)
+}
+
+// consoleBody names the host phpMyAdmin will answer on.
+type consoleBody struct {
+	// There is no default. A database console reachable on a name nobody chose
+	// is one somebody else finds first.
+	ServerName string `json:"server_name"`
+}
+
+func (h *Handler) installConsole(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	var body consoleBody
+	if err := decode(w, r, &body); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	job, err := h.service.InstallConsole(ctx, body.ServerName, actorFrom(r))
+	if err != nil {
+		httpx.Error(w, r, Translate(err))
+		return
+	}
+
+	// 202: unlike everything else here, this one really does finish later.
+	httpx.WriteJSON(w, r, http.StatusAccepted, httpx.Envelope{
+		Success: true,
+		Data:    map[string]any{"job": job},
+	})
+}
+
+func (h *Handler) uninstallConsole(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	job, err := h.service.UninstallConsole(ctx, actorFrom(r))
+	if err != nil {
+		httpx.Error(w, r, Translate(err))
+		return
+	}
+
+	httpx.WriteJSON(w, r, http.StatusAccepted, httpx.Envelope{
+		Success: true,
+		Data:    map[string]any{"job": job},
+	})
 }
 
 // userPayload renders a created database with its account.

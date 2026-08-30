@@ -194,6 +194,24 @@ func (r *Repository) RecordEncoding(ctx context.Context, id, charset, collation 
 	return nil
 }
 
+// SetWebsite changes which website a database belongs to.
+//
+// nil unassigns it. The link is a convenience for the panel's own navigation,
+// not ownership: nothing about the database itself changes, and the database
+// outlives whichever site it was pointed at.
+func (r *Repository) SetWebsite(ctx context.Context, id string, websiteID *string) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE databases SET website_id = $2::uuid, updated_at = now()
+		WHERE id = $1::uuid`, id, websiteID)
+	if err != nil {
+		return fmt.Errorf("update database website: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Get returns one database.
 func (r *Repository) Get(ctx context.Context, id string) (Database, error) {
 	row := r.pool.QueryRow(ctx, `

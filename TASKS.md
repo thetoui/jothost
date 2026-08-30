@@ -391,6 +391,7 @@ Security:
 - [x] Permissions
 - [x] Database size
 - [x] Database UI
+- [x] PHPmyadmin
 
 MariaDB and MySQL share one provider: the clients speak the same protocol and
 the DDL the panel issues is identical. They stay distinct **engine values**,
@@ -400,7 +401,16 @@ the provider reports whichever the host answered as.
 Grants are a fixed set of three levels rather than a privilege string. See
 docs/PHASE8.md for what each one means on each engine, and for the defects the
 live checks found.
-- [ ] PHPmyadmin
+
+phpMyAdmin is installed on request and never by default, from the host's own
+package manager, under its own system account and FPM pool, on one name the
+operator chooses. Its configuration holds no credentials: a visitor signs in
+with a database account the panel created, and the server's root account cannot
+sign in at all.
+
+The Databases screen follows the arrangement of Plesk's own: two tabs, a list
+whose rows expand in place into that database's tools, and the site each one
+belongs to shown and editable in the list itself.
 
 ---
 

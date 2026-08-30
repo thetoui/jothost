@@ -243,6 +243,7 @@ func New(opts Options) (*Server, error) {
 			Repository: databaseRepo,
 			Websites:   websiteRepo,
 			Agent:      agent,
+			Jobs:       jobRepo,
 			Audit:      auditRecorder,
 			Log:        log,
 			ServerID:   opts.LocalServerID,

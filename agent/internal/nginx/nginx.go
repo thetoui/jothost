@@ -118,6 +118,17 @@ func (p *Provider) WriteRedirect(ctx context.Context, redirect Redirect) (string
 	return p.install(ctx, redirect.Domain, rendered)
 }
 
+// WriteSiteRaw installs a configuration the caller has already rendered.
+//
+// It exists for a site the panel serves that is not a customer website — the
+// phpMyAdmin vhost — where the content is composed by its own package but the
+// writing, validation, and rollback have to be the same as for every other
+// site. The domain is still validated, and the file is still kept only if
+// nginx accepts the result.
+func (p *Provider) WriteSiteRaw(ctx context.Context, domain, rendered string) (string, error) {
+	return p.install(ctx, domain, rendered)
+}
+
 // install writes a config, validates it, and rolls back on failure.
 func (p *Provider) install(ctx context.Context, domain, rendered string) (string, error) {
 	if !p.Available() {

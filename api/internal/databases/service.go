@@ -10,6 +10,7 @@ import (
 	"github.com/jothost/panel/api/internal/agentclient"
 	"github.com/jothost/panel/api/internal/audit"
 	"github.com/jothost/panel/api/internal/httpx"
+	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/api/internal/websites"
 	"github.com/jothost/panel/shared/validate"
 )
@@ -23,6 +24,7 @@ const (
 	ActionPasswordChange   = "database.user.password"
 	ActionPasswordReveal   = "database.user.reveal"
 	ActionGrantChange      = "database.grant"
+	ActionDatabaseAssign   = "database.assign"
 
 	ResourceTypeDatabase = "database"
 )
@@ -76,6 +78,9 @@ type Service struct {
 	repo     *Repository
 	websites *websites.Repository
 	agent    Agent
+	// jobs queues the one operation here that does not finish inside a
+	// request: installing phpMyAdmin.
+	jobs     *jobs.Repository
 	audit    *audit.Recorder
 	log      *slog.Logger
 	serverID string
@@ -86,6 +91,7 @@ type ServiceOptions struct {
 	Repository *Repository
 	Websites   *websites.Repository
 	Agent      Agent
+	Jobs       *jobs.Repository
 	Audit      *audit.Recorder
 	Log        *slog.Logger
 	ServerID   string
@@ -101,6 +107,7 @@ func NewService(opts ServiceOptions) *Service {
 		repo:     opts.Repository,
 		websites: opts.Websites,
 		agent:    opts.Agent,
+		jobs:     opts.Jobs,
 		audit:    opts.Audit,
 		log:      log,
 		serverID: opts.ServerID,
@@ -282,6 +289,36 @@ func (s *Service) RefreshSize(ctx context.Context, requestID, id string) (Databa
 	if err := s.repo.RecordSize(ctx, id, size.SizeBytes); err != nil {
 		return Database{}, err
 	}
+	return s.repo.Get(ctx, id)
+}
+
+// Assign links a database to a website, or unlinks it when websiteID is empty.
+//
+// It touches no database server: the link exists so the panel can show a
+// database on the site that uses it. Deleting the site later unlinks it and
+// leaves the data alone.
+func (s *Service) Assign(ctx context.Context, id, websiteID string, actor Actor) (Database, error) {
+	record, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return Database{}, err
+	}
+
+	var target *string
+	if websiteID != "" {
+		site, err := s.websites.Get(ctx, websiteID)
+		if err != nil {
+			return Database{}, err
+		}
+		target = &site.ID
+	}
+
+	if err := s.repo.SetWebsite(ctx, id, target); err != nil {
+		return Database{}, err
+	}
+
+	s.record(ctx, actor, ActionDatabaseAssign, id, map[string]any{
+		"name": record.Name, "website_id": websiteID,
+	})
 	return s.repo.Get(ctx, id)
 }
 
@@ -692,13 +729,17 @@ func Translate(err error) error {
 		return httpx.Conflict(err.Error())
 	case errors.Is(err, ErrDatabaseInUse), errors.Is(err, ErrUserExistsUnmanaged):
 		return httpx.Conflict(err.Error())
-	case errors.Is(err, ErrEngineUnavailable), errors.Is(err, ErrNoServer):
+	case errors.Is(err, ErrEngineUnavailable), errors.Is(err, ErrNoServer),
+		errors.Is(err, ErrConsoleUnavailable):
 		return httpx.Unavailable(err.Error())
 	case errors.Is(err, ErrHostNotSupported), errors.Is(err, ErrInvalidPrivilege),
 		errors.Is(err, validate.ErrInvalidDatabaseName),
 		errors.Is(err, validate.ErrInvalidDatabaseUser),
 		errors.Is(err, validate.ErrInvalidHostPattern),
-		errors.Is(err, validate.ErrInvalidEngine):
+		errors.Is(err, validate.ErrInvalidEngine),
+		// The address phpMyAdmin is served on is a domain, and a bad one is
+		// the caller's mistake rather than the server's.
+		errors.Is(err, validate.ErrInvalidDomain):
 		return httpx.ValidationFailed(err.Error())
 	case agentclient.IsUnsupported(err):
 		return httpx.Unavailable("This host does not have a database server the panel can manage")

@@ -28,6 +28,7 @@ PG_ADMIN_PASS="${AGENT_POSTGRES_ADMIN_PASSWORD:-jothost_pg_admin_dev}"
 # cleanup below cannot touch anything a person created.
 DB_MY="${DB_MY:-p8_my_shop}"
 DB_PG="${DB_PG:-p8_pg_shop}"
+DB_PMA="${DB_PMA:-p8_pma_demo}"
 
 failures=0
 work="$(mktemp -d)"
@@ -521,6 +522,112 @@ if [ -z "$still_there" ]; then
 else
   fail 'the account is gone from the MariaDB server'
 fi
+
+# --- 10. phpMyAdmin ------------------------------------------------------
+
+log ''
+log '10. phpMyAdmin'
+
+PMA_HOST="${PMA_HOST:-phpmyadmin.integration.test}"
+
+status="$(api GET /api/v1/databases/console)"
+contains 'the console reports whether it can be installed' "$status" '"can_install"'
+
+# Installed once and left installed: it is slow to install, and every check
+# below wants it there. A rerun finds it already served and the install
+# reconciles rather than failing.
+job="$(api POST /api/v1/databases/console "{\"server_name\":\"$PMA_HOST\"}")"
+contains 'installing phpMyAdmin is queued as a job' "$job" '"type":"phpmyadmin.install"'
+
+# The worker runs it against the Agent; installing a package and its extensions
+# takes longer than any other operation in this suite.
+waited=0
+while [ "$waited" -lt 180 ]; do
+  status="$(api GET /api/v1/databases/console)"
+  case "$status" in
+    *'"served":true'*) break ;;
+  esac
+  sleep 3
+  waited=$((waited + 3))
+done
+
+contains 'phpMyAdmin is installed' "$status" '"installed":true'
+contains 'phpMyAdmin is served' "$status" '"served":true'
+contains 'it is served on the name that was asked for' "$status" "\"server_name\":\"$PMA_HOST\""
+
+# The claim under test: it answers, and with its own login form rather than a
+# PHP error. Installing the package without its extensions produces a page
+# whose entire content is "the mysqli extension is missing", and that is a 200.
+page="$(curl -s --max-time 30 -H "Host: $PMA_HOST" http://127.0.0.1/ 2>/dev/null || true)"
+contains 'it serves its login form' "$page" 'input_username'
+not_contains 'the page is not an error' "$page" 'phpMyAdmin - Error'
+
+# The configuration must carry no credentials. One that names a user and
+# password turns reaching the page into having the database.
+config="$(cat /usr/share/webapps/phpmyadmin/config.inc.php 2>/dev/null || true)"
+contains 'authentication is cookie mode' "$config" "auth_type'] = 'cookie'"
+not_contains 'no user is stored in the configuration' "$config" "\$i]['user']"
+not_contains 'no password is stored in the configuration' "$config" "\$i]['password']"
+contains 'a blank password is refused' "$config" "AllowNoPassword'] = false"
+contains 'root cannot sign in' "$config" "AllowRoot'] = false"
+
+# It runs as its own account, not root and not one shared with a website.
+pool_user="$(ps -o user= -C php-fpm 2>/dev/null | sort -u | grep -c jothost_pma || true)"
+if [ "${pool_user:-0}" -gt 0 ]; then
+  pass 'it runs under its own system account'
+else
+  # ps output varies by busybox version; fall back to the socket's owner.
+  owner="$(find /run/php-fpm -name 'jothost-pma-*.sock' -exec stat -c '%U' {} + 2>/dev/null | head -1)"
+  if [ "$owner" = "jothost_pma" ]; then
+    pass 'it runs under its own system account'
+  else
+    fail "it runs under its own system account (socket owned by ${owner:-nothing})"
+  fi
+fi
+
+# The end-to-end check: an account the panel created signs in and sees its own
+# database. Everything above can pass while this fails.
+purge "$DB_PMA"
+made="$(api POST /api/v1/databases "{\"name\":\"$DB_PMA\",\"engine\":\"mariadb\"}")"
+pma_id="$(json_field "$made" 'id')"
+pma_pw="$(json_field "$made" 'password')"
+pma_user="$(json_field "$made" 'username')"
+
+rm -f "$work/pma.jar"
+form="$(curl -s --max-time 30 -c "$work/pma.jar" -H "Host: $PMA_HOST" http://127.0.0.1/ 2>/dev/null || true)"
+form_token="$(printf '%s' "$form" | sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p' | head -1)"
+
+signed_in="$(curl -s --max-time 30 -b "$work/pma.jar" -c "$work/pma.jar" -L -H "Host: $PMA_HOST" \
+  --data-urlencode "pma_username=$pma_user" \
+  --data-urlencode "pma_password=$pma_pw" \
+  --data-urlencode "server=1" \
+  --data-urlencode "token=$form_token" \
+  http://127.0.0.1/index.php 2>/dev/null || true)"
+
+contains 'an account the panel created can sign in' "$signed_in" "$DB_PMA"
+not_contains 'signing in did not bounce back to the form' "$signed_in" 'input_password'
+
+# root must be refused even with the server's own socket authentication.
+rm -f "$work/root.jar"
+form="$(curl -s --max-time 30 -c "$work/root.jar" -H "Host: $PMA_HOST" http://127.0.0.1/ 2>/dev/null || true)"
+form_token="$(printf '%s' "$form" | sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p' | head -1)"
+as_root="$(curl -s --max-time 30 -b "$work/root.jar" -c "$work/root.jar" -L -H "Host: $PMA_HOST" \
+  --data-urlencode "pma_username=root" --data-urlencode "pma_password=" \
+  --data-urlencode "server=1" --data-urlencode "token=$form_token" \
+  http://127.0.0.1/index.php 2>/dev/null || true)"
+contains 'root is refused' "$as_root" 'input_username'
+
+# An address that is not a host name must be refused rather than written into
+# an nginx server_name.
+code="$(api_status POST /api/v1/databases/console '{"server_name":"not a host"}')"
+expect_status 'an invalid address is refused' '422' "$code"
+code="$(api_status POST /api/v1/databases/console '{"server_name":""}')"
+expect_status 'an empty address is refused' '422' "$code"
+
+if [ -n "$pma_id" ]; then
+  api DELETE "/api/v1/databases/$pma_id" >/dev/null 2>&1 || true
+fi
+purge "$DB_PMA"
 
 # --- summary --------------------------------------------------------------
 

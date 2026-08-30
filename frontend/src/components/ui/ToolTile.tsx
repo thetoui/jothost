@@ -20,6 +20,11 @@ interface ToolTileProps {
   tone?: ToolTone;
   /** Where the tile goes. Omit together with onClick for an inert tile. */
   to?: string;
+  /**
+   * An address outside the panel, opened in a new tab. Used for a tool the
+   * panel installs but does not embed, such as phpMyAdmin.
+   */
+  href?: string;
   onClick?: () => void;
   /** Marks a tool this build does not have yet, with the phase that adds it. */
   unavailable?: string;
@@ -39,6 +44,7 @@ export function ToolTile({
   detail,
   tone = 'slate',
   to,
+  href,
   onClick,
   unavailable,
 }: ToolTileProps) {
@@ -89,6 +95,18 @@ export function ToolTile({
       <Link to={to} className={`${shell} hover:bg-surface-sunken`}>
         {body}
       </Link>
+    );
+  }
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        className={`${shell} hover:bg-surface-sunken`}
+      >
+        {body}
+      </a>
     );
   }
   return (

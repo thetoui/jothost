@@ -36,6 +36,20 @@ type Pool struct {
 	Settings Settings
 	// MaxChildren caps concurrent workers for this site.
 	MaxChildren int
+
+	// ExtraPaths are directories added to open_basedir beyond the document
+	// root and its site's own scratch space.
+	//
+	// Empty for a website, which is what almost every pool is. It exists for
+	// an application the panel installs from a package, whose scratch space
+	// necessarily lives outside a directory the package manager owns.
+	ExtraPaths []string
+	// ErrorLog and SessionPath override the paths otherwise derived from the
+	// site layout. Empty means that layout, which is what every website uses;
+	// a pool whose document root is not inside one has to say where they go,
+	// or PHP writes them beside somebody else's files.
+	ErrorLog    string
+	SessionPath string
 }
 
 // Settings are the php.ini values a site may choose.
@@ -231,17 +245,39 @@ func RenderPool(pool Pool) (string, error) {
 	// ever served to a visitor who guesses the name.
 	siteRoot := filepath.Dir(pool.DocumentRoot)
 
+	// The temp directory is included because PHP needs somewhere to put
+	// uploads before the application moves them; without it every upload fails
+	// with an open_basedir violation.
+	openBasedir := pool.DocumentRoot + ":" + siteRoot + "/tmp:/tmp"
+	for _, extra := range pool.ExtraPaths {
+		if err := validateConfigPath(extra); err != nil {
+			return "", fmt.Errorf("extra path: %w", err)
+		}
+		openBasedir += ":" + extra
+	}
+
+	errorLog := pool.ErrorLog
+	if errorLog == "" {
+		errorLog = filepath.Join(siteRoot, "logs", "php-error.log")
+	} else if err := validateConfigPath(errorLog); err != nil {
+		return "", fmt.Errorf("error log: %w", err)
+	}
+
+	sessionPath := pool.SessionPath
+	if sessionPath == "" {
+		sessionPath = filepath.Join(siteRoot, "tmp", "sessions")
+	} else if err := validateConfigPath(sessionPath); err != nil {
+		return "", fmt.Errorf("session path: %w", err)
+	}
+
 	view := poolView{
 		Pool:         pool,
 		StartServers: max(1, children/2),
 		MinSpare:     1,
 		MaxSpare:     max(1, children-1),
-		// The temp directory is included because PHP needs somewhere to put
-		// uploads before the application moves them; without it every upload
-		// fails with an open_basedir violation.
-		OpenBasedir: pool.DocumentRoot + ":" + siteRoot + "/tmp:/tmp",
-		ErrorLog:    filepath.Join(siteRoot, "logs", "php-error.log"),
-		SessionPath: filepath.Join(siteRoot, "tmp", "sessions"),
+		OpenBasedir:  openBasedir,
+		ErrorLog:     errorLog,
+		SessionPath:  sessionPath,
 	}
 
 	var out bytes.Buffer

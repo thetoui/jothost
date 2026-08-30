@@ -46,6 +46,13 @@ services:
       context: .
       dockerfile: docker/agent.Dockerfile
       target: runtime
+    # A fixed hostname, because the panel identifies the host it manages by
+    # name. Docker's default is the container id, which changes on every
+    # rebuild — so every rebuild looked like a different server, and the
+    # databases and accounts recorded against the previous one were left
+    # attached to a host that no longer exists. On a real machine the hostname
+    # is stable; this makes development behave the same way.
+    hostname: jothost-agent
     environment:
       JOTHOST_ENV: development
       LOG_LEVEL: ${LOG_LEVEL:-debug}
@@ -120,6 +127,9 @@ services:
       context: .
       dockerfile: docker/api.Dockerfile
       target: runtime
+    # Fixed for the same reason as the agent's: it is the fallback identity
+    # used when the Agent cannot be reached at startup.
+    hostname: jothost-api
     environment:
       JOTHOST_ENV: development
       LOG_LEVEL: ${LOG_LEVEL:-debug}

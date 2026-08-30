@@ -16,6 +16,7 @@ import (
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/php"
+	"github.com/jothost/panel/agent/internal/pma"
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/ssl"
@@ -83,6 +84,10 @@ type Dependencies struct {
 	// reachable engine, means database management is reported as unsupported
 	// rather than failing one operation at a time.
 	Databases *database.Manager
+
+	// PHPMyAdmin installs and serves the database console. Nil where the host
+	// cannot run it, which handlers report as unsupported.
+	PHPMyAdmin *pma.Manager
 
 	// Files serves the file manager. Nil, or configured with no roots, means
 	// file management is unavailable rather than unrestricted.
@@ -152,6 +157,10 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationDatabaseUserDelete, r.handleDatabaseUserDelete)
 	r.mustRegister(protocol.OperationDatabaseUserPassword, r.handleDatabaseUserPassword)
 	r.mustRegister(protocol.OperationDatabaseUserGrant, r.handleDatabaseUserGrant)
+
+	r.mustRegister(protocol.OperationPHPMyAdminStatus, r.handlePHPMyAdminStatus)
+	r.mustRegister(protocol.OperationPHPMyAdminInstall, r.handlePHPMyAdminInstall)
+	r.mustRegister(protocol.OperationPHPMyAdminUninstall, r.handlePHPMyAdminUninstall)
 
 	r.mustRegister(protocol.OperationFileList, r.handleFileList)
 	r.mustRegister(protocol.OperationFileStat, r.handleFileStat)

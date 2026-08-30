@@ -75,6 +75,12 @@ const (
 	OperationDatabaseUserPassword OperationType = "database.user.password"
 	OperationDatabaseUserGrant    OperationType = "database.user.grant"
 
+	// phpMyAdmin is installed from the host's package manager and served on
+	// one name the operator chooses. It is never enabled by default.
+	OperationPHPMyAdminStatus    OperationType = "phpmyadmin.status"
+	OperationPHPMyAdminInstall   OperationType = "phpmyadmin.install"
+	OperationPHPMyAdminUninstall OperationType = "phpmyadmin.uninstall"
+
 	// File manager. Every one of these carries a caller-supplied path, so
 	// every handler resolves it through pathsec before touching the disk.
 	OperationFileList    OperationType = "file.list"
@@ -142,6 +148,9 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationDatabaseUserDelete:   {},
 	OperationDatabaseUserPassword: {},
 	OperationDatabaseUserGrant:    {},
+	OperationPHPMyAdminStatus:     {},
+	OperationPHPMyAdminInstall:    {},
+	OperationPHPMyAdminUninstall:  {},
 	OperationFileList:             {},
 	OperationFileStat:             {},
 	OperationFileRead:             {},

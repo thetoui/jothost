@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -182,6 +183,78 @@ func (i *Installer) Remove(ctx context.Context, version string, report func(int,
 	if !result.Succeeded() {
 		return fmt.Errorf("could not remove %s: %s", pkg,
 			strings.TrimSpace(firstNonEmpty(result.Stderr, result.Stdout)))
+	}
+	return nil
+}
+
+// InstallPackage installs a named package through the host's package manager.
+//
+// It exists so another part of the Agent — the phpMyAdmin installer — can use
+// the package-manager detection and the allowlisted runner already assembled
+// here, rather than duplicating both.
+//
+// The package name must come from a fixed table in the calling package. It is
+// still never interpreted by a shell: like every other execution in the Agent,
+// the manager is run with an argument vector.
+func (i *Installer) InstallPackage(ctx context.Context, pkg string, report func(int, string)) error {
+	if !i.Available() {
+		return ErrNoPackageManager
+	}
+	if err := validatePackageName(pkg); err != nil {
+		return err
+	}
+
+	args, err := i.installArgs(pkg)
+	if err != nil {
+		return err
+	}
+
+	result, err := i.runner.Run(ctx, managerCommand(i.manager), args...)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInstallFailed, err)
+	}
+	if !result.Succeeded() {
+		return fmt.Errorf("%w: %s", ErrInstallFailed,
+			strings.TrimSpace(firstNonEmpty(result.Stderr, result.Stdout)))
+	}
+	return nil
+}
+
+// RemovePackage takes a named package off the host.
+func (i *Installer) RemovePackage(ctx context.Context, pkg string, report func(int, string)) error {
+	if !i.Available() {
+		return ErrNoPackageManager
+	}
+	if err := validatePackageName(pkg); err != nil {
+		return err
+	}
+
+	args, err := i.removeArgs(pkg)
+	if err != nil {
+		return err
+	}
+
+	result, err := i.runner.Run(ctx, managerCommand(i.manager), args...)
+	if err != nil {
+		return fmt.Errorf("remove %s: %w", pkg, err)
+	}
+	if !result.Succeeded() {
+		return fmt.Errorf("could not remove %s: %s", pkg,
+			strings.TrimSpace(firstNonEmpty(result.Stderr, result.Stdout)))
+	}
+	return nil
+}
+
+// packageNamePattern is what a package name may look like.
+//
+// A second line of defence: the caller is meant to pass a constant, and this
+// makes a future caller that passes something else fail here rather than hand
+// an option-looking string to a package manager running as root.
+var packageNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]{0,63}$`)
+
+func validatePackageName(pkg string) error {
+	if !packageNamePattern.MatchString(pkg) {
+		return fmt.Errorf("%w: %q is not a valid package name", ErrInstallFailed, pkg)
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  consoleApi,
   databasesApi,
   type AddUserInput,
   type CreateDatabaseInput,
@@ -16,6 +17,7 @@ export const databaseKeys = {
   engines: () => [...databaseKeys.all, 'engines'] as const,
   detail: (id: string) => [...databaseKeys.all, 'detail', id] as const,
   users: () => [...databaseKeys.all, 'users'] as const,
+  console: () => [...databaseKeys.all, 'console'] as const,
 };
 
 /** useDatabases lists every managed database, newest first. */
@@ -155,5 +157,54 @@ export function useSetDatabasePassword() {
 export function useRevealDatabasePassword() {
   return useMutation({
     mutationFn: (userId: string) => databasesApi.revealPassword(userId),
+  });
+}
+
+/**
+ * useDatabaseConsole reports whether phpMyAdmin is installed and served.
+ *
+ * Polled while an install or removal is in flight, because both are jobs on
+ * the host and the page has no other way to learn they finished.
+ */
+export function useDatabaseConsole(watching = false) {
+  return useQuery({
+    queryKey: databaseKeys.console(),
+    queryFn: ({ signal }) => consoleApi.status(signal),
+    refetchInterval: watching ? 3_000 : false,
+  });
+}
+
+/** useInstallConsole queues installation of phpMyAdmin. */
+export function useInstallConsole() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (serverName: string) => consoleApi.install(serverName),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: databaseKeys.console() });
+    },
+  });
+}
+
+/** useUninstallConsole queues removal of phpMyAdmin. */
+export function useUninstallConsole() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => consoleApi.uninstall(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: databaseKeys.console() });
+    },
+  });
+}
+
+/** useAssignDatabase links a database to a website, or unlinks it. */
+export function useAssignDatabase() {
+  const invalidate = useInvalidate();
+
+  return useMutation({
+    mutationFn: ({ id, websiteId }: { id: string; websiteId: string }) =>
+      databasesApi.assign(id, websiteId),
+    onSuccess: (_result, input) => invalidate(input.id),
   });
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/operations"
 	"github.com/jothost/panel/agent/internal/php"
+	"github.com/jothost/panel/agent/internal/pma"
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/socket"
@@ -331,6 +332,20 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("database engine unavailable", "engine", engine.Engine, "detail", engine.Detail)
 	}
 
+	// phpMyAdmin is not installed here, only made installable. It stays absent
+	// until an operator asks for it, because a database console reachable by
+	// default is a database console someone else finds first.
+	phpMyAdmin := pma.NewManager(pma.Options{
+		Installer: phpInstaller,
+		FPM:       phpInstaller,
+		PHP:       phpDetector,
+		Pools:     phpPools,
+		Nginx:     nginxProvider,
+		Users:     sites.NewUserProvider(runner),
+		WebGroup:  provisioner.WebGroup(),
+		Log:       log,
+	})
+
 	jobRunner := jobs.NewRunner(jobs.Options{
 		MaxConcurrent: cfg.MaxConcurrentJobs,
 		MaxJobs:       cfg.MaxJobs,
@@ -352,6 +367,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		WebGroup:     provisioner.WebGroup(),
 		SSL:          sslManager,
 		Databases:    databaseManager,
+		PHPMyAdmin:   phpMyAdmin,
 		Files:        fileManager,
 	})
 

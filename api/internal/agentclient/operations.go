@@ -655,3 +655,24 @@ func (c *Client) DatabaseGrant(ctx context.Context, requestID, engine, username,
 	}
 	return c.call(ctx, requestID, protocol.OperationDatabaseUserGrant, payload, nil)
 }
+
+// PHPMyAdminStatus describes phpMyAdmin on the managed host.
+type PHPMyAdminStatus struct {
+	Installed  bool   `json:"installed"`
+	Served     bool   `json:"served"`
+	Webroot    string `json:"webroot,omitempty"`
+	ServerName string `json:"server_name,omitempty"`
+	URL        string `json:"url,omitempty"`
+	PHPVersion string `json:"php_version,omitempty"`
+	// CanInstall reports whether the host has what installation needs, so the
+	// panel can disable the control rather than offer one that fails halfway.
+	CanInstall bool   `json:"can_install"`
+	Detail     string `json:"detail,omitempty"`
+}
+
+// PHPMyAdmin reports whether the database console is installed and served.
+func (c *Client) PHPMyAdmin(ctx context.Context, requestID string) (PHPMyAdminStatus, error) {
+	var status PHPMyAdminStatus
+	err := c.call(ctx, requestID, protocol.OperationPHPMyAdminStatus, nil, &status)
+	return status, err
+}

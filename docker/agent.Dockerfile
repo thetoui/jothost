@@ -65,6 +65,21 @@ FROM alpine:3.21 AS runtime
 # the image rather than installed on demand because a firewall the panel can
 # only manage after a download is one that is missing exactly when it is needed.
 #
+# Apache is preinstalled here even though the panel installs it on demand, and
+# the two facts are not in conflict.
+#
+# On a real host, installing Apache when hybrid mode is switched on is right: a
+# machine serving everything from nginx should not carry a second web server it
+# never starts. In this image it is wrong, because the panel's *record* of the
+# mode lives in Postgres — which has a volume and survives everything — while
+# the package lives in this container's writable layer, which is discarded every
+# time the image is rebuilt. The two then disagree: the panel says "hybrid" and
+# the host has no Apache, and the first thing anybody notices is that creating a
+# website fails.
+#
+# The package list is the one agent/internal/operations/apache.go installs;
+# apache2-proxy is not optional, because PHP runs through mod_proxy_fcgi.
+#
 # OpenSSH is here because Phase 17 configures it, and configuring sshd is the
 # one thing in this panel that can lock an operator out of their own machine.
 # Every change is validated by asking sshd itself, and a validator that is not
@@ -89,6 +104,7 @@ RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       iptables ip6tables ufw \
       openrc busybox-openrc \
       openssh-server openssh-keygen \
+      apache2 apache2-proxy \
       php82-fpm php83-fpm php84-fpm \
       php84 \
       php82-opcache php83-opcache php84-opcache \

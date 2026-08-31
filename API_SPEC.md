@@ -931,14 +931,62 @@ DELETE /dns/records/:id
 # 18. Cron
 
 ```http
-GET /cron
-POST /cron
-GET /cron/:id
-PATCH /cron/:id
+GET    /cron
+POST   /cron
+GET    /cron/:id
+PATCH  /cron/:id
 DELETE /cron/:id
-POST /cron/:id/run
-GET /cron/:id/logs
+POST   /cron/:id/run
+GET    /cron/:id/logs
 ```
+
+**As implemented in Phase 10.** Everything here needs `cron.manage`, reads
+included: a job's command line describes how a site works, and sometimes carries
+a token in a URL.
+
+A job belongs to a website and runs as that website's own unprivileged account.
+**There is no field for a user**, and that is the design rather than an
+omission — see docs/PHASE10.md section 2.
+
+`POST /cron` and `PATCH /cron/:id` take:
+
+```text
+website_id   the site whose account the job runs as (create only)
+name         what the operator calls it
+job_type     php | url | command (create only; a type change is a new job)
+schedule     five fields, or @daily / @hourly / @weekly / @monthly / @yearly
+target       a script path, a URL, or a command line, depending on job_type
+enabled      whether the entry is written at all
+```
+
+For `php` and `url` the panel builds the command line itself — an interpreter it
+resolved plus a path inside the site's document root, or a bounded `curl` — so
+`target` decides *which* script or address, never which program. `command` is
+the free-form case. The rendered command is returned as `command` alongside the
+`target` the operator typed, because "what will actually run" is the question
+they have when a job does not do what they expected.
+
+Refused, with the reason: a schedule that is not five fields or a known
+shorthand, `@reboot` (no five-field equivalent, so the panel cannot say when it
+would next run), six fields (the seconds form, which would run a job sixty times
+more often than intended), any value containing a newline or `%` (a crontab is
+line-oriented and unquoted, so both are ways to write a second entry), a script
+path that is absolute or contains `..`, and a URL that is not http(s) or that
+carries characters a shell would read as syntax.
+
+The response carries `next_run_at`, computed from the schedule rather than
+stored — null for a disabled job, and null for a schedule that can never fire,
+which 31 February is.
+
+`POST /cron/:id/run` runs the job now, as its own account, and **holds the
+request open until it finishes**: pressing "run now" asks what happens, and a
+reply of "started" answers a different question. It returns the exit code,
+what the job printed, and how long it took, and records the outcome against the
+job.
+
+`GET /cron/:id/logs` returns the log *source* for the job — every run's output,
+scheduled and manual, goes to one file per job, which the Phase 11 log viewer
+serves at `GET /logs/cron.<job-id>` with its search, filtering and download.
 
 ---
 

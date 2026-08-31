@@ -65,14 +65,24 @@ FROM alpine:3.21 AS runtime
 # the image rather than installed on demand because a firewall the panel can
 # only manage after a download is one that is missing exactly when it is needed.
 #
+# busybox-openrc brings the init script for crond, which Alpine's base image has
+# the daemon for and no way to start. Phase 10 schedules jobs by writing crontab
+# entries, so a host where nothing read them would let the panel accept jobs that
+# never run — and the integration test proves a job fires by waiting for one.
+#
+# php84 is the command-line interpreter, as distinct from php84-fpm above. A web
+# server needs only FPM, which is why the CLI is a separate package on every
+# distribution; a scheduled PHP job runs the CLI, so this host needs both.
+#
 # OpenRC is this host's init system, and the one the panel's service manager
 # drives here. Alpine has no systemd — it is not a package that exists — so a
 # panel speaking only systemd could report what runs on an Alpine host and
 # change none of it.
 RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       iptables ip6tables ufw \
-      openrc \
+      openrc busybox-openrc \
       php82-fpm php83-fpm php84-fpm \
+      php84 \
       php82-opcache php83-opcache php84-opcache \
       php82-session php83-session php84-session \
       certbot \
@@ -95,6 +105,12 @@ RUN apk add --no-cache ca-certificates tzdata nginx shadow \
 # where to look — otherwise the service manager would start a second, empty
 # cluster beside the one the panel's databases are in.
 COPY docker/openrc/postgresql.conf /etc/conf.d/postgresql
+
+# crond writes to a file rather than to syslog, because this container runs no
+# syslog daemon — and because the panel's log viewer already looks for exactly
+# this path as its "cron" source. Without it, cron's own record of what it ran
+# would go nowhere.
+COPY docker/openrc/crond.conf /etc/conf.d/crond
 
 COPY --from=builder /out/jothost-agent /usr/local/bin/jothost-agent
 COPY docker/nginx/host.conf /etc/nginx/nginx.conf

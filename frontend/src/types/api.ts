@@ -394,6 +394,58 @@ export interface ServiceActionResult {
   state: string;
 }
 
+// ----------------------------------------------------------- scheduled jobs
+
+/** The kinds of job the panel offers. */
+export type CronJobType = 'php' | 'url' | 'command';
+
+export interface CronJob {
+  id: string;
+  server_id: string;
+  website_id: string;
+  name: string;
+  job_type: CronJobType;
+  /** A five-field expression; the @-shorthands are expanded before storage. */
+  schedule: string;
+  /** What the operator entered: a script path, a URL, or a command line. */
+  target: string;
+  /** What is actually written into the crontab. */
+  command: string;
+  enabled: boolean;
+
+  last_run_at: string | null;
+  last_status: 'success' | 'failed' | null;
+  last_exit_code: number | null;
+  last_duration_ms: number | null;
+
+  created_at: string;
+  updated_at: string;
+
+  website_domain?: string;
+  /** The account the job runs as. Shown so it is visible that it is not root. */
+  system_user?: string;
+  /** Computed from the schedule. Null when the schedule can never fire, and
+   *  for a disabled job. */
+  next_run_at: string | null;
+}
+
+export interface CronJobList {
+  jobs: CronJob[];
+  count: number;
+  types: CronJobType[];
+}
+
+/** What one manual run did. */
+export interface CronRunResult {
+  job_id: string;
+  exit_code: number;
+  output: string;
+  truncated: boolean;
+  duration_ms: number;
+  timed_out: boolean;
+  status: 'success' | 'failed';
+}
+
 // ---------------------------------------------------------------------- logs
 
 /** The severity vocabulary the panel filters on, across every log format. */

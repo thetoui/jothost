@@ -35,6 +35,13 @@ func CommandFor(version string) string { return CommandPrefix + version }
 // Version describes one PHP version present on the host.
 type Version struct {
 	Version string `json:"version"`
+	// CLIPath is the command-line interpreter, e.g. /usr/bin/php83. Empty when
+	// the host has the FPM package but not the CLI one, which is a normal
+	// arrangement — a web server needs FPM and nothing else. It matters here
+	// because a scheduled PHP job runs the CLI, and a panel that offered to
+	// schedule one on a host without it would be scheduling a job that fails
+	// every night.
+	CLIPath string `json:"cli_path"`
 	// BinaryPath is the FPM binary, e.g. /usr/sbin/php-fpm83.
 	BinaryPath string `json:"binary_path"`
 	// FPMService is the service unit that runs it, when there is one.
@@ -56,6 +63,7 @@ type Version struct {
 type layout struct {
 	name       string
 	binary     func(version string) string
+	cli        func(version string) string
 	poolDir    func(version string) string
 	configPath func(version string) string
 	service    func(version string) string
@@ -69,6 +77,7 @@ var layouts = []layout{
 		// Alpine: php83-fpm, /usr/sbin/php-fpm83, /etc/php83/php-fpm.d.
 		name:       "alpine",
 		binary:     func(v string) string { return "/usr/sbin/php-fpm" + validate.PHPVersionCompact(v) },
+		cli:        func(v string) string { return "/usr/bin/php" + validate.PHPVersionCompact(v) },
 		poolDir:    func(v string) string { return "/etc/php" + validate.PHPVersionCompact(v) + "/php-fpm.d" },
 		configPath: func(v string) string { return "/etc/php" + validate.PHPVersionCompact(v) + "/php.ini" },
 		service:    func(v string) string { return "php-fpm" + validate.PHPVersionCompact(v) },
@@ -79,6 +88,7 @@ var layouts = []layout{
 		// /usr/sbin/php-fpm8.3, /etc/php/8.3/fpm/pool.d.
 		name:       "debian",
 		binary:     func(v string) string { return "/usr/sbin/php-fpm" + v },
+		cli:        func(v string) string { return "/usr/bin/php" + v },
 		poolDir:    func(v string) string { return "/etc/php/" + v + "/fpm/pool.d" },
 		configPath: func(v string) string { return "/etc/php/" + v + "/fpm/php.ini" },
 		service:    func(v string) string { return "php" + v + "-fpm" },
@@ -116,8 +126,16 @@ func Probe(root string) []Version {
 			if !fileExists(filepath.Join(root, binary)) {
 				continue
 			}
+			// The CLI is reported only where it exists: an empty path is how a
+			// caller learns this version cannot run a scheduled script.
+			cli := scheme.cli(version)
+			if !fileExists(filepath.Join(root, cli)) {
+				cli = ""
+			}
+
 			found = append(found, Version{
 				Version:    version,
+				CLIPath:    cli,
 				BinaryPath: binary,
 				FPMService: scheme.service(version),
 				PoolDir:    scheme.poolDir(version),
@@ -259,6 +277,7 @@ func FormatVersions(versions []Version) []map[string]any {
 			"version":      version.Version,
 			"full_version": version.Full,
 			"binary_path":  version.BinaryPath,
+			"cli_path":     version.CLIPath,
 			"fpm_service":  version.FPMService,
 			"pool_dir":     version.PoolDir,
 			"config_path":  version.ConfigPath,

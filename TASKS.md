@@ -43,27 +43,27 @@ Done, in the order they were built:
 12  Service Manager
 16  Firewall
 11  Logs
+10  Cron
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  10   Cron                   — needs 12 (crond) and 11 (its log view)
- 2.  17   SSH Security           — needs 12 (sshd reload)
- 3.  18   Fail2Ban               — reads logs (11), writes firewall rules (16)
- 4.  7.1  FTP Manager            — passive ports need 16; transfers need 11
- 5.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
- 6.  21   System Updates         — scheduled updates need 10
- 7.  19   Monitoring             — service monitoring needs 12
- 8.  14   Backup                 — scheduling needs 10
- 9.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
-10.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
-11.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
-12.  27   Git & Webhook Actions  — deployment logs need 11
-13.  22   Multi-Tenant           — quota dimensions must exist first, mail included
-14.  23   Production Installer   — installs everything, so everything must exist
-15.  24   Production Hardening   — tests the finished system
-16.  25   Release                — last by definition
+ 1.  17   SSH Security           — needs 12 (sshd reload)
+ 2.  18   Fail2Ban               — reads logs (11), writes firewall rules (16)
+ 3.  7.1  FTP Manager            — passive ports need 16; transfers need 11
+ 4.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
+ 5.  21   System Updates         — scheduled updates need 10
+ 6.  19   Monitoring             — service monitoring needs 12
+ 7.  14   Backup                 — scheduling needs 10
+ 8.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+ 9.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+10.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+11.  27   Git & Webhook Actions  — deployment logs need 11
+12.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+13.  23   Production Installer   — installs everything, so everything must exist
+14.  24   Production Hardening   — tests the finished system
+15.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -643,20 +643,46 @@ PrivateTmp, a bounded restart limit — which is the reason to prefer it.
 
 # PHASE 10 — Cron
 
+**Status: COMPLETE** — see [docs/PHASE10.md](docs/PHASE10.md) for scope,
+decisions, and known limitations.
+
 **Build order: 4 of 17.** Depends on 12 (the cron daemon is a service) and 11
 (a cron job's output is a log this phase registers as a source).
 **Blocks** 14 (backup scheduling) and 21 (scheduled updates).
 
-- [ ] Cron model
-- [ ] Cron provider
-- [ ] Create
-- [ ] Edit
-- [ ] Delete
-- [ ] Enable
-- [ ] Disable
-- [ ] Run now
-- [ ] Logs
-- [ ] UI
+- [x] Cron model — migration 0012, implementing DATABASE.md table 21
+- [x] Cron provider — the Agent writes crontab entries; crond runs them
+- [x] Create
+- [x] Edit
+- [x] Delete
+- [x] Enable
+- [x] Disable
+- [x] Run now
+- [x] Logs — a file per job, contributed to Phase 11's catalogue as a source
+- [x] UI
+
+Additionally required by the above:
+
+- [x] The panel writes crontab entries and does not run them: the command is
+  data in a file, and crond runs it as the website's own account. That is what
+  reconciles this phase with CLAUDE.md section 4
+- [x] Every value that reaches a crontab line refused if it contains a newline
+  or a `%` — a crontab is line-oriented and unquoted, so a newline is a second
+  entry and `%` is a newline in disguise
+- [x] Three job types, two of which the panel builds itself from a checked
+  fragment, so the common cases carry no free-form command at all
+- [x] No field for a user anywhere: a job belongs to a website and runs as its
+  account, and an account resolving to uid 0 is refused
+- [x] A managed block inside a shared file, preserving whatever the customer
+  wrote around it, with no environment assignments that would change their
+  entries
+- [x] Crontabs written root-owned: BusyBox crond ignores anything else, and
+  ignores it silently
+- [x] Deleting a website removes its crontab and its jobs' logs — the rows
+  cascade, the file on the host does not
+- [x] A next-run calculation, including cron's day-of-month/day-of-week **or**
+  rule, so a schedule that means something other than what was intended is
+  caught before the job runs
 
 ---
 

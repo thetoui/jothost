@@ -147,6 +147,15 @@ func (r *Registry) handleWebsiteDelete(ctx context.Context, req protocol.Request
 	// all the others.
 	poolsRemoved := r.removeSitePools(ctx, payload.SystemUser)
 
+	// The site's scheduled jobs go too, while its account still exists.
+	//
+	// The rows in the panel's database go with the website through a foreign
+	// key, but the crontab is a file on the host, and a file nothing deletes is
+	// a set of jobs that keeps running as an account nobody owns — until the
+	// account is removed a moment later, at which point cron starts failing
+	// every minute against a user that is gone.
+	cronRemoved := r.removeSiteJobs(ctx, payload.SystemUser)
+
 	// The certificate goes with the site too. A private key left behind is a
 	// key nobody owns, for a name nothing serves, and it would be picked up
 	// again by a later site that happened to reuse the domain.
@@ -169,7 +178,26 @@ func (r *Registry) handleWebsiteDelete(ctx context.Context, req protocol.Request
 	}
 	data["pools_removed"] = poolsRemoved
 	data["certificate_removed"] = certificateRemoved
+	data["cron_removed"] = cronRemoved
 	return data, nil
+}
+
+// removeSiteJobs drops an account's scheduled jobs from the host.
+//
+// Logged rather than fatal, for the same reason as the pools and the
+// certificate: refusing to delete a website because a crontab would not unlink
+// leaves the operator with a site they cannot get rid of.
+func (r *Registry) removeSiteJobs(ctx context.Context, systemUser string) bool {
+	if systemUser == "" || r.deps.Cron == nil || !r.deps.Cron.Available() {
+		return false
+	}
+
+	if _, err := r.deps.Cron.Remove(ctx, systemUser); err != nil {
+		r.log.Warn("the scheduled jobs could not be removed while deleting a website",
+			"account", systemUser, "error", err.Error())
+		return false
+	}
+	return true
 }
 
 // removeSiteCertificate deletes a site's certificate material.

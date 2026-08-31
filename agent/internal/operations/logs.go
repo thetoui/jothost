@@ -63,6 +63,19 @@ func (r *Registry) logSources(ctx context.Context) []logs.Source {
 	}
 
 	extra = append(extra, logs.NodeSources()...)
+
+	// Each scheduled job's output is a log source too. The names come from the
+	// index the cron provider writes beside the files, because a picker listing
+	// identifiers is a picker nobody can use.
+	if r.deps.Cron != nil {
+		names, err := r.deps.Cron.Names()
+		if err != nil {
+			r.log.Warn("the scheduled job names could not be read for the log catalogue",
+				"error", err.Error())
+		}
+		extra = append(extra, logs.CronSources(names)...)
+	}
+
 	return extra
 }
 

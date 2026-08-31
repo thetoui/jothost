@@ -20,6 +20,7 @@ import (
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/command"
 	"github.com/jothost/panel/agent/internal/config"
+	"github.com/jothost/panel/agent/internal/cron"
 	"github.com/jothost/panel/agent/internal/database"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
@@ -179,6 +180,25 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		// as useradd and adduser, and for the same reason: distributions
 		// disagree, and the Agent must not resolve a path from a request.
 		{Name: services.CommandRCService, Path: cfg.RCServicePath, Timeout: 30 * time.Second},
+		// The shell a scheduled job's "run now" uses, and the only entry here
+		// whose argument is a command line rather than a parameter.
+		//
+		// It is a dedicated entry rather than a general "sh" the rest of the
+		// Agent could reach for, so that every use of it is this one function
+		// and shows up in a grep for the name. What makes it acceptable at all
+		// is written out in agent/internal/cron/run.go: the caller could
+		// schedule the same command a minute from now, the run drops to the
+		// website's own account and refuses to run as root, and it is bounded
+		// and audited.
+		//
+		// The timeout is generous because a real job — a database dump, a
+		// sitemap rebuild — takes minutes, and a manual run that gave up before
+		// the scheduled one would tell an operator nothing useful.
+		{
+			Name: cron.CommandShell, Path: cfg.ShellPath,
+			Timeout:    10 * time.Minute,
+			AllowedEnv: []string{"HOME", "USER", "LOGNAME"},
+		},
 		{Name: services.CommandRCUpdate, Path: cfg.RCUpdatePath, Timeout: 10 * time.Second},
 		{Name: nginx.CommandName, Path: cfg.NginxPath, Timeout: 15 * time.Second},
 		// Both Apache names, allowlisted whether or not the binary is there:
@@ -369,6 +389,20 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 			"log_root", cfg.LogRoot, "site_root", cfg.SiteRoot)
 	}
 
+	// Scheduled jobs. The provider writes crontab entries; the host's cron
+	// daemon is what runs them.
+	cronProvider := cron.NewProvider(cron.Options{
+		Runner:   runner,
+		Users:    sites.NewUserProvider(runner),
+		Log:      log,
+		SpoolDir: cfg.CronSpoolDir,
+		LogDir:   cfg.CronLogDir,
+	})
+	if !cronProvider.Available() {
+		log.Warn("scheduling is unavailable: this host has no cron spool directory",
+			"spool_dir", cfg.CronSpoolDir)
+	}
+
 	// Database providers probe their servers here, at startup, so agent.info
 	// can report what this host runs rather than each operation discovering it
 	// separately.
@@ -483,6 +517,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Node:         nodeManager,
 		Files:        fileManager,
 		Logs:         logProvider,
+		Cron:         cronProvider,
 	})
 
 	return registry, jobRunner, nil

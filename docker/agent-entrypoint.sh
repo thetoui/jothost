@@ -242,4 +242,25 @@ start_postgres() {
 start_mariadb
 start_postgres
 
+# ---------------------------------------------------------------------- cron
+#
+# The daemon that runs what the panel schedules. Started through OpenRC like
+# everything else here, so the service manager can stop and start it and the
+# panel's page tells the truth about it.
+#
+# The spool directory is created if it is missing: the Agent writes crontab
+# files into it, and a missing directory is how a panel accepts jobs it can
+# never write. /etc/crontabs is Alpine's, and /var/spool/cron/crontabs — the
+# path every other distribution uses, and the one the Agent is configured with —
+# is a symlink to it in this image.
+mkdir -p /etc/crontabs
+if command -v crond >/dev/null 2>&1; then
+  start_service crond || {
+    crond -c /etc/crontabs -L /var/log/crond.log
+    echo "agent-entrypoint: crond started directly"
+  }
+else
+  echo "agent-entrypoint: no cron daemon; scheduled jobs will not run" >&2
+fi
+
 exec /usr/local/bin/jothost-agent "$@"

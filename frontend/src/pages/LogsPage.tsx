@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Download,
   FileCode2,
@@ -44,7 +45,13 @@ export function LogsPage() {
   const { data, isPending, isError, error } = useLogSources();
   const sources = useMemo(() => data?.sources ?? [], [data]);
 
-  const [selected, setSelected] = useState('');
+  // A log can be linked to: the scheduled jobs page sends an operator here for
+  // one job's output, and landing on whichever log happened to be first would
+  // make that link useless.
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('source') ?? '';
+
+  const [selected, setSelected] = useState(requested);
   const [search, setSearch] = useState('');
   const [level, setLevel] = useState('');
   const [limit, setLimit] = useState(200);
@@ -57,6 +64,13 @@ export function LogsPage() {
     const first = sources.find((source) => source.present);
     if (first) setSelected(first.key);
   }, [sources, selected]);
+
+  // Changing the selection updates the address, so the page can be shared or
+  // reloaded and show the same log.
+  function choose(key: string) {
+    setSelected(key);
+    setParams(key === '' ? {} : { source: key }, { replace: true });
+  }
 
   const source = sources.find((entry) => entry.key === selected);
 
@@ -106,7 +120,7 @@ export function LogsPage() {
                         key={entry.key}
                         source={entry}
                         selected={entry.key === selected}
-                        onSelect={() => setSelected(entry.key)}
+                        onSelect={() => choose(entry.key)}
                       />
                     ))}
                   </div>

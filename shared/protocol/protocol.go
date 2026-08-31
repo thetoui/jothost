@@ -131,6 +131,16 @@ const (
 	OperationFileExtract OperationType = "file.extract"
 	OperationFileSearch  OperationType = "file.search"
 
+	// Scheduled jobs. The Agent writes crontab entries; the host's cron daemon
+	// runs them, as the website's own account. cron.run is the one operation
+	// that executes a job itself, and agent/internal/cron/run.go says why that
+	// is acceptable and what bounds it.
+	OperationCronStatus    OperationType = "cron.status"
+	OperationCronApply     OperationType = "cron.apply"
+	OperationCronRemove    OperationType = "cron.remove"
+	OperationCronRun       OperationType = "cron.run"
+	OperationCronLogRemove OperationType = "cron.log.remove"
+
 	// Logs. Every one of these names a *catalogue key*, never a path: see
 	// agent/internal/logs. A log reader that took a path would be a file
 	// reader with no restrictions at all.
@@ -224,6 +234,11 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationFileArchive:          {},
 	OperationFileExtract:          {},
 	OperationFileSearch:           {},
+	OperationCronStatus:           {},
+	OperationCronApply:            {},
+	OperationCronRemove:           {},
+	OperationCronRun:              {},
+	OperationCronLogRemove:        {},
 	OperationLogList:              {},
 	OperationLogTail:              {},
 	OperationLogRead:              {},

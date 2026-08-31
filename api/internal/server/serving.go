@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	cronpkg "github.com/jothost/panel/api/internal/cron"
 	nodepkg "github.com/jothost/panel/api/internal/node"
 	phppkg "github.com/jothost/panel/api/internal/php"
 	sslpkg "github.com/jothost/panel/api/internal/ssl"
@@ -34,6 +35,35 @@ func (p phpPoolSource) SocketFor(ctx context.Context, websiteID string) (string,
 		return "", err
 	}
 	return pool.SocketPath, nil
+}
+
+// cronWebsites answers what the cron package needs to know about a site: the
+// account a job runs as, the directory a script path is resolved inside, and
+// the PHP version that account's scripts run under.
+//
+// Three fields rather than the whole website record, because a scheduled job
+// has no business with the rest of it — and because the narrow interface is
+// what lets the two packages change without each other.
+type cronWebsites struct{ repo *websites.Repository }
+
+func (c cronWebsites) LookupForCron(ctx context.Context, id string) (cronpkg.WebsiteRef, error) {
+	site, err := c.repo.Get(ctx, id)
+	if err != nil {
+		return cronpkg.WebsiteRef{}, err
+	}
+
+	version := ""
+	if site.PHPVersion != nil {
+		version = *site.PHPVersion
+	}
+	return cronpkg.WebsiteRef{
+		ID:           site.ID,
+		ServerID:     site.ServerID,
+		Domain:       site.PrimaryDomain,
+		SystemUser:   site.SystemUser,
+		DocumentRoot: site.DocumentRoot,
+		PHPVersion:   version,
+	}, nil
 }
 
 // certificateSource answers which certificate a site serves HTTPS with.

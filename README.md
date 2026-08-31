@@ -3,13 +3,13 @@
 A self-hosted Linux hosting control panel: websites, PHP and Node.js applications,
 databases, SSL, files, cron, backups, monitoring, and security from one web interface.
 
-**Status:** Phases 0–9 complete, plus 4.1 (subdomains), 4.5 (the Apache hybrid
-arrangement), 11 (logs), 12 (the service manager) and 16 (the firewall):
-foundation, authentication, Host Agent, dashboard, websites, subdomains, the
-nginx + Apache engine, PHP, SSL, files, the code editor, databases, Node.js
-applications, host services, the packet filter, and the log viewer.
+**Status:** Phases 0–12 complete, plus 4.1 (subdomains), 4.5
+(the Apache hybrid arrangement) and 16 (the firewall): foundation,
+authentication, Host Agent, dashboard, websites, subdomains, the nginx + Apache
+engine, PHP, SSL, files, the code editor, databases, Node.js applications,
+scheduled jobs, the log viewer, host services, and the packet filter.
 
-Next is Phase 10 (cron). Phases are built in dependency order rather
+Next is Phase 17 (SSH security). Phases are built in dependency order rather
 than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md for the
 sequence and why each phase sits where it does. The per-phase notes in
 [docs/](docs/) say what each one does and does not include.
@@ -177,6 +177,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE7.5.md](docs/PHASE7.5.md) | Phase 7.5 scope, decisions, and known limitations |
 | [docs/PHASE8.md](docs/PHASE8.md) | Phase 8 scope, decisions, and known limitations |
 | [docs/PHASE9.md](docs/PHASE9.md) | Phase 9 scope, decisions, and known limitations |
+| [docs/PHASE10.md](docs/PHASE10.md) | Phase 10 scope, decisions, and known limitations |
 | [docs/PHASE11.md](docs/PHASE11.md) | Phase 11 scope, decisions, and known limitations |
 | [docs/PHASE12.md](docs/PHASE12.md) | Phase 12 scope, decisions, and known limitations |
 | [docs/PHASE16.md](docs/PHASE16.md) | Phase 16 scope, decisions, and known limitations |

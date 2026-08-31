@@ -16,6 +16,7 @@ import (
 	"github.com/jothost/panel/api/internal/audit"
 	"github.com/jothost/panel/api/internal/auth"
 	"github.com/jothost/panel/api/internal/config"
+	cronpkg "github.com/jothost/panel/api/internal/cron"
 	"github.com/jothost/panel/api/internal/dashboard"
 	databasespkg "github.com/jothost/panel/api/internal/databases"
 	filespkg "github.com/jothost/panel/api/internal/files"
@@ -60,6 +61,7 @@ type Server struct {
 	webserver *webserverpkg.Handler
 	services  *servicespkg.Handler
 	logs      *logspkg.Handler
+	cron      *cronpkg.Handler
 	firewall  *firewallpkg.Handler
 	jobs      *jobs.Handler
 	php       *phppkg.Handler
@@ -298,6 +300,21 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// Scheduled jobs. The rows here are intent; the crontab files on the host
+	// are what runs, and after every change the Agent is handed the complete
+	// set for the affected account so the two cannot drift apart.
+	s.cron = cronpkg.NewHandler(cronpkg.HandlerOptions{
+		Service: cronpkg.NewService(cronpkg.ServiceOptions{
+			Repo:     cronpkg.NewRepository(opts.Pool),
+			Websites: cronWebsites{repo: websiteRepo},
+			Agent:    agent,
+			Audit:    auditRecorder,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		}),
+		Auth: authService,
+	})
+
 	// The host's own logs. Read-only, and read through the Agent: a request
 	// names a source key from the Agent's catalogue, never a path, which is
 	// what keeps this from being a file reader with a friendlier name.
@@ -435,6 +452,7 @@ func (s *Server) routes() http.Handler {
 	s.webserver.Routes(mux)
 	s.services.Routes(mux)
 	s.logs.Routes(mux)
+	s.cron.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)

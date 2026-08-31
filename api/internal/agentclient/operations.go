@@ -390,6 +390,10 @@ type PHPVersion struct {
 	Version    string `json:"version"`
 	Full       string `json:"full_version"`
 	BinaryPath string `json:"binary_path"`
+	// CLIPath is the command-line interpreter. Empty where the host has FPM
+	// but not the CLI package, which is a normal arrangement for a web server
+	// and the reason a scheduled PHP job has to check before it is created.
+	CLIPath    string `json:"cli_path"`
 	FPMService string `json:"fpm_service"`
 	PoolDir    string `json:"pool_dir"`
 	ConfigPath string `json:"config_path"`

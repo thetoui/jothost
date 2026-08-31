@@ -242,6 +242,58 @@ func NodeSources() []Source {
 	return sources
 }
 
+// CronLogRoot is where the Agent collects each scheduled job's output.
+const CronLogRoot = "/var/log/jothost/cron"
+
+// CronSources contributes one source per scheduled job.
+//
+// names maps a job's identifier to the name an operator gave it, because a
+// picker listing "8f3c2b1a-4d5e-…" is a picker nobody can use. A job with no
+// name in the map is one whose record the panel no longer has: its output is
+// still shown, under its identifier, rather than hidden — a log with no job is
+// how you find out a job was deleted while it was still failing.
+//
+// This is the extension point Phase 11 was built around: a later phase
+// contributes sources rather than growing its own viewer.
+func CronSources(names map[string]string) []Source {
+	entries, err := os.ReadDir(CronLogRoot)
+	if err != nil {
+		return nil
+	}
+
+	sources := make([]Source, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		file := entry.Name()
+		id := strings.TrimSuffix(file, ".log")
+		if id == file {
+			continue
+		}
+		// The identifier became a filename because it passed this check when
+		// the job was written. It is checked again on the way out, because what
+		// is on disk now is not necessarily what this Agent put there.
+		if validate.UUID(id) != nil {
+			continue
+		}
+
+		label := names[id]
+		if label == "" {
+			label = "Job " + id[:8]
+		}
+		sources = append(sources, Source{
+			Key:     "cron." + id,
+			Label:   label,
+			Summary: "What this scheduled job printed, on each run.",
+			Group:   GroupSystem,
+			Format:  FormatPlain,
+			Paths:   []string{filepath.Join(CronLogRoot, file)},
+		})
+	}
+	return sources
+}
+
 // Lookup finds one source by key.
 func Lookup(key string, extra []Source) (Source, error) {
 	if !validKey(key) {

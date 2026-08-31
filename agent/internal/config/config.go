@@ -86,6 +86,14 @@ type Config struct {
 	ApacheConfigDir string
 	ApacheMainConf  string
 	SiteRoot        string
+	// ShellPath is the shell a scheduled job's "run now" uses. It is cron's own
+	// shell, because a manual run that behaved differently from the scheduled
+	// one would be worse than no manual run at all.
+	ShellPath string
+	// CronSpoolDir is where per-user crontabs live, and CronLogDir is where
+	// each job's output is collected.
+	CronSpoolDir string
+	CronLogDir   string
 	// LogRoot is where the host's own logs live. It bounds what the log viewer
 	// can resolve to, alongside the site root: the catalogue decides which
 	// files are offered, and these decide where those files may actually be.
@@ -159,6 +167,9 @@ func Load() (Config, error) {
 		ApacheMainConf:  getString("AGENT_APACHE_MAIN_CONF", "/etc/apache2/httpd.conf"),
 		SiteRoot:        getString("AGENT_SITE_ROOT", "/var/www"),
 		LogRoot:         getString("AGENT_LOG_ROOT", "/var/log"),
+		ShellPath:       getString("AGENT_SHELL_PATH", "/bin/sh"),
+		CronSpoolDir:    getString("AGENT_CRON_SPOOL_DIR", "/var/spool/cron/crontabs"),
+		CronLogDir:      getString("AGENT_CRON_LOG_DIR", "/var/log/jothost/cron"),
 		UseraddPath:     getString("AGENT_USERADD_PATH", "/usr/sbin/useradd"),
 		AdduserPath:     getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
 		UserdelPath:     getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
@@ -198,6 +209,9 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_APACHE_MAIN_CONF", cfg.ApacheMainConf)...)
 	problems = append(problems, validateAbsolute("AGENT_SITE_ROOT", cfg.SiteRoot)...)
 	problems = append(problems, validateAbsolute("AGENT_LOG_ROOT", cfg.LogRoot)...)
+	problems = append(problems, validateAbsolute("AGENT_SHELL_PATH", cfg.ShellPath)...)
+	problems = append(problems, validateAbsolute("AGENT_CRON_SPOOL_DIR", cfg.CronSpoolDir)...)
+	problems = append(problems, validateAbsolute("AGENT_CRON_LOG_DIR", cfg.CronLogDir)...)
 	problems = append(problems, validateAbsolute("AGENT_USERADD_PATH", cfg.UseraddPath)...)
 	problems = append(problems, validateAbsolute("AGENT_ADDUSER_PATH", cfg.AdduserPath)...)
 	problems = append(problems, validateAbsolute("AGENT_MYSQL_PATH", cfg.MySQLPath)...)

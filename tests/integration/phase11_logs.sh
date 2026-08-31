@@ -170,12 +170,19 @@ fi
 
 # A catalogued log this host does not have is still listed. "nginx has recorded
 # no errors" and "this panel does not offer that log" are different answers.
-system_entry="$(entry "$listing" system)"
-if [ -z "$system_entry" ]; then
-  fail 'a log this host does not have is still listed'
+#
+# Which log is absent is not hard-coded: whether this host has a syslog or an
+# Apache depends on what other phases installed, and a test that named one would
+# start failing the day something created it — which is exactly what happened
+# when Phase 10 added the package that brings a syslog with it.
+absent_key="$(printf '%s' "$listing" | tr '{' '\n' | grep -F '"present":false' |
+  sed -n 's/.*"key":"\([^"]*\)".*/\1/p' | head -n 1)"
+if [ -z "$absent_key" ]; then
+  log '  ...skipped: this host has every log in the catalogue'
 else
-  pass 'a log this host does not have is still listed'
-  contains 'and is marked absent rather than hidden' "$system_entry" '"present":false'
+  pass "a log this host does not have is still listed ($absent_key)"
+  contains 'and is marked absent rather than hidden' \
+    "$(entry "$listing" "$absent_key")" '"present":false'
 fi
 
 # --- 3. reading ------------------------------------------------------------
@@ -276,8 +283,10 @@ contains 'as an opaque byte stream' "$headers" 'application/octet-stream'
 contains 'with sniffing disabled' "$headers" 'nosniff'
 contains 'and is not cached anywhere' "$headers" 'no-store'
 
-expect_status 'downloading a log this host does not have is a 404' 404 \
-  "$(api_status /api/v1/logs/system/download)"
+if [ -n "$absent_key" ]; then
+  expect_status 'downloading a log this host does not have is a 404' 404 \
+    "$(api_status "/api/v1/logs/$absent_key/download")"
+fi
 
 # --- 6. the spec's URLs ----------------------------------------------------
 

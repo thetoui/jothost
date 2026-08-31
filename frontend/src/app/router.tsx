@@ -11,6 +11,7 @@ import { NodePage } from '@/pages/NodePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PHPPage } from '@/pages/PHPPage';
 import { FirewallPage } from '@/pages/FirewallPage';
+import { CronPage } from '@/pages/CronPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { ServicesPage } from '@/pages/ServicesPage';
 import { WebserverPage } from '@/pages/WebserverPage';
@@ -80,6 +81,7 @@ export const router = createBrowserRouter(
             { path: 'webserver', element: <WebserverPage /> },
             { path: 'services', element: <ServicesPage /> },
             { path: 'logs', element: <LogsPage /> },
+            { path: 'cron', element: <CronPage /> },
             { path: 'firewall', element: <FirewallPage /> },
             { path: 'databases', element: <DatabasesPage /> },
             { path: 'node', element: <NodePage /> },

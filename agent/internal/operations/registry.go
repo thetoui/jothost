@@ -12,6 +12,7 @@ import (
 
 	"github.com/jothost/panel/agent/internal/apache"
 	"github.com/jothost/panel/agent/internal/collectors"
+	"github.com/jothost/panel/agent/internal/cron"
 	"github.com/jothost/panel/agent/internal/database"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
@@ -106,6 +107,11 @@ type Dependencies struct {
 	// Files serves the file manager. Nil, or configured with no roots, means
 	// file management is unavailable rather than unrestricted.
 	Files *files.Manager
+
+	// Cron writes the host's crontabs. Nil, or a host with no spool directory,
+	// means nothing can be scheduled — which the panel reports rather than
+	// accepting jobs that would never run.
+	Cron *cron.Provider
 
 	// Logs reads the host's log files. Nil, or configured with no roots, means
 	// log reading is unavailable rather than unrestricted — a path check that
@@ -214,6 +220,12 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationFileArchive, r.handleFileArchive)
 	r.mustRegister(protocol.OperationFileExtract, r.handleFileExtract)
 	r.mustRegister(protocol.OperationFileSearch, r.handleFileSearch)
+
+	r.mustRegister(protocol.OperationCronStatus, r.handleCronStatus)
+	r.mustRegister(protocol.OperationCronApply, r.handleCronApply)
+	r.mustRegister(protocol.OperationCronRemove, r.handleCronRemove)
+	r.mustRegister(protocol.OperationCronRun, r.handleCronRun)
+	r.mustRegister(protocol.OperationCronLogRemove, r.handleCronLogRemove)
 
 	r.mustRegister(protocol.OperationLogList, r.handleLogList)
 	r.mustRegister(protocol.OperationLogTail, r.handleLogTail)

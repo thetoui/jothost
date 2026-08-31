@@ -394,6 +394,71 @@ export interface ServiceActionResult {
   state: string;
 }
 
+// -------------------------------------------------------------- fail2ban
+
+export interface Fail2BanJail {
+  name: string;
+  label: string;
+  summary: string;
+  /** False for a jail somebody configured by hand: listed because it is banning
+   *  people, and left alone. */
+  managed: boolean;
+  enabled: boolean;
+
+  max_retry: number;
+  find_time: number;
+  ban_time: number;
+  currently_banned: number;
+  total_banned: number;
+  currently_failed: number;
+  total_failed: number;
+
+  log_paths: string[];
+  banned: string[];
+  /** False where this host has none of the logs the jail watches. */
+  available: boolean;
+  reason: string;
+}
+
+export interface Fail2BanStatus {
+  available: boolean;
+  running: boolean;
+  can_install: boolean;
+  version: string;
+  reason: string;
+  jails: Fail2BanJail[];
+  /** Addresses no jail may ban. Loopback is always in it. */
+  ignored: string[];
+  drop_in_path: string;
+  banned: number;
+}
+
+export interface Fail2BanBanned {
+  address: string;
+  jail: string;
+}
+
+export interface Fail2BanBannedList {
+  banned: Fail2BanBanned[];
+  count: number;
+}
+
+/** A change to one jail. An omitted field is left alone. */
+export interface Fail2BanChange {
+  enabled?: boolean;
+  max_retry?: number;
+  find_time?: number;
+  ban_time?: number;
+}
+
+export interface Fail2BanApplyResult {
+  jail: string;
+  enabled: boolean;
+  policy: { max_retry: number; find_time: number; ban_time: number };
+  backup: string;
+  reloaded: boolean;
+}
+
 // -------------------------------------------------------------------- ssh
 
 export interface SSHConfig {

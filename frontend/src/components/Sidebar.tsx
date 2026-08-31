@@ -17,6 +17,7 @@ import {
   ScrollText,
   ServerCog,
   Shield,
+  ShieldBan,
   ShieldCheck,
   UserCog,
 } from 'lucide-react';
@@ -74,6 +75,7 @@ const navGroups: NavGroup[] = [
       { label: 'Logs', to: '/logs', icon: ScrollText, enabled: true },
       { label: 'Firewall', to: '/firewall', icon: Shield, enabled: true },
       { label: 'SSH', to: '/ssh', icon: KeyRound, enabled: true },
+      { label: 'Intrusion prevention', to: '/fail2ban', icon: ShieldBan, enabled: true },
       { label: 'Server', to: '/server', icon: Server, enabled: false },
       { label: 'Monitoring', to: '/monitoring', icon: Activity, enabled: false },
       { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: false },

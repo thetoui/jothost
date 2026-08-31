@@ -1297,13 +1297,70 @@ parameter because the same key may be authorised for more than one.
 # 27. Fail2Ban
 
 ```http
-GET /security/fail2ban
-POST /security/fail2ban/enable
-POST /security/fail2ban/disable
-GET /security/fail2ban/jails
-GET /security/fail2ban/banned
-POST /security/fail2ban/unban
+GET    /security/fail2ban
+POST   /security/fail2ban/install
+GET    /security/fail2ban/jails
+PATCH  /security/fail2ban/jails/:jail
+PUT    /security/fail2ban/ignored
+GET    /security/fail2ban/banned
+POST   /security/fail2ban/ban
+POST   /security/fail2ban/unban
 ```
+
+**As implemented in Phase 18.** Reading needs `server.view`; every change needs
+`firewall.manage` — a ban is a firewall rule, and an account that may not open a
+port should not be able to close one for everybody either.
+
+`GET /security/fail2ban` reports what the *daemon* is running, not what the panel
+last wrote: the counters, the policy in force, and the addresses banned now. A
+jail somebody configured by hand is listed with `managed: false` and is not
+touched; a jail the panel offers that this host cannot run — because none of the
+logs it watches exist — is listed with `available: false` and the reason.
+
+`PATCH /security/fail2ban/jails/:jail` takes any of:
+
+```text
+enabled     bool
+max_retry   1-100
+find_time   10 seconds to a week
+ban_time    a minute to a year
+```
+
+An omitted field is left alone. The panel writes only policy: `filter` and
+`logpath` belong to the distribution, which knows what its own daemons write —
+Alpine's sshd jail uses a filter built for BusyBox's syslog prefix, and
+overwriting it would produce a jail that matches nothing while reporting itself
+enabled. A body carrying `filter` is a **400**.
+
+The change is written to `/etc/fail2ban/jail.d/99-jothost.local`, validated with
+`fail2ban-client -t`, reloaded, and then **read back from the daemon**. The name
+of that file is load-bearing: fail2ban reads every `.conf` before every `.local`
+and the last value of an option wins, so a `10-jothost.conf` loses to the
+distribution's own drop-in — silently. A change the daemon does not adopt
+restores the backup and returns a **409** naming the numbers it is actually
+running.
+
+Refused with a **422**: an address or CIDR block that is not one (host names
+included — what gets banned would otherwise depend on DNS), a jail name that is
+not one, a ban shorter than the window failures are counted in (the counter never
+resets, so the address is banned again the moment it is released), a threshold
+nothing would reach, and fail2ban's negative "permanent" ban.
+
+`PUT /security/fail2ban/ignored` sets the addresses no jail may ban. **Loopback
+is added whether it was asked for or not**: a host that has banned its own
+loopback has broken every local service that talks to another over it.
+
+`POST /security/fail2ban/unban` returns a **404** when the address was not banned
+— fail2ban answers "0" and exits zero in that case, which is a success code for a
+call that did nothing.
+
+`enable` and `disable` from the original sketch are **409s** pointing at
+`POST /api/v1/services/fail2ban/start`. Starting a daemon is the service
+manager's job, and two places that start the same thing is how a panel comes to
+disagree with itself about whether it is running.
+
+`fail2ban.install`, `.configure`, `.ignore`, `.ban` and `.unban` are audited,
+refusals included.
 
 ---
 

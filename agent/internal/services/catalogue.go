@@ -169,6 +169,18 @@ var catalogue = []Definition{
 		Protected: true,
 	},
 	{
+		Key:       "fail2ban",
+		Label:     "Fail2Ban",
+		Role:      RoleSystem,
+		Summary:   "Bans hosts that repeatedly fail to authenticate.",
+		Units:     []string{"fail2ban.service"},
+		Processes: []string{"fail2ban-server", "fail2ban"},
+		Binaries:  []string{"/usr/bin/fail2ban-server", "/usr/bin/fail2ban-client"},
+		// Not essential: a host without it serves every website exactly as well,
+		// and an alert for a daemon somebody deliberately switched off is an
+		// alert nobody reads.
+	},
+	{
 		Key:       "cron",
 		Label:     "Cron",
 		Role:      RoleSystem,

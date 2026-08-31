@@ -286,4 +286,24 @@ if command -v sshd >/dev/null 2>&1; then
   fi
 fi
 
+# ------------------------------------------------------------------ fail2ban
+#
+# Started only if the panel has configured a jail. fail2ban with no enabled jail
+# is a daemon watching nothing, and starting it anyway would make the Services
+# page report protection this host does not have.
+#
+# The panel writes /etc/fail2ban/jail.d/99-jothost.local; the name is what makes
+# it win, because fail2ban reads .conf files before .local ones and the last
+# value of an option is the one it uses.
+if command -v fail2ban-client >/dev/null 2>&1; then
+  if grep -q "enabled *= *true" /etc/fail2ban/jail.d/99-jothost.local 2>/dev/null; then
+    start_service fail2ban || {
+      fail2ban-client start >/dev/null 2>&1 || true
+      echo "agent-entrypoint: fail2ban started directly"
+    }
+  else
+    echo "agent-entrypoint: fail2ban is installed; no jail is enabled yet"
+  fi
+fi
+
 exec /usr/local/bin/jothost-agent "$@"

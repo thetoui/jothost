@@ -131,6 +131,17 @@ const (
 	OperationFileExtract OperationType = "file.extract"
 	OperationFileSearch  OperationType = "file.search"
 
+	// Intrusion prevention. A request names a jail from the Agent's catalogue
+	// and an address that has been parsed, never a filter or a log path: a
+	// filter that matches the wrong line bans the wrong person.
+	OperationFail2banStatus    OperationType = "fail2ban.status"
+	OperationFail2banInstall   OperationType = "fail2ban.install"
+	OperationFail2banConfigure OperationType = "fail2ban.configure"
+	OperationFail2banIgnore    OperationType = "fail2ban.ignore"
+	OperationFail2banBanned    OperationType = "fail2ban.banned"
+	OperationFail2banUnban     OperationType = "fail2ban.unban"
+	OperationFail2banBan       OperationType = "fail2ban.ban"
+
 	// SSH. Two of these can lock an operator out of the machine, so the Agent
 	// validates every configuration with sshd before installing it and refuses
 	// the changes that would leave nobody able to log in: see
@@ -244,6 +255,13 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationFileArchive:          {},
 	OperationFileExtract:          {},
 	OperationFileSearch:           {},
+	OperationFail2banStatus:       {},
+	OperationFail2banInstall:      {},
+	OperationFail2banConfigure:    {},
+	OperationFail2banIgnore:       {},
+	OperationFail2banBanned:       {},
+	OperationFail2banUnban:        {},
+	OperationFail2banBan:          {},
 	OperationSSHStatus:            {},
 	OperationSSHConfigure:         {},
 	OperationSSHKeyList:           {},

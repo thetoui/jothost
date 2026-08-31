@@ -22,6 +22,7 @@ import (
 	"github.com/jothost/panel/agent/internal/config"
 	"github.com/jothost/panel/agent/internal/cron"
 	"github.com/jothost/panel/agent/internal/database"
+	f2bpkg "github.com/jothost/panel/agent/internal/fail2ban"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
 	"github.com/jothost/panel/agent/internal/jobs"
@@ -181,6 +182,10 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		// as useradd and adduser, and for the same reason: distributions
 		// disagree, and the Agent must not resolve a path from a request.
 		{Name: services.CommandRCService, Path: cfg.RCServicePath, Timeout: 30 * time.Second},
+		// fail2ban-client, the daemon's only interface. Every argument it is
+		// given here is a jail name from the Agent's catalogue or an address
+		// that has been parsed.
+		{Name: f2bpkg.CommandName, Path: cfg.Fail2BanPath, Timeout: 30 * time.Second},
 		// sshd, used only to *read* the effective configuration (-T) and to
 		// validate a candidate one (-t). The panel never starts the server with
 		// it: that goes through the service manager, so there is one thing on
@@ -395,6 +400,18 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 			"log_root", cfg.LogRoot, "site_root", cfg.SiteRoot)
 	}
 
+	// Intrusion prevention. The provider writes policy — which jails run, how
+	// many failures are allowed, for how long — and leaves filters and log
+	// formats to the distribution, which knows what its own daemons write.
+	fail2banProvider := f2bpkg.NewProvider(f2bpkg.Options{
+		Runner: runner,
+		Log:    log,
+		Dir:    cfg.Fail2BanConfigDir,
+	})
+	if !fail2banProvider.Available() {
+		log.Info("fail2ban is not installed; the panel will offer to install it")
+	}
+
 	// The SSH server's configuration. The provider reads it through sshd itself
 	// rather than by parsing the file, because a directive that is commented out
 	// is still in force at its default — and the defaults differ between
@@ -538,6 +555,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Logs:         logProvider,
 		Cron:         cronProvider,
 		SSH:          sshProvider,
+		Fail2Ban:     fail2banProvider,
 	})
 
 	return registry, jobRunner, nil

@@ -65,6 +65,12 @@ FROM alpine:3.21 AS runtime
 # the image rather than installed on demand because a firewall the panel can
 # only manage after a download is one that is missing exactly when it is needed.
 #
+# fail2ban is preinstalled for the same reason the databases are: the panel can
+# install it, and a validator that is not installed is a validator that gets
+# stubbed. Phase 18 asks fail2ban itself whether a configuration is acceptable
+# and reads the resulting policy back out of the running daemon, and neither
+# check means anything against a mock.
+#
 # Apache is preinstalled here even though the panel installs it on demand, and
 # the two facts are not in conflict.
 #
@@ -104,6 +110,7 @@ RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       iptables ip6tables ufw \
       openrc busybox-openrc \
       openssh-server openssh-keygen \
+      fail2ban \
       apache2 apache2-proxy \
       php82-fpm php83-fpm php84-fpm \
       php84 \

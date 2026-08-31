@@ -86,6 +86,10 @@ type Config struct {
 	ApacheConfigDir string
 	ApacheMainConf  string
 	SiteRoot        string
+	// Fail2BanPath is the client the panel drives, and Fail2BanConfigDir is
+	// where its configuration lives.
+	Fail2BanPath      string
+	Fail2BanConfigDir string
 	// SSHDPath is the SSH server binary, used to read and validate the
 	// configuration — never to start it. SSHConfigDir is where its
 	// configuration lives.
@@ -166,22 +170,24 @@ func Load() (Config, error) {
 		FirewallStateDir:     getString("AGENT_FIREWALL_STATE_DIR", "/var/lib/jothost/firewall"),
 		FirewallGuardedPorts: getString("AGENT_FIREWALL_GUARDED_PORTS", ""),
 
-		ApachePath:      getString("AGENT_APACHE_PATH", "/usr/sbin/httpd"),
-		Apache2Path:     getString("AGENT_APACHE2_PATH", "/usr/sbin/apache2"),
-		ApacheConfigDir: getString("AGENT_APACHE_CONF_DIR", "/etc/apache2/conf.d"),
-		ApacheMainConf:  getString("AGENT_APACHE_MAIN_CONF", "/etc/apache2/httpd.conf"),
-		SiteRoot:        getString("AGENT_SITE_ROOT", "/var/www"),
-		LogRoot:         getString("AGENT_LOG_ROOT", "/var/log"),
-		SSHDPath:        getString("AGENT_SSHD_PATH", "/usr/sbin/sshd"),
-		SSHConfigDir:    getString("AGENT_SSH_CONFIG_DIR", "/etc/ssh"),
-		ShellPath:       getString("AGENT_SHELL_PATH", "/bin/sh"),
-		CronSpoolDir:    getString("AGENT_CRON_SPOOL_DIR", "/var/spool/cron/crontabs"),
-		CronLogDir:      getString("AGENT_CRON_LOG_DIR", "/var/log/jothost/cron"),
-		UseraddPath:     getString("AGENT_USERADD_PATH", "/usr/sbin/useradd"),
-		AdduserPath:     getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
-		UserdelPath:     getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
-		DeluserPath:     getString("AGENT_DELUSER_PATH", "/usr/sbin/deluser"),
-		WebGroup:        getString("AGENT_WEB_GROUP", ""),
+		ApachePath:        getString("AGENT_APACHE_PATH", "/usr/sbin/httpd"),
+		Apache2Path:       getString("AGENT_APACHE2_PATH", "/usr/sbin/apache2"),
+		ApacheConfigDir:   getString("AGENT_APACHE_CONF_DIR", "/etc/apache2/conf.d"),
+		ApacheMainConf:    getString("AGENT_APACHE_MAIN_CONF", "/etc/apache2/httpd.conf"),
+		SiteRoot:          getString("AGENT_SITE_ROOT", "/var/www"),
+		LogRoot:           getString("AGENT_LOG_ROOT", "/var/log"),
+		Fail2BanPath:      getString("AGENT_FAIL2BAN_PATH", "/usr/bin/fail2ban-client"),
+		Fail2BanConfigDir: getString("AGENT_FAIL2BAN_CONFIG_DIR", "/etc/fail2ban"),
+		SSHDPath:          getString("AGENT_SSHD_PATH", "/usr/sbin/sshd"),
+		SSHConfigDir:      getString("AGENT_SSH_CONFIG_DIR", "/etc/ssh"),
+		ShellPath:         getString("AGENT_SHELL_PATH", "/bin/sh"),
+		CronSpoolDir:      getString("AGENT_CRON_SPOOL_DIR", "/var/spool/cron/crontabs"),
+		CronLogDir:        getString("AGENT_CRON_LOG_DIR", "/var/log/jothost/cron"),
+		UseraddPath:       getString("AGENT_USERADD_PATH", "/usr/sbin/useradd"),
+		AdduserPath:       getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
+		UserdelPath:       getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
+		DeluserPath:       getString("AGENT_DELUSER_PATH", "/usr/sbin/deluser"),
+		WebGroup:          getString("AGENT_WEB_GROUP", ""),
 
 		// The MariaDB client is preferred because a MariaDB host ships it
 		// under this name and a MySQL host symlinks the same name to its own.
@@ -216,6 +222,9 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_APACHE_MAIN_CONF", cfg.ApacheMainConf)...)
 	problems = append(problems, validateAbsolute("AGENT_SITE_ROOT", cfg.SiteRoot)...)
 	problems = append(problems, validateAbsolute("AGENT_LOG_ROOT", cfg.LogRoot)...)
+	problems = append(problems, validateAbsolute("AGENT_FAIL2BAN_PATH", cfg.Fail2BanPath)...)
+	problems = append(problems,
+		validateAbsolute("AGENT_FAIL2BAN_CONFIG_DIR", cfg.Fail2BanConfigDir)...)
 	problems = append(problems, validateAbsolute("AGENT_SSHD_PATH", cfg.SSHDPath)...)
 	problems = append(problems, validateAbsolute("AGENT_SSH_CONFIG_DIR", cfg.SSHConfigDir)...)
 	problems = append(problems, validateAbsolute("AGENT_SHELL_PATH", cfg.ShellPath)...)

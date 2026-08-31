@@ -45,25 +45,25 @@ Done, in the order they were built:
 11  Logs
 10  Cron
 17  SSH Security
+18  Fail2Ban
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  18   Fail2Ban               — reads logs (11), writes firewall rules (16)
- 2.  7.1  FTP Manager            — passive ports need 16; transfers need 11
- 3.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
- 4.  21   System Updates         — scheduled updates need 10
- 5.  19   Monitoring             — service monitoring needs 12
- 6.  14   Backup                 — scheduling needs 10
- 7.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
- 8.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
- 9.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
-10.  27   Git & Webhook Actions  — deployment logs need 11
-11.  22   Multi-Tenant           — quota dimensions must exist first, mail included
-12.  23   Production Installer   — installs everything, so everything must exist
-13.  24   Production Hardening   — tests the finished system
-14.  25   Release                — last by definition
+ 1.  7.1  FTP Manager            — passive ports need 16; transfers need 11
+ 2.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
+ 3.  21   System Updates         — scheduled updates need 10
+ 4.  19   Monitoring             — service monitoring needs 12
+ 5.  14   Backup                 — scheduling needs 10
+ 6.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+ 7.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+ 8.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+ 9.  27   Git & Webhook Actions  — deployment logs need 11
+10.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+11.  23   Production Installer   — installs everything, so everything must exist
+12.  24   Production Hardening   — tests the finished system
+13.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -933,17 +933,38 @@ Additionally required by the above:
 
 # PHASE 18 — Fail2Ban
 
+**Status: COMPLETE** — see [docs/PHASE18.md](docs/PHASE18.md) for scope,
+decisions, and known limitations.
+
 **Build order: 6 of 17.** Depends on 11 (it decides bans by reading logs), 16 (a
 ban is a firewall rule) and 12.
 
-- [ ] Detection
-- [ ] Install
-- [ ] Enable
-- [ ] Disable
-- [ ] Jail list
-- [ ] Banned IP
-- [ ] Unban
-- [ ] Logs
+- [x] Detection — installed, running, version, and what it is actually running
+- [x] Install
+- [x] Enable — per jail; the daemon itself is started from the Services page
+- [x] Disable
+- [x] Jail list
+- [x] Banned IP — with the jail that banned each, and banning by hand
+- [x] Unban
+- [x] Logs — fail2ban's own, contributed to Phase 11's catalogue as a source
+
+Additionally required by the above:
+
+- [x] A catalogue of jails, with the panel writing policy only: a filter decides
+  who gets banned, and the distribution's is the one written for its own log
+  format — Alpine's sshd filter exists because BusyBox writes a syslog prefix the
+  standard one does not expect
+- [x] The drop-in named so fail2ban reads it last. It reads every .conf before
+  every .local and the last value wins, so a 10-jothost.conf loses to the
+  distribution's own file — silently, with everything reporting success
+- [x] Every change read back from the daemon after the reload, and rolled back
+  when it did not take
+- [x] Bans left in fail2ban's own iptables chains rather than written as ufw
+  rules: a ban is transient and the firewall page is the operator's own rules,
+  with a backup taken before every change
+- [x] Loopback always in the ignore list, whether it was asked for or not
+- [x] Addresses and jail names parsed before they become arguments, and host
+  names refused — what gets banned must not depend on what DNS said
 
 ---
 

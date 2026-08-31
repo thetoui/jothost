@@ -19,6 +19,7 @@ import (
 	cronpkg "github.com/jothost/panel/api/internal/cron"
 	"github.com/jothost/panel/api/internal/dashboard"
 	databasespkg "github.com/jothost/panel/api/internal/databases"
+	f2bpkg "github.com/jothost/panel/api/internal/fail2ban"
 	filespkg "github.com/jothost/panel/api/internal/files"
 	firewallpkg "github.com/jothost/panel/api/internal/firewall"
 	"github.com/jothost/panel/api/internal/httpx"
@@ -64,6 +65,7 @@ type Server struct {
 	logs      *logspkg.Handler
 	cron      *cronpkg.Handler
 	ssh       *sshpkg.Handler
+	fail2ban  *f2bpkg.Handler
 	firewall  *firewallpkg.Handler
 	jobs      *jobs.Handler
 	php       *phppkg.Handler
@@ -317,6 +319,19 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// Intrusion prevention. No state of the panel's own either: the jails are
+	// files on the host and the bans are firewall rules, and both belong to the
+	// daemon that maintains them.
+	s.fail2ban = f2bpkg.NewHandler(f2bpkg.HandlerOptions{
+		Service: f2bpkg.NewService(f2bpkg.ServiceOptions{
+			Agent:    agent,
+			Audit:    auditRecorder,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		}),
+		Auth: authService,
+	})
+
 	// The SSH server's settings. No state of the panel's own: the configuration
 	// is files on the host, and every change is validated by sshd before it is
 	// installed and refused outright where it would leave nobody able to log in.
@@ -469,6 +484,7 @@ func (s *Server) routes() http.Handler {
 	s.logs.Routes(mux)
 	s.cron.Routes(mux)
 	s.ssh.Routes(mux)
+	s.fail2ban.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)

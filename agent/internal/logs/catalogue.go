@@ -151,6 +151,14 @@ func Catalogue() []Source {
 			},
 		},
 		{
+			Key:     "fail2ban",
+			Label:   "Fail2Ban",
+			Summary: "What was banned, when, and which rule matched.",
+			Group:   GroupSystem,
+			Format:  FormatPlain,
+			Paths:   []string{"/var/log/fail2ban.log"},
+		},
+		{
 			Key:     "agent",
 			Label:   "Agent audit",
 			Summary: "Every privileged operation the panel performed on this host.",

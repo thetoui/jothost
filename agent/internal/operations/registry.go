@@ -14,6 +14,7 @@ import (
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/cron"
 	"github.com/jothost/panel/agent/internal/database"
+	"github.com/jothost/panel/agent/internal/fail2ban"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
 	"github.com/jothost/panel/agent/internal/jobs"
@@ -108,6 +109,11 @@ type Dependencies struct {
 	// Files serves the file manager. Nil, or configured with no roots, means
 	// file management is unavailable rather than unrestricted.
 	Files *files.Manager
+
+	// Fail2Ban manages the host's intrusion prevention. Nil, or a host without
+	// it, means the panel offers to install it rather than pretending the
+	// settings are there.
+	Fail2Ban *fail2ban.Provider
 
 	// SSH reads and changes the host's SSH server configuration. Nil, or a host
 	// with no sshd, means the panel reports that rather than offering settings
@@ -226,6 +232,14 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationFileArchive, r.handleFileArchive)
 	r.mustRegister(protocol.OperationFileExtract, r.handleFileExtract)
 	r.mustRegister(protocol.OperationFileSearch, r.handleFileSearch)
+
+	r.mustRegister(protocol.OperationFail2banStatus, r.handleFail2banStatus)
+	r.mustRegister(protocol.OperationFail2banInstall, r.handleFail2banInstall)
+	r.mustRegister(protocol.OperationFail2banConfigure, r.handleFail2banConfigure)
+	r.mustRegister(protocol.OperationFail2banIgnore, r.handleFail2banIgnore)
+	r.mustRegister(protocol.OperationFail2banBanned, r.handleFail2banBanned)
+	r.mustRegister(protocol.OperationFail2banUnban, r.handleFail2banUnban)
+	r.mustRegister(protocol.OperationFail2banBan, r.handleFail2banBan)
 
 	r.mustRegister(protocol.OperationSSHStatus, r.handleSSHStatus)
 	r.mustRegister(protocol.OperationSSHConfigure, r.handleSSHConfigure)

@@ -361,6 +361,10 @@ export interface HostService {
   units: string[];
   /** Refuses stop and disable: SSH is how the host is administered. */
   protected: boolean;
+  /** True when another part of the panel owns the daemon's lifecycle. */
+  self_managed: boolean;
+  /** What owns it, when it is self-managed. */
+  self_managed_by: string;
   installed: boolean;
   running: boolean;
   pid: number;
@@ -377,6 +381,8 @@ export interface ServiceList {
   count: number;
   /** False on a host with no service manager: states are true, nothing can be changed. */
   controllable: boolean;
+  /** The init system driving the host: "systemd", "openrc", or empty for neither. */
+  manager: string;
 }
 
 export interface ServiceActionResult {

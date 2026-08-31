@@ -173,6 +173,12 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	// provider uses whichever is actually installed.
 	specs := []command.Spec{
 		{Name: services.CommandName, Path: cfg.SystemctlPath, Timeout: 10 * time.Second},
+		// The other init system. Both are allowlisted on every host and the
+		// provider uses whichever is actually installed — the same arrangement
+		// as useradd and adduser, and for the same reason: distributions
+		// disagree, and the Agent must not resolve a path from a request.
+		{Name: services.CommandRCService, Path: cfg.RCServicePath, Timeout: 30 * time.Second},
+		{Name: services.CommandRCUpdate, Path: cfg.RCUpdatePath, Timeout: 10 * time.Second},
 		{Name: nginx.CommandName, Path: cfg.NginxPath, Timeout: 15 * time.Second},
 		// Both Apache names, allowlisted whether or not the binary is there:
 		// hybrid mode can be enabled on a host that installs Apache later, and
@@ -226,9 +232,11 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	}
 
 	serviceProvider := services.NewProvider(runner)
-	if !serviceProvider.Available() {
-		log.Warn("service management is unavailable: systemctl not found",
-			"path", cfg.SystemctlPath)
+	if serviceProvider.Available() {
+		log.Info("service management is available", "manager", serviceProvider.Manager())
+	} else {
+		log.Warn("service management is unavailable: neither systemd nor OpenRC was found",
+			"systemctl", cfg.SystemctlPath, "rc_service", cfg.RCServicePath)
 	}
 
 	nginxProvider := nginx.NewProvider(nginx.Options{

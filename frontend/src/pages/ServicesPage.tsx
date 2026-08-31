@@ -64,7 +64,7 @@ export function ServicesPage() {
       {!isPending && !isError && !controllable && services.length > 0 && (
         <Alert tone="info" title="This host has no service manager">
           The states below are read from the process table and are accurate. Starting and
-          stopping needs systemd, which this host does not have.
+          stopping needs an init system — systemd or OpenRC — and this host has neither.
         </Alert>
       )}
 
@@ -150,7 +150,20 @@ function ServiceRow({ service }: { service: HostService }) {
 
         <RequirePermission permission={Permission.ServerManage}>
           <div className="flex shrink-0 items-center gap-2">
-            {service.running ? (
+            {service.self_managed ? (
+              <p className="max-w-xs text-right text-xs text-slate-500">
+                Started and stopped by {service.self_managed_by || 'the panel'}, not from
+                here.
+              </p>
+            ) : !service.controllable && !service.unit ? (
+              // Installed, and its state above is read from the process table,
+              // but the init system has no service for it — so there is nothing
+              // here to start, and a button would only fail.
+              <p className="max-w-xs text-right text-xs text-slate-500">
+                This host&rsquo;s init system does not know about it, so it cannot be
+                started or stopped here.
+              </p>
+            ) : service.running ? (
               <>
                 <Button
                   variant="secondary"
@@ -183,22 +196,30 @@ function ServiceRow({ service }: { service: HostService }) {
         </RequirePermission>
       </div>
 
-      <RequirePermission permission={Permission.ServerManage}>
-        <div className="mt-2">
-          <Toggle
-            id={`boot-${service.key}`}
-            label="Start at boot"
-            checked={service.enabled === true}
-            disabled={!service.controllable || service.protected || act.isPending}
-            onChange={(checked) => run(checked ? 'enable' : 'disable')}
-          />
-          {service.enabled === null && service.controllable && (
-            <p className="mt-1 text-xs text-slate-500">
-              This host cannot say whether it starts at boot.
-            </p>
-          )}
-        </div>
-      </RequirePermission>
+      {/* Boot behaviour is withheld for the same reason the buttons are: what
+          starts PHP-FPM at boot is the panel, and a toggle claiming otherwise
+          would be describing a decision the init system does not make. */}
+      {/* A toggle is also withheld where the init system has no service to
+          enable: an unchecked box would be claiming it does not start at boot,
+          which is not the same as nothing being able to say. */}
+      {!service.self_managed && (service.controllable || service.unit !== '') && (
+        <RequirePermission permission={Permission.ServerManage}>
+          <div className="mt-2">
+            <Toggle
+              id={`boot-${service.key}`}
+              label="Start at boot"
+              checked={service.enabled === true}
+              disabled={!service.controllable || service.protected || act.isPending}
+              onChange={(checked) => run(checked ? 'enable' : 'disable')}
+            />
+            {service.enabled === null && service.controllable && (
+              <p className="mt-1 text-xs text-slate-500">
+                This host cannot say whether it starts at boot.
+              </p>
+            )}
+          </div>
+        </RequirePermission>
+      )}
 
       {error && (
         <Alert tone="danger" title={`${service.label} could not be changed`}>

@@ -1,11 +1,16 @@
-// Package services inspects system services.
+// Package services inspects and controls the host's daemons.
 //
-// It talks to systemd through systemctl, which is executed as an allowlisted,
-// parameterised command (CLAUDE.md section 6) — never through a shell, and
-// never with a caller-supplied string interpolated into a command line.
+// It speaks to two init systems, because a hosting panel meets two. systemd is
+// what nearly every production host runs and what the specs name. OpenRC is
+// what Alpine and Gentoo run — and on Alpine systemd is not merely absent but
+// unavailable, so a panel that spoke only systemd could report what was running
+// there and change none of it.
 //
-// Phase 2 is read-only: this package reports state but does not start, stop,
-// or enable anything. Mutating operations arrive with Phase 12.
+// Both are driven as allowlisted, parameterised commands (CLAUDE.md section 6):
+// never through a shell, and never with a caller-supplied string interpolated
+// into a command line. Which one a host uses is decided here, once, from what is
+// installed; nothing above this package chooses, and callers cannot tell the
+// two apart.
 package services
 
 import (
@@ -64,19 +69,60 @@ type Status struct {
 	MainPID int `json:"main_pid"`
 }
 
-// Provider inspects services.
+// The init systems this package can drive.
+const (
+	ManagerSystemd = "systemd"
+	ManagerOpenRC  = "openrc"
+	// ManagerNone is a host with neither: state can still be reported from the
+	// process table, and nothing can be started or stopped.
+	ManagerNone = ""
+)
+
+// Provider inspects and controls services.
 type Provider struct {
 	runner *command.Runner
+	// manager is the init system resolved at construction. It is fixed for the
+	// life of the Agent: an init system is not something a host changes while
+	// running, and re-deciding per request would mean two requests a second
+	// apart could act on different ones.
+	manager string
+	// openrcInitDir and openrcRunlevelDir are where OpenRC keeps its init
+	// scripts and its boot configuration. Fields so a test can point them at a
+	// temporary tree.
+	openrcInitDir     string
+	openrcRunlevelDir string
 }
 
 // NewProvider builds a Provider over an allowlisted command runner.
+//
+// systemd is preferred where both are present, which happens on a host that has
+// OpenRC installed as a leftover: systemd is the one actually supervising
+// anything there, and driving the other would report success while changing
+// nothing.
 func NewProvider(runner *command.Runner) *Provider {
-	return &Provider{runner: runner}
+	provider := &Provider{runner: runner}
+
+	switch {
+	case runner != nil && runner.Available(CommandName):
+		provider.manager = ManagerSystemd
+	case provider.openrcAvailable():
+		provider.manager = ManagerOpenRC
+	}
+	return provider
+}
+
+// Manager reports which init system this host is driven through, or "" for a
+// host with neither.
+func (p *Provider) Manager() string {
+	if p == nil {
+		return ManagerNone
+	}
+	return p.manager
 }
 
 // Available reports whether the service manager can be used.
 func (p *Provider) Available() bool {
-	return p.runner != nil && p.runner.Available(CommandName)
+	return p != nil && p.manager != ManagerNone
 }
 
 // ValidateName checks a caller-supplied unit name.
@@ -107,6 +153,9 @@ func (p *Provider) Status(ctx context.Context, name string) (Status, error) {
 	}
 	if !p.Available() {
 		return Status{}, ErrUnavailable
+	}
+	if p.manager == ManagerOpenRC {
+		return p.openrcStatus(ctx, name)
 	}
 
 	// Arguments are separate argv entries: the unit name can never be read as

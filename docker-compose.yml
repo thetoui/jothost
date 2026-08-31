@@ -53,6 +53,16 @@ services:
     # attached to a host that no longer exists. On a real machine the hostname
     # is stable; this makes development behave the same way.
     hostname: jothost-agent
+    # An init process as PID 1, whose one job is to reap orphaned children.
+    #
+    # On a real host that is what init does, and the panel's service manager
+    # depends on it: OpenRC's start-stop-daemon decides a service stopped by
+    # looking for the process afterwards, and an unreaped zombie is still in the
+    # process table. Without this, stopping nginx here killed it and then
+    # reported "1 process refused to stop" — a true failure message about a
+    # successful stop, which is the worst kind. In this container the Agent
+    # itself is PID 1 and is not an init system, so Docker supplies one.
+    init: true
     # The firewall needs to read and write packet filter rules, which needs
     # NET_ADMIN. It applies to this container's own network namespace only, so
     # a rule the panel writes here affects nothing outside it — which is what

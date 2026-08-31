@@ -47,15 +47,15 @@ than written into a static table that would be wrong on every host.
 
 Whether a service is **installed** is a filesystem probe that executes nothing.
 Whether it is **running** comes from the process table. Whether it **starts at
-boot** comes from systemd, which is the only thing that knows.
+boot** comes from the init system, which is the only thing that knows.
 
-Splitting them is what makes the page useful on a host without systemd: the
+Splitting them is what makes the page useful on a host with no init system at all: the
 states are still true, and the panel says once — as a property of the host —
 that it cannot change them. "nginx is running, and I cannot restart it here" is
 a useful answer. A blank page is not, and a page of buttons that fail one at a
 time is worse.
 
-Where the two disagree, systemd wins: a unit in `activating` is neither up nor
+Where the two disagree, the init system wins: a unit in `activating` is neither up nor
 down, and the process table cannot say so. A panel that rounds `activating` to
 "running" tells an operator a service is ready when it is still starting.
 
@@ -82,26 +82,53 @@ looks like a broken package to whoever comes next.
 
 This is the honest part, and it is why this section exists at all.
 
-**The container has no systemd.** The specs are explicit that production is
-systemd (PRD "Host Agent", ARCHITECTURE section 15), so that is what this phase
-implements — and the dev container is Alpine with a hand-rolled entrypoint,
-which is neither systemd nor OpenRC.
+**The container has no systemd, so it runs OpenRC.** The specs name systemd
+(PRD "Host Agent", ARCHITECTURE section 15) and systemd is what nearly every
+production host runs. Alpine — which this Agent image is built on, and which
+plenty of small hosts run — has no systemd at all: it is not a package that
+exists there. A panel speaking only systemd could report what runs on such a
+host and change none of it, which is what the Services page did until OpenRC was
+added: it showed accurate states under a notice saying nothing could be started
+or stopped.
+
+So there are two backends behind one set of verbs, chosen by what the host has:
+
+| | systemd | OpenRC |
+|---|---|---|
+| start | `systemctl start nginx.service` | `rc-service nginx start` |
+| boot | `systemctl enable nginx.service` | `rc-update add nginx default` |
+| status | `systemctl show nginx.service` | `rc-service nginx status` |
+
+Nothing above `agent/internal/services` chooses between them, and callers cannot
+tell them apart. The dev container installs OpenRC and its entrypoint starts
+nginx, MariaDB and PostgreSQL *through* it, so one thing owns each daemon: a
+service started behind the init system's back is one it reports as stopped and
+refuses to stop.
 
 What the integration suite therefore proves, for real, against the running
 stack: detection finds nginx, MariaDB, PostgreSQL and one PHP-FPM per installed
 version without being told they exist; the pid reported is a process that
-exists and is the right program; nothing uninstalled is listed; the panel
-reports that this host cannot control services and refuses actions with a
-conflict that says why; a key outside the catalogue is refused; and the
-dashboard shows the same detection.
+exists and is the right program; nothing uninstalled is listed; a key outside
+the catalogue is refused; the dashboard shows the same detection — and, on this
+host, that stopping nginx from the panel **leaves no nginx master process in
+`/proc`**, that starting it puts one back, and that enabling it changes what a
+fresh listing reports. A check that only read the panel's own reply would pass
+against a panel that reported success and did nothing.
 
-What it cannot prove: that `systemctl start nginx` starts nginx.
+What it cannot prove: that `systemctl start nginx` starts nginx, because there
+is no systemd here.
 
 **What is proved instead, and how.** The Go tests in
 `agent/internal/services` run the *real* command runner against a recording
 stub, and assert the exact command line produced — that `nginx` becomes
 `restart nginx.service`, that each verb reaches systemctl as itself, that
-systemd's property output is parsed into the right state. That is a claim about
+systemd's property output is parsed into the right state. The OpenRC backend is
+tested the same way, against output copied from a live Alpine host: that the
+`.service` suffix never reaches `rc-service`, that the verb goes *after* the
+service name (the opposite of systemctl, and getting it wrong produces a command
+that runs and does nothing), that every word OpenRC can print for a state maps
+to the one the panel shows, and that a stop which prints `ERROR:` and still
+exits zero is reported as the failure it is. That is a claim about
 the code in this repository, which is the part that can be wrong.
 
 A stub that imitated systemd's *behaviour* was considered and rejected: it would
@@ -115,7 +142,7 @@ the assumption.
 make docker-test-services
 ```
 
-27 checks, plus the Go tests above.
+44 checks, plus the Go tests above.
 
 ---
 
@@ -137,9 +164,13 @@ services carry an `Essential` flag and only those raise one.
 
 ## 7. Known limitations
 
-- **systemd only.** OpenRC hosts (Alpine, Gentoo) get detection and status but
-  no control. Adding a second backend is a contained change to one interface,
-  but it is scope the specs do not ask for.
+- **systemd and OpenRC only.** Other init systems (runit, s6, SysV without
+  OpenRC) get detection and status but no control, and say so. A third backend
+  is a contained change to the same interface.
+- **A service the init system does not know about cannot be controlled.** Cron
+  in this container is an example: the binary is installed and its state is
+  read from the process table, but there is no init script, so the panel shows
+  the state and withholds the buttons rather than offering one that fails.
 - **The catalogue is the whole list.** A daemon the panel does not manage does
   not appear, however much an operator might want to restart it from here. That
   is the point, and it is also a limit.
@@ -148,7 +179,10 @@ services carry an `Essential` flag and only those raise one.
 - **No dependency awareness.** Stopping MariaDB while sites use it is allowed,
   with a warning in the confirmation rather than a refusal. The panel does not
   know which sites use which engine well enough to refuse safely.
-- **Phase 4.5's Apache control is still its own.** Apache is driven by
-  `httpd -k` because it must work on a host with no systemd. It appears in this
-  listing, and the service manager can restart it where systemd exists, but the
-  hybrid engine does not route its own reloads through this package.
+- **Two daemons are owned elsewhere in the panel, and say so.** Apache is
+  driven by the hybrid engine (`httpd -k`, because it must work on a host with
+  no init system) and PHP-FPM by the PHP manager, which writes the pools and
+  signals the master. Both appear in the listing with their real state and no
+  controls, naming their owner: offering to stop them from here would give one
+  process two owners, and the panel would show a state matching neither.
+  Routing those lifecycles through this package is the eventual fix.

@@ -13,13 +13,59 @@
 
 set -eu
 
+# ----------------------------------------------------------------- OpenRC
+#
+# The daemons below are started *through* OpenRC rather than directly, so that
+# one thing owns each of them.
+#
+# That is what makes the panel's service manager real here. A daemon started
+# behind the init system's back is one the init system reports as stopped and
+# refuses to stop — two owners for one process, and a panel whose buttons fail
+# for reasons an operator cannot see. On a real Alpine host OpenRC starts these
+# at boot and the same arrangement holds.
+#
+# OpenRC keeps its state under /run, which a container starts empty. On a real
+# host the boot sequence builds it; here that has to be asked for, and until it
+# exists every rc-service call answers "already starting".
+if command -v rc-status >/dev/null 2>&1; then
+  mkdir -p /run/openrc
+  touch /run/openrc/softlevel
+  # Building the dependency cache is what creates the state directories.
+  rc-status >/dev/null 2>&1 || true
+  echo "agent-entrypoint: OpenRC ready"
+fi
+
+# start_service NAME — start one daemon through OpenRC, or directly if OpenRC
+# is not there.
+#
+# The fallback matters for the image without OpenRC and for anyone running the
+# binary outside a container: a missing init system must degrade to "started,
+# not managed" rather than to "not started".
+start_service() {
+  name="$1"
+
+  if command -v rc-service >/dev/null 2>&1 && [ -f "/etc/init.d/$name" ]; then
+    if rc-service "$name" start >/dev/null 2>&1; then
+      echo "agent-entrypoint: $name started (OpenRC)"
+      return 0
+    fi
+    echo "agent-entrypoint: $name did not start under OpenRC" >&2
+    rc-service "$name" start 2>&1 | tail -3 >&2 || true
+    return 1
+  fi
+
+  return 1
+}
+
 # The Agent writes vhosts here and reloads nginx to apply them. Starting nginx
 # first means a reload during website creation has something to reload.
 if command -v nginx >/dev/null 2>&1; then
   mkdir -p /run/nginx /etc/nginx/conf.d
   if nginx -t >/dev/null 2>&1; then
-    nginx
-    echo "agent-entrypoint: nginx started"
+    start_service nginx || {
+      nginx
+      echo "agent-entrypoint: nginx started directly"
+    }
   else
     # A broken base config must not stop the Agent: metrics, services, and
     # every other operation still work, and website operations will report
@@ -108,8 +154,11 @@ start_mariadb() {
   # skip-networking: this server is reached only over its Unix socket, from the
   # Agent on the same host. No port is published and none is listened on, which
   # is the same posture as the Agent's own socket.
-  mariadbd --user=mysql --datadir=/var/lib/mysql \
-    --socket=/run/mysqld/mysqld.sock --skip-networking >/dev/null 2>&1 &
+  start_service mariadb || {
+    mariadbd --user=mysql --datadir=/var/lib/mysql \
+      --socket=/run/mysqld/mysqld.sock --skip-networking >/dev/null 2>&1 &
+    echo "agent-entrypoint: MariaDB started directly"
+  }
 
   # The Agent probes each engine once at startup, so the server has to be
   # answering before the Agent runs or the panel would report MariaDB missing
@@ -166,13 +215,28 @@ start_postgres() {
     } >> /var/lib/postgresql/data/postgresql.conf
   fi
 
-  su postgres -c "pg_ctl -D /var/lib/postgresql/data -w -t 30 -l /tmp/postgres.log start" \
-    >/dev/null 2>&1 || {
-    echo "agent-entrypoint: PostgreSQL did not start; the engine will be unavailable" >&2
-    cat /tmp/postgres.log >&2 2>/dev/null || true
-    return 0
+  start_service postgresql || {
+    su postgres -c "pg_ctl -D /var/lib/postgresql/data -w -t 30 -l /tmp/postgres.log start" \
+      >/dev/null 2>&1 || {
+      echo "agent-entrypoint: PostgreSQL did not start; the engine will be unavailable" >&2
+      cat /tmp/postgres.log >&2 2>/dev/null || true
+      return 0
+    }
+    echo "agent-entrypoint: PostgreSQL started directly"
   }
-  echo "agent-entrypoint: PostgreSQL ready"
+
+  # The Agent probes each engine at startup, so the server has to be answering
+  # before it runs.
+  waited=0
+  while [ "$waited" -lt 30 ]; do
+    if su postgres -c "psql -h /run/postgresql -l" >/dev/null 2>&1; then
+      echo "agent-entrypoint: PostgreSQL ready"
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  echo "agent-entrypoint: PostgreSQL did not become ready" >&2
 }
 
 start_mariadb

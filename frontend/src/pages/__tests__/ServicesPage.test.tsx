@@ -16,6 +16,8 @@ function service(overrides: Partial<HostService> = {}): HostService {
     summary: 'Serves every website on this host, and holds the public ports.',
     units: ['nginx.service'],
     protected: false,
+    self_managed: false,
+    self_managed_by: '',
     installed: true,
     running: true,
     pid: 10,
@@ -75,6 +77,7 @@ describe('ServicesPage', () => {
         services,
         count: services.length,
         controllable: options.controllable ?? true,
+        manager: options.controllable === false ? '' : 'systemd',
       });
     });
   }
@@ -145,6 +148,62 @@ describe('ServicesPage', () => {
     expect(await screen.findByText('This host has no service manager')).toBeInTheDocument();
     expect(screen.getByText('Running')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Restart/ })).toBeDisabled();
+  });
+
+  // PHP-FPM is started by the PHP manager. A stop button here would hand one
+  // process two owners: the init system would report success, the PHP manager
+  // would carry on, and the panel would show a state matching neither.
+  it('explains a service the panel starts itself instead of offering controls', async () => {
+    mockApi([
+      service({
+        key: 'php-fpm8.4',
+        label: 'PHP-FPM 8.4',
+        role: 'runtime',
+        summary: 'Runs PHP for the websites on version 8.4.',
+        unit: 'php-fpm84.service',
+        units: ['php-fpm84.service'],
+        self_managed: true,
+        self_managed_by: 'the PHP manager',
+        controllable: false,
+      }),
+    ]);
+    renderWithProviders(<ServicesPage />);
+
+    expect(await screen.findByText(/Started and stopped by the PHP manager/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Restart/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Stop/ })).not.toBeInTheDocument();
+    // Nor a boot toggle: what starts it at boot is not the init system either.
+    expect(screen.queryByLabelText('Start at boot')).not.toBeInTheDocument();
+    // Its state is still shown, because the state is true.
+    expect(screen.getByText('Running')).toBeInTheDocument();
+  });
+
+  // A host can have a service manager and still have nothing it can act on for
+  // one particular daemon — a binary installed with no unit or init script.
+  it('says so when the init system has no service for one entry', async () => {
+    mockApi([
+      service({
+        key: 'cron',
+        label: 'Cron',
+        role: 'system',
+        summary: 'Runs scheduled tasks.',
+        unit: '',
+        running: false,
+        pid: 0,
+        enabled: null,
+        active_state: 'inactive',
+        controllable: false,
+      }),
+    ]);
+    renderWithProviders(<ServicesPage />);
+
+    expect(
+      await screen.findByText(/init system does not know about it/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Start/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Start at boot')).not.toBeInTheDocument();
+    // And no host-wide notice, because the host does have a service manager.
+    expect(screen.queryByText('This host has no service manager')).not.toBeInTheDocument();
   });
 
   it('toggles whether a service starts at boot', async () => {

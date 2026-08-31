@@ -64,7 +64,14 @@ FROM alpine:3.21 AS runtime
 # ufw and iptables are the firewall the panel manages (Phase 16). They are in
 # the image rather than installed on demand because a firewall the panel can
 # only manage after a download is one that is missing exactly when it is needed.
-RUN apk add --no-cache ca-certificates tzdata nginx shadow       iptables ip6tables ufw \
+#
+# OpenRC is this host's init system, and the one the panel's service manager
+# drives here. Alpine has no systemd — it is not a package that exists — so a
+# panel speaking only systemd could report what runs on an Alpine host and
+# change none of it.
+RUN apk add --no-cache ca-certificates tzdata nginx shadow \
+      iptables ip6tables ufw \
+      openrc \
       php82-fpm php83-fpm php84-fpm \
       php82-opcache php83-opcache php84-opcache \
       php82-session php83-session php84-session \
@@ -82,6 +89,12 @@ RUN apk add --no-cache ca-certificates tzdata nginx shadow       iptables ip6tab
     && rm -f /etc/php82/php-fpm.d/www.conf \
              /etc/php83/php-fpm.d/www.conf \
              /etc/php84/php-fpm.d/www.conf
+
+# OpenRC starts PostgreSQL from its own configuration, which expects the cluster
+# under a version directory. This image keeps it one level up, so OpenRC is told
+# where to look — otherwise the service manager would start a second, empty
+# cluster beside the one the panel's databases are in.
+COPY docker/openrc/postgresql.conf /etc/conf.d/postgresql
 
 COPY --from=builder /out/jothost-agent /usr/local/bin/jothost-agent
 COPY docker/nginx/host.conf /etc/nginx/nginx.conf

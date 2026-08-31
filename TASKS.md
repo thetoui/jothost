@@ -716,6 +716,12 @@ Additionally required by the above:
   configured one named php-fpm on a host running php-fpm83
 - [x] Alerts only for the services whose being down breaks websites: cron is
   legitimately stopped, and Apache is deliberately stopped in nginx-only mode
+- [x] An OpenRC backend behind the same verbs, because Alpine has no systemd to
+  install: without it the page reported accurate states on such a host and could
+  change none of them
+- [x] Daemons the panel starts itself (PHP-FPM, Apache) show their state and
+  withhold their controls, naming the owner — two owners for one process is
+  worse than one owner and an explanation
 
 ---
 

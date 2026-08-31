@@ -769,6 +769,9 @@ type ServiceDetectResult struct {
 	// all. False means no service manager: the states below are still true,
 	// and nothing can be changed through the panel.
 	Controllable bool `json:"controllable"`
+	// Manager names the init system: "systemd", "openrc", or empty for a host
+	// with neither.
+	Manager string `json:"manager"`
 }
 
 // DetectedService is one service as the host has it.
@@ -780,6 +783,12 @@ type DetectedService struct {
 	Units     []string `json:"units"`
 	Protected bool     `json:"protected"`
 	Essential bool     `json:"essential"`
+	// SelfManaged means another part of the panel owns this daemon's
+	// lifecycle, so the init system is not where it is started and stopped.
+	SelfManaged bool `json:"self_managed"`
+	// SelfManagedBy names that owner, so the panel can explain the absence of
+	// the controls rather than showing buttons that refuse.
+	SelfManagedBy string `json:"self_managed_by"`
 
 	Installed    bool   `json:"installed"`
 	Running      bool   `json:"running"`

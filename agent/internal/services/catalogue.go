@@ -48,6 +48,22 @@ type Definition struct {
 	Binaries []string `json:"-"`
 	// Protected refuses stop and disable.
 	Protected bool `json:"protected"`
+	// SelfManaged means this daemon's lifecycle belongs to the panel itself
+	// rather than to the init system.
+	//
+	// PHP-FPM is started by the PHP manager, which writes the pools and signals
+	// the master to reload them. Apache is started by the hybrid engine, which
+	// has to work on hosts with no init system at all. Offering to stop either
+	// from here would be two owners fighting over one process: the init system
+	// would report success, the component that actually started it would carry
+	// on, and the panel would show a state that matched neither.
+	//
+	// The state is still shown — it is read from the process table, and is
+	// true. Only the controls are withheld, with the reason given.
+	SelfManaged bool `json:"self_managed"`
+	// SelfManagedBy names what owns it, for a panel that has to explain why a
+	// button is not there.
+	SelfManagedBy string `json:"self_managed_by,omitempty"`
 	// Essential means the websites on this host stop working while it is down,
 	// so a dashboard raises an alert about it.
 	//
@@ -94,6 +110,10 @@ var catalogue = []Definition{
 		Units:     []string{"httpd.service", "apache2.service"},
 		Processes: []string{"httpd", "apache2"},
 		Binaries:  []string{"/usr/sbin/httpd", "/usr/sbin/apache2"},
+		// The hybrid engine starts and stops Apache as sites move on and off
+		// it, and does so on hosts with no init system at all.
+		SelfManaged:   true,
+		SelfManagedBy: "the web server arrangement",
 	},
 	{
 		Key:       "mariadb",
@@ -175,12 +195,25 @@ const (
 // ErrProtected means the verb would take away something the panel must not.
 var ErrProtected = errors.New("this service cannot be changed from the panel")
 
+// ErrSelfManaged means the daemon's lifecycle belongs to another part of the
+// panel, which would go on owning it whatever the init system was told.
+var ErrSelfManaged = errors.New("this service is managed elsewhere in the panel")
+
 // Allows reports whether a verb may be applied to this service.
 //
 // The rule lives here, next to the flag it reads, rather than in the request
 // handler: it is a property of the service, and a second entry point that
 // forgot to check would be a second way to lock an operator out of their host.
 func (d Definition) Allows(action string) error {
+	if d.SelfManaged {
+		owner := d.SelfManagedBy
+		if owner == "" {
+			owner = "the panel"
+		}
+		return fmt.Errorf("%w: %s is started and stopped by %s, not from here",
+			ErrSelfManaged, d.Label, owner)
+	}
+
 	switch action {
 	case ActionStart, ActionRestart, ActionEnable:
 		return nil
@@ -270,6 +303,10 @@ func PHPFPMDefinitions(versions []string) []Definition {
 			},
 			// A pool that is down is a 502 on every PHP site using it.
 			Essential: true,
+			// The PHP manager starts each version's master and signals it to
+			// reload when a site's pool changes.
+			SelfManaged:   true,
+			SelfManagedBy: "the PHP manager",
 		})
 	}
 

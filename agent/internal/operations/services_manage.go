@@ -47,6 +47,9 @@ func (r *Registry) handleServiceDetect(ctx context.Context, req protocol.Request
 		// Whether this host can start and stop anything at all, which is a
 		// property of the host rather than of any one service.
 		"controllable": r.deps.Services.Available(),
+		// And which init system it is driven through, so the panel can say so
+		// rather than leaving an operator to infer it from what works.
+		"manager": r.deps.Services.Manager(),
 	}, nil
 }
 

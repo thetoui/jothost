@@ -65,6 +65,12 @@ type Config struct {
 	// Apache is the backend in hybrid mode. Two binary names because
 	// distributions disagree: Alpine and RHEL ship "httpd", Debian ships
 	// "apache2". Both are allowlisted; whichever exists is used.
+	// RCServicePath and RCUpdatePath drive OpenRC, which is what Alpine and
+	// Gentoo run instead of systemd. Absent means this host is not managed by
+	// OpenRC, which is the usual case.
+	RCServicePath string
+	RCUpdatePath  string
+
 	// UFWPath is the firewall front end. Absent means the panel reports that
 	// this host has no firewall it can manage, rather than failing requests.
 	UFWPath string
@@ -134,6 +140,11 @@ func Load() (Config, error) {
 		NginxPath:     getString("AGENT_NGINX_PATH", "/usr/sbin/nginx"),
 		NginxSitesDir: getString("AGENT_NGINX_SITES_DIR", "/etc/nginx/conf.d"),
 
+		// OpenRC, for the hosts that have no systemd. Alpine is the one that
+		// matters: systemd cannot be installed there at all.
+		RCServicePath: getString("AGENT_RC_SERVICE_PATH", "/sbin/rc-service"),
+		RCUpdatePath:  getString("AGENT_RC_UPDATE_PATH", "/sbin/rc-update"),
+
 		UFWPath:              getString("AGENT_UFW_PATH", "/usr/sbin/ufw"),
 		FirewallStateDir:     getString("AGENT_FIREWALL_STATE_DIR", "/var/lib/jothost/firewall"),
 		FirewallGuardedPorts: getString("AGENT_FIREWALL_GUARDED_PORTS", ""),
@@ -172,6 +183,8 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_SYSTEMCTL_PATH", cfg.SystemctlPath)...)
 	problems = append(problems, validateAbsolute("AGENT_NGINX_PATH", cfg.NginxPath)...)
 	problems = append(problems, validateAbsolute("AGENT_NGINX_SITES_DIR", cfg.NginxSitesDir)...)
+	problems = append(problems, validateAbsolute("AGENT_RC_SERVICE_PATH", cfg.RCServicePath)...)
+	problems = append(problems, validateAbsolute("AGENT_RC_UPDATE_PATH", cfg.RCUpdatePath)...)
 	problems = append(problems, validateAbsolute("AGENT_UFW_PATH", cfg.UFWPath)...)
 	problems = append(problems, validateAbsolute("AGENT_FIREWALL_STATE_DIR", cfg.FirewallStateDir)...)
 	problems = append(problems, validateAbsolute("AGENT_APACHE_PATH", cfg.ApachePath)...)

@@ -6,17 +6,16 @@ import (
 	"strings"
 )
 
-// Control operations: starting, stopping, and restarting a unit.
+// Control operations: starting, stopping, restarting, and setting what starts
+// at boot.
 //
-// Phase 12 is the Service Manager, and this is not it. What is here is the
-// smallest dependency Phase 9 needs: a Node.js application managed by systemd
-// has to be startable, and a panel that can write a unit but not start it has
-// not managed anything (CLAUDE.md section 21).
+// Every verb here is dispatched to whichever init system this host runs, and
+// the two are deliberately indistinguishable from outside: a caller asks for a
+// service to start, not for systemctl to be run.
 //
-// Deliberately absent, and left to Phase 12: masking, editing arbitrary units,
-// and anything that touches a unit the panel did not write. Every operation
-// here takes a unit name that has already been through ValidateName, so no
-// argument can be read by systemctl as an option.
+// Deliberately absent: masking, editing arbitrary units, and anything that
+// touches a unit the panel did not write. Every operation takes a name that has
+// already been through ValidateName, so no argument can be read as an option.
 
 // Start starts a unit.
 func (p *Provider) Start(ctx context.Context, name string) error {
@@ -39,11 +38,17 @@ func (p *Provider) Restart(ctx context.Context, name string) error {
 // operator discovers is down from a customer, so this is part of creating one
 // rather than a separate choice.
 func (p *Provider) Enable(ctx context.Context, name string) error {
+	if p.manager == ManagerOpenRC {
+		return p.openrcSetBoot(ctx, name, true)
+	}
 	return p.control(ctx, "enable", name)
 }
 
 // Disable stops a unit starting at boot.
 func (p *Provider) Disable(ctx context.Context, name string) error {
+	if p.manager == ManagerOpenRC {
+		return p.openrcSetBoot(ctx, name, false)
+	}
 	return p.control(ctx, "disable", name)
 }
 
@@ -55,6 +60,12 @@ func (p *Provider) Disable(ctx context.Context, name string) error {
 func (p *Provider) DaemonReload(ctx context.Context) error {
 	if !p.Available() {
 		return ErrUnavailable
+	}
+	if p.manager == ManagerOpenRC {
+		// OpenRC reads its init scripts on every invocation, so there is
+		// nothing to reload. Returning nil rather than an error keeps callers
+		// from having to know which init system they are on.
+		return nil
 	}
 
 	result, err := p.runner.Run(ctx, CommandName, "daemon-reload")
@@ -78,6 +89,9 @@ func (p *Provider) control(ctx context.Context, verb, name string) error {
 	}
 	if !p.Available() {
 		return ErrUnavailable
+	}
+	if p.manager == ManagerOpenRC {
+		return p.openrcControl(ctx, verb, name)
 	}
 
 	result, err := p.runner.Run(ctx, CommandName, verb, name)

@@ -49,9 +49,10 @@ type Detected struct {
 	// ActiveState and SubState are systemd's own words, empty without it.
 	ActiveState string `json:"active_state,omitempty"`
 	SubState    string `json:"sub_state,omitempty"`
-	// Controllable reports whether this host can start and stop it. False on a
-	// host with no service manager, which the panel shows rather than
-	// discovering one failed click at a time.
+	// Controllable reports whether the panel can start and stop it. False on a
+	// host with no service manager, and false for a daemon the panel starts
+	// itself — both of which the panel shows rather than discovering one
+	// failed click at a time.
 	Controllable bool `json:"controllable"`
 }
 
@@ -79,7 +80,13 @@ func (p *Provider) Detect(ctx context.Context, extra []Definition, processes Pro
 
 	detected := make([]Detected, 0, len(definitions))
 	for _, definition := range definitions {
-		entry := Detected{Definition: definition, Controllable: controllable}
+		// A daemon the panel starts itself is never controllable from here,
+		// however capable the host's init system is: two owners for one process
+		// is worse than one owner and an explanation.
+		entry := Detected{
+			Definition:   definition,
+			Controllable: controllable && !definition.SelfManaged,
+		}
 
 		for _, name := range definition.Processes {
 			if pid, up := running[name]; up {
@@ -110,9 +117,12 @@ func (p *Provider) Detect(ctx context.Context, extra []Definition, processes Pro
 						entry.PID = status.MainPID
 					}
 				}
-			} else if !entry.Installed {
-				// Nothing on disk, no process, no unit: this host does not
-				// have it.
+			} else {
+				// The init system has no unit or script for it. Whether it is
+				// installed is a separate question — a binary can be present,
+				// and even running, with nothing telling init about it — but
+				// either way there is nothing here to start or stop, so the
+				// panel says so rather than offering a button that fails.
 				entry.Controllable = false
 			}
 		}

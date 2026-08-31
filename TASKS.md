@@ -44,26 +44,26 @@ Done, in the order they were built:
 16  Firewall
 11  Logs
 10  Cron
+17  SSH Security
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  17   SSH Security           — needs 12 (sshd reload)
- 2.  18   Fail2Ban               — reads logs (11), writes firewall rules (16)
- 3.  7.1  FTP Manager            — passive ports need 16; transfers need 11
- 4.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
- 5.  21   System Updates         — scheduled updates need 10
- 6.  19   Monitoring             — service monitoring needs 12
- 7.  14   Backup                 — scheduling needs 10
- 8.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
- 9.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
-10.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
-11.  27   Git & Webhook Actions  — deployment logs need 11
-12.  22   Multi-Tenant           — quota dimensions must exist first, mail included
-13.  23   Production Installer   — installs everything, so everything must exist
-14.  24   Production Hardening   — tests the finished system
-15.  25   Release                — last by definition
+ 1.  18   Fail2Ban               — reads logs (11), writes firewall rules (16)
+ 2.  7.1  FTP Manager            — passive ports need 16; transfers need 11
+ 3.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
+ 4.  21   System Updates         — scheduled updates need 10
+ 5.  19   Monitoring             — service monitoring needs 12
+ 6.  14   Backup                 — scheduling needs 10
+ 7.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+ 8.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+ 9.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+10.  27   Git & Webhook Actions  — deployment logs need 11
+11.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+12.  23   Production Installer   — installs everything, so everything must exist
+13.  24   Production Hardening   — tests the finished system
+14.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -895,18 +895,39 @@ Every shape of lockout, refused
 
 # PHASE 17 — SSH Security
 
+**Status: COMPLETE** — see [docs/PHASE17.md](docs/PHASE17.md) for scope,
+decisions, and known limitations.
+
 **Build order: 5 of 17.** Depends on 12 (changing sshd's configuration means
 reloading it).
 **Blocks** 15 (the SSH scanner).
 
-- [ ] SSH configuration reader
-- [ ] Root login status
-- [ ] Password authentication status
-- [ ] SSH port
-- [ ] Authorized keys
-- [ ] Add key
-- [ ] Remove key
-- [ ] Security recommendations
+- [x] SSH configuration reader — the *effective* configuration, from `sshd -T`
+- [x] Root login status
+- [x] Password authentication status
+- [x] SSH port
+- [x] Authorized keys
+- [x] Add key
+- [x] Remove key
+- [x] Security recommendations
+
+Additionally required by the above:
+
+- [x] Every change validated with `sshd -t` against the whole configuration
+  before it is installed, and the effective configuration read back afterwards:
+  a change that reports success and did nothing is the worst outcome here
+- [x] The four changes that would lock the operator out are refused, not warned
+  about — no key and passwords off, both methods off, a port the firewall blocks,
+  and root logins off where root is the only account
+- [x] A drop-in the panel owns, never an edit to the distribution's sshd_config
+  — and a host with no Include for it is read-only, because writing a file
+  nothing reads would report success and change nothing
+- [x] The firewall interlock: the Agent asks Phase 16 whether the new port would
+  be reachable, and refuses with the rule to add rather than opening it itself
+- [x] Keys parsed before they are written, identified by SHA256 fingerprint, with
+  options prefixes refused and lines the panel does not understand left alone
+- [x] The accounts offered are the host's own login accounts; a website's account
+  has a nologin shell and is not offered a key it could never use
 
 ---
 

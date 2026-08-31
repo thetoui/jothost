@@ -34,6 +34,7 @@ import (
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/socket"
+	sshpkg "github.com/jothost/panel/agent/internal/ssh"
 	"github.com/jothost/panel/agent/internal/ssl"
 	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/protocol"
@@ -180,6 +181,11 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		// as useradd and adduser, and for the same reason: distributions
 		// disagree, and the Agent must not resolve a path from a request.
 		{Name: services.CommandRCService, Path: cfg.RCServicePath, Timeout: 30 * time.Second},
+		// sshd, used only to *read* the effective configuration (-T) and to
+		// validate a candidate one (-t). The panel never starts the server with
+		// it: that goes through the service manager, so there is one thing on
+		// this host that owns the daemon's lifecycle.
+		{Name: sshpkg.CommandName, Path: cfg.SSHDPath, Timeout: 15 * time.Second},
 		// The shell a scheduled job's "run now" uses, and the only entry here
 		// whose argument is a command line rather than a parameter.
 		//
@@ -389,6 +395,19 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 			"log_root", cfg.LogRoot, "site_root", cfg.SiteRoot)
 	}
 
+	// The SSH server's configuration. The provider reads it through sshd itself
+	// rather than by parsing the file, because a directive that is commented out
+	// is still in force at its default — and the defaults differ between
+	// versions, so the file is not the answer.
+	sshProvider := sshpkg.NewProvider(sshpkg.Options{
+		Runner: runner,
+		Log:    log,
+		Dir:    cfg.SSHConfigDir,
+	})
+	if !sshProvider.Available() {
+		log.Info("no SSH server on this host; its settings will be reported as unavailable")
+	}
+
 	// Scheduled jobs. The provider writes crontab entries; the host's cron
 	// daemon is what runs them.
 	cronProvider := cron.NewProvider(cron.Options{
@@ -518,6 +537,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Files:        fileManager,
 		Logs:         logProvider,
 		Cron:         cronProvider,
+		SSH:          sshProvider,
 	})
 
 	return registry, jobRunner, nil

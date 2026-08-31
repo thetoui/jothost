@@ -34,6 +34,7 @@ import (
 	"github.com/jothost/panel/api/internal/servers"
 	servicespkg "github.com/jothost/panel/api/internal/services"
 	"github.com/jothost/panel/api/internal/sessions"
+	sshpkg "github.com/jothost/panel/api/internal/ssh"
 	sslpkg "github.com/jothost/panel/api/internal/ssl"
 	"github.com/jothost/panel/api/internal/twofactor"
 	"github.com/jothost/panel/api/internal/users"
@@ -62,6 +63,7 @@ type Server struct {
 	services  *servicespkg.Handler
 	logs      *logspkg.Handler
 	cron      *cronpkg.Handler
+	ssh       *sshpkg.Handler
 	firewall  *firewallpkg.Handler
 	jobs      *jobs.Handler
 	php       *phppkg.Handler
@@ -315,6 +317,19 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// The SSH server's settings. No state of the panel's own: the configuration
+	// is files on the host, and every change is validated by sshd before it is
+	// installed and refused outright where it would leave nobody able to log in.
+	s.ssh = sshpkg.NewHandler(sshpkg.HandlerOptions{
+		Service: sshpkg.NewService(sshpkg.ServiceOptions{
+			Agent:    agent,
+			Audit:    auditRecorder,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		}),
+		Auth: authService,
+	})
+
 	// The host's own logs. Read-only, and read through the Agent: a request
 	// names a source key from the Agent's catalogue, never a path, which is
 	// what keeps this from being a file reader with a friendlier name.
@@ -453,6 +468,7 @@ func (s *Server) routes() http.Handler {
 	s.services.Routes(mux)
 	s.logs.Routes(mux)
 	s.cron.Routes(mux)
+	s.ssh.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)

@@ -131,6 +131,16 @@ const (
 	OperationFileExtract OperationType = "file.extract"
 	OperationFileSearch  OperationType = "file.search"
 
+	// SSH. Two of these can lock an operator out of the machine, so the Agent
+	// validates every configuration with sshd before installing it and refuses
+	// the changes that would leave nobody able to log in: see
+	// agent/internal/ssh.
+	OperationSSHStatus    OperationType = "ssh.status"
+	OperationSSHConfigure OperationType = "ssh.configure"
+	OperationSSHKeyList   OperationType = "ssh.keys.list"
+	OperationSSHKeyAdd    OperationType = "ssh.keys.add"
+	OperationSSHKeyRemove OperationType = "ssh.keys.remove"
+
 	// Scheduled jobs. The Agent writes crontab entries; the host's cron daemon
 	// runs them, as the website's own account. cron.run is the one operation
 	// that executes a job itself, and agent/internal/cron/run.go says why that
@@ -234,6 +244,11 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationFileArchive:          {},
 	OperationFileExtract:          {},
 	OperationFileSearch:           {},
+	OperationSSHStatus:            {},
+	OperationSSHConfigure:         {},
+	OperationSSHKeyList:           {},
+	OperationSSHKeyAdd:            {},
+	OperationSSHKeyRemove:         {},
 	OperationCronStatus:           {},
 	OperationCronApply:            {},
 	OperationCronRemove:           {},

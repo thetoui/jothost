@@ -132,6 +132,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-services
 	$(MAKE) docker-test-logs
 	$(MAKE) docker-test-cron
+	$(MAKE) docker-test-ssh
 	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
@@ -218,6 +219,10 @@ docker-test-logs: create-integration-admin ## Run the Phase 11 log viewer integr
 .PHONY: docker-test-cron
 docker-test-cron: create-integration-admin ## Run the Phase 10 scheduled job integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase10_cron.sh
+
+.PHONY: docker-test-ssh
+docker-test-ssh: create-integration-admin ## Run the Phase 17 SSH security integration checks
+	$(COMPOSE) exec -T agent sh /tests/integration/phase17_ssh.sh
 
 .PHONY: docker-test-hybrid
 docker-test-hybrid: create-integration-admin ## Run the Phase 4.5 Apache hybrid integration checks

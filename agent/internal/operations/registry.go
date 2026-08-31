@@ -24,6 +24,7 @@ import (
 	"github.com/jothost/panel/agent/internal/pma"
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
+	"github.com/jothost/panel/agent/internal/ssh"
 	"github.com/jothost/panel/agent/internal/ssl"
 	"github.com/jothost/panel/shared/protocol"
 )
@@ -107,6 +108,11 @@ type Dependencies struct {
 	// Files serves the file manager. Nil, or configured with no roots, means
 	// file management is unavailable rather than unrestricted.
 	Files *files.Manager
+
+	// SSH reads and changes the host's SSH server configuration. Nil, or a host
+	// with no sshd, means the panel reports that rather than offering settings
+	// nothing would read.
+	SSH *ssh.Provider
 
 	// Cron writes the host's crontabs. Nil, or a host with no spool directory,
 	// means nothing can be scheduled — which the panel reports rather than
@@ -220,6 +226,12 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationFileArchive, r.handleFileArchive)
 	r.mustRegister(protocol.OperationFileExtract, r.handleFileExtract)
 	r.mustRegister(protocol.OperationFileSearch, r.handleFileSearch)
+
+	r.mustRegister(protocol.OperationSSHStatus, r.handleSSHStatus)
+	r.mustRegister(protocol.OperationSSHConfigure, r.handleSSHConfigure)
+	r.mustRegister(protocol.OperationSSHKeyList, r.handleSSHKeyList)
+	r.mustRegister(protocol.OperationSSHKeyAdd, r.handleSSHKeyAdd)
+	r.mustRegister(protocol.OperationSSHKeyRemove, r.handleSSHKeyRemove)
 
 	r.mustRegister(protocol.OperationCronStatus, r.handleCronStatus)
 	r.mustRegister(protocol.OperationCronApply, r.handleCronApply)

@@ -1229,12 +1229,68 @@ PATCH /security/findings/:id
 # 26. SSH
 
 ```http
-GET /security/ssh
-PATCH /security/ssh
-GET /security/ssh/keys
-POST /security/ssh/keys
-DELETE /security/ssh/keys/:id
+GET    /security/ssh
+PATCH  /security/ssh
+GET    /security/ssh/keys?account=NAME
+POST   /security/ssh/keys
+DELETE /security/ssh/keys/:fingerprint?account=NAME
 ```
+
+**As implemented in Phase 17.** Reading needs `server.view`; every change needs
+`server.manage`.
+
+`GET /security/ssh` returns the **effective** configuration — what `sshd -T`
+resolves, not what is in the file, because a directive that is commented out is
+still in force at a default that differs between versions — along with the
+accounts that can hold keys and the recommendations.
+
+`PATCH /security/ssh` takes any of:
+
+```text
+port                      1-65535
+root_login                yes | no | prohibit-password | forced-commands-only
+password_authentication   bool
+pubkey_authentication     bool
+permit_empty_passwords    bool
+x11_forwarding            bool
+max_auth_tries            1-100
+```
+
+An omitted field is left alone; a body that asks for nothing is a **422**. The
+change is written to `/etc/ssh/sshd_config.d/10-jothost.conf`, validated with
+`sshd -t` against the whole configuration before it is installed, and read back
+afterwards — a change the server does not adopt restores the backup and returns
+a **409** naming the directive.
+
+Four changes are **refused with a 409**, because they would lock the operator out
+of the machine and the panel can tell in advance:
+
+- password authentication off while no account has an authorised key
+- public key authentication off while passwords are already off
+- a port the firewall would not admit: the panel does not open it as a side
+  effect, so the message names the rule to add first
+- `root_login: no` where root is the only account that can log in
+
+The message is the point of these, and is meant to be shown to the operator
+verbatim.
+
+A host whose `sshd_config` has no `Include` for the drop-in directory reports
+`managed: false` with the reason, and every change is refused: writing a file
+nothing reads would report success and change nothing.
+
+`GET /security/ssh/keys` lists one account's authorised keys, and `POST` adds
+one. The account must be one the host offers — a real login shell, or root — and
+is matched against that list rather than turned into a path; anything else is a
+**404**. A key is refused unless its declared type matches the type inside the
+blob, and options in front of a key (`command="..."` and the rest) are refused
+outright: the panel writes plain keys.
+
+`DELETE /security/ssh/keys/:fingerprint` withdraws one. The `:id` of the original
+sketch is the key's SHA256 fingerprint, which is the only identifier that
+survives another key being removed; it is URL-encoded, and the account is a query
+parameter because the same key may be authorised for more than one.
+
+`ssh.change`, `ssh.key.add` and `ssh.key.remove` are audited, refusals included.
 
 ---
 

@@ -86,6 +86,11 @@ type Config struct {
 	ApacheConfigDir string
 	ApacheMainConf  string
 	SiteRoot        string
+	// SSHDPath is the SSH server binary, used to read and validate the
+	// configuration — never to start it. SSHConfigDir is where its
+	// configuration lives.
+	SSHDPath     string
+	SSHConfigDir string
 	// ShellPath is the shell a scheduled job's "run now" uses. It is cron's own
 	// shell, because a manual run that behaved differently from the scheduled
 	// one would be worse than no manual run at all.
@@ -167,6 +172,8 @@ func Load() (Config, error) {
 		ApacheMainConf:  getString("AGENT_APACHE_MAIN_CONF", "/etc/apache2/httpd.conf"),
 		SiteRoot:        getString("AGENT_SITE_ROOT", "/var/www"),
 		LogRoot:         getString("AGENT_LOG_ROOT", "/var/log"),
+		SSHDPath:        getString("AGENT_SSHD_PATH", "/usr/sbin/sshd"),
+		SSHConfigDir:    getString("AGENT_SSH_CONFIG_DIR", "/etc/ssh"),
 		ShellPath:       getString("AGENT_SHELL_PATH", "/bin/sh"),
 		CronSpoolDir:    getString("AGENT_CRON_SPOOL_DIR", "/var/spool/cron/crontabs"),
 		CronLogDir:      getString("AGENT_CRON_LOG_DIR", "/var/log/jothost/cron"),
@@ -209,6 +216,8 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_APACHE_MAIN_CONF", cfg.ApacheMainConf)...)
 	problems = append(problems, validateAbsolute("AGENT_SITE_ROOT", cfg.SiteRoot)...)
 	problems = append(problems, validateAbsolute("AGENT_LOG_ROOT", cfg.LogRoot)...)
+	problems = append(problems, validateAbsolute("AGENT_SSHD_PATH", cfg.SSHDPath)...)
+	problems = append(problems, validateAbsolute("AGENT_SSH_CONFIG_DIR", cfg.SSHConfigDir)...)
 	problems = append(problems, validateAbsolute("AGENT_SHELL_PATH", cfg.ShellPath)...)
 	problems = append(problems, validateAbsolute("AGENT_CRON_SPOOL_DIR", cfg.CronSpoolDir)...)
 	problems = append(problems, validateAbsolute("AGENT_CRON_LOG_DIR", cfg.CronLogDir)...)

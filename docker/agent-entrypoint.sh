@@ -263,4 +263,27 @@ else
   echo "agent-entrypoint: no cron daemon; scheduled jobs will not run" >&2
 fi
 
+# ----------------------------------------------------------------------- SSH
+#
+# The server whose configuration the panel manages. Its host keys are generated
+# here rather than baked into the image: a key in an image is a key every copy
+# of that image shares, and `sshd -T` — which is how the panel reads the
+# effective configuration — refuses to run without one.
+#
+# Nothing outside this container can reach it: no port is published, and the
+# compose network is private. That is what makes it safe for the panel to break
+# its configuration on purpose, which is what the Phase 17 test does.
+if command -v sshd >/dev/null 2>&1; then
+  ssh-keygen -A >/dev/null 2>&1 || true
+  if sshd -t >/dev/null 2>&1; then
+    start_service sshd || {
+      /usr/sbin/sshd
+      echo "agent-entrypoint: sshd started directly"
+    }
+  else
+    echo "agent-entrypoint: the SSH configuration is invalid; sshd will not start" >&2
+    sshd -t >&2 || true
+  fi
+fi
+
 exec /usr/local/bin/jothost-agent "$@"

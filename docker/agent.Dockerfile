@@ -65,6 +65,13 @@ FROM alpine:3.21 AS runtime
 # the image rather than installed on demand because a firewall the panel can
 # only manage after a download is one that is missing exactly when it is needed.
 #
+# OpenSSH is here because Phase 17 configures it, and configuring sshd is the
+# one thing in this panel that can lock an operator out of their own machine.
+# Every change is validated by asking sshd itself, and a validator that is not
+# installed is a validator that gets stubbed — so the container runs the real
+# server, on its own isolated network, where a change that breaks it breaks
+# nothing anybody needs.
+#
 # busybox-openrc brings the init script for crond, which Alpine's base image has
 # the daemon for and no way to start. Phase 10 schedules jobs by writing crontab
 # entries, so a host where nothing read them would let the panel accept jobs that
@@ -81,6 +88,7 @@ FROM alpine:3.21 AS runtime
 RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       iptables ip6tables ufw \
       openrc busybox-openrc \
+      openssh-server openssh-keygen \
       php82-fpm php83-fpm php84-fpm \
       php84 \
       php82-opcache php83-opcache php84-opcache \

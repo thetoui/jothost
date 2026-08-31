@@ -394,6 +394,88 @@ export interface ServiceActionResult {
   state: string;
 }
 
+// -------------------------------------------------------------------- ssh
+
+export interface SSHConfig {
+  available: boolean;
+  /** False where the panel will not write: a host whose sshd_config has no
+   *  Include would silently ignore the file, so it is read-only instead. */
+  managed: boolean;
+  reason: string;
+
+  ports: number[];
+  /** sshd's own vocabulary: yes | without-password | forced-commands-only | no.
+   *  "without-password" is what it prints for "prohibit-password". */
+  root_login: string;
+  password_authentication: boolean;
+  pubkey_authentication: boolean;
+  permit_empty_passwords: boolean;
+  x11_forwarding: boolean;
+  max_auth_tries: number;
+  login_grace_time: number;
+
+  config_path: string;
+  drop_in_path: string;
+  running: boolean;
+}
+
+export interface SSHAccount {
+  name: string;
+  uid: number;
+  home: string;
+  shell: string;
+  keys: number;
+}
+
+export interface SSHFinding {
+  id: string;
+  severity: 'high' | 'warn' | 'info';
+  title: string;
+  detail: string;
+  action: string;
+}
+
+export interface SSHStatus {
+  config: SSHConfig;
+  accounts: SSHAccount[];
+  findings: SSHFinding[];
+}
+
+export interface SSHKey {
+  /** The SHA256 form OpenSSH prints. It identifies a key across removals, which
+   *  a line number would not. */
+  fingerprint: string;
+  type: string;
+  comment: string;
+  bits: number;
+  account: string;
+}
+
+export interface SSHKeyList {
+  account: string;
+  keys: SSHKey[];
+  count: number;
+}
+
+/** A change to the server's settings. An omitted field is left alone. */
+export interface SSHChange {
+  port?: number;
+  root_login?: string;
+  password_authentication?: boolean;
+  pubkey_authentication?: boolean;
+  permit_empty_passwords?: boolean;
+  x11_forwarding?: boolean;
+  max_auth_tries?: number;
+}
+
+export interface SSHApplyResult {
+  config: SSHConfig;
+  changed: string[];
+  backup: string;
+  /** False means the change is on disk and takes effect at the next restart. */
+  reloaded: boolean;
+}
+
 // ----------------------------------------------------------- scheduled jobs
 
 /** The kinds of job the panel offers. */

@@ -86,10 +86,14 @@ type Config struct {
 	ApacheConfigDir string
 	ApacheMainConf  string
 	SiteRoot        string
-	UseraddPath     string
-	AdduserPath     string
-	UserdelPath     string
-	DeluserPath     string
+	// LogRoot is where the host's own logs live. It bounds what the log viewer
+	// can resolve to, alongside the site root: the catalogue decides which
+	// files are offered, and these decide where those files may actually be.
+	LogRoot     string
+	UseraddPath string
+	AdduserPath string
+	UserdelPath string
+	DeluserPath string
 	// WebGroup is the group the web server runs as. Site directories are
 	// group-owned by it so the server can read what it serves. Empty probes
 	// the conventional names.
@@ -154,6 +158,7 @@ func Load() (Config, error) {
 		ApacheConfigDir: getString("AGENT_APACHE_CONF_DIR", "/etc/apache2/conf.d"),
 		ApacheMainConf:  getString("AGENT_APACHE_MAIN_CONF", "/etc/apache2/httpd.conf"),
 		SiteRoot:        getString("AGENT_SITE_ROOT", "/var/www"),
+		LogRoot:         getString("AGENT_LOG_ROOT", "/var/log"),
 		UseraddPath:     getString("AGENT_USERADD_PATH", "/usr/sbin/useradd"),
 		AdduserPath:     getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
 		UserdelPath:     getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
@@ -192,6 +197,7 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_APACHE_CONF_DIR", cfg.ApacheConfigDir)...)
 	problems = append(problems, validateAbsolute("AGENT_APACHE_MAIN_CONF", cfg.ApacheMainConf)...)
 	problems = append(problems, validateAbsolute("AGENT_SITE_ROOT", cfg.SiteRoot)...)
+	problems = append(problems, validateAbsolute("AGENT_LOG_ROOT", cfg.LogRoot)...)
 	problems = append(problems, validateAbsolute("AGENT_USERADD_PATH", cfg.UseraddPath)...)
 	problems = append(problems, validateAbsolute("AGENT_ADDUSER_PATH", cfg.AdduserPath)...)
 	problems = append(problems, validateAbsolute("AGENT_MYSQL_PATH", cfg.MySQLPath)...)

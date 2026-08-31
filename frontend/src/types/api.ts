@@ -394,6 +394,60 @@ export interface ServiceActionResult {
   state: string;
 }
 
+// ---------------------------------------------------------------------- logs
+
+/** The severity vocabulary the panel filters on, across every log format. */
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
+
+export interface LogSource {
+  /** The catalogue key. Requests name this, never a path. */
+  key: string;
+  label: string;
+  summary: string;
+  group: 'web' | 'runtime' | 'system' | 'panel';
+  format: string;
+  /** Where the Agent found it, so an operator can look at the same file over
+   *  SSH. Empty when this host does not have it. */
+  path: string;
+  /** False for a catalogued log this host does not have — which is normal:
+   *  nginx writes its error log on the first error. */
+  present: boolean;
+  size: number;
+  modified: string | null;
+}
+
+export interface LogSourceList {
+  sources: LogSource[];
+  count: number;
+  levels: LogLevel[];
+}
+
+export interface LogLine {
+  /** Byte offset in the file, which is what identifies a line across polls. */
+  offset: number;
+  text: string;
+  /** Empty where the format has no level to read. */
+  level: string;
+  truncated: boolean;
+}
+
+export interface LogTail {
+  key: string;
+  path: string;
+  lines: LogLine[];
+  /** Where a follower continues from. */
+  offset: number;
+  size: number;
+  /** The file was replaced or truncated under us. */
+  rotated: boolean;
+  scanned: number;
+  /** More exists than one response can carry. */
+  partial: boolean;
+  /** How many lines the search or level filter removed. */
+  filtered: number;
+  format: string;
+}
+
 /** Which web server arrangement a host runs. */
 export type WebserverMode = 'nginx' | 'hybrid';
 

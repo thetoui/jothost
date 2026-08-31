@@ -3,8 +3,12 @@ package nodejs
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/jothost/panel/agent/internal/command"
+	"github.com/jothost/panel/agent/internal/services"
 )
 
 func testApp() App {
@@ -267,5 +271,65 @@ func TestExtensionOfInstallerOffersIsPerManager(t *testing.T) {
 	}
 	if offers := installer.Offers(); len(offers) != 0 {
 		t.Fatalf("offers = %v, want none without a package manager", offers)
+	}
+}
+
+// Which mechanism runs an application is a property of the host, and getting it
+// wrong is not a small matter: the systemd path writes a unit file into
+// /etc/systemd/system, which on an OpenRC host is a directory that does not
+// exist. Every deployment there failed on it.
+//
+// The distinction these tests hold in place is between "this host has a service
+// manager" and "this host has systemd". They are the same question on most
+// machines and different ones on Alpine, which is what made it easy to conflate.
+func TestSystemdIsNotUsedOnAHostRunningOpenRC(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("command execution tests require a Unix host")
+	}
+
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "rc-service")
+	update := filepath.Join(dir, "rc-update")
+	for _, path := range []string{stub, update} {
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatalf("write stub: %v", err)
+		}
+	}
+
+	runner, err := command.NewRunner(
+		command.Spec{Name: services.CommandRCService, Path: stub},
+		command.Spec{Name: services.CommandRCUpdate, Path: update},
+	)
+	if err != nil {
+		t.Fatalf("NewRunner: %v", err)
+	}
+
+	provider := services.NewProvider(runner)
+	if provider.Manager() != services.ManagerOpenRC {
+		t.Fatalf("manager = %q, want the OpenRC backend for this stub", provider.Manager())
+	}
+
+	if NewSystemd(provider).Available() {
+		t.Fatal("an OpenRC host was reported as having systemd, so units would be written for it")
+	}
+}
+
+func TestSystemdIsUsedOnAHostRunningSystemd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("command execution tests require a Unix host")
+	}
+
+	stub := filepath.Join(t.TempDir(), "systemctl")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+
+	runner, err := command.NewRunner(command.Spec{Name: services.CommandName, Path: stub})
+	if err != nil {
+		t.Fatalf("NewRunner: %v", err)
+	}
+
+	if !NewSystemd(services.NewProvider(runner)).Available() {
+		t.Fatal("a systemd host was not reported as having systemd")
 	}
 }

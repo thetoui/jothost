@@ -131,6 +131,13 @@ const (
 	OperationFileExtract OperationType = "file.extract"
 	OperationFileSearch  OperationType = "file.search"
 
+	// Logs. Every one of these names a *catalogue key*, never a path: see
+	// agent/internal/logs. A log reader that took a path would be a file
+	// reader with no restrictions at all.
+	OperationLogList OperationType = "log.list"
+	OperationLogTail OperationType = "log.tail"
+	OperationLogRead OperationType = "log.read"
+
 	// Asynchronous execution control.
 	OperationJobStatus OperationType = "job.status"
 	OperationJobCancel OperationType = "job.cancel"
@@ -217,6 +224,9 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationFileArchive:          {},
 	OperationFileExtract:          {},
 	OperationFileSearch:           {},
+	OperationLogList:              {},
+	OperationLogTail:              {},
+	OperationLogRead:              {},
 	OperationJobStatus:            {},
 	OperationJobCancel:            {},
 	OperationJobList:              {},

@@ -24,6 +24,7 @@ import (
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
 	"github.com/jothost/panel/agent/internal/jobs"
+	"github.com/jothost/panel/agent/internal/logs"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/nodejs"
 	"github.com/jothost/panel/agent/internal/operations"
@@ -357,6 +358,17 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("file management ready", "roots", fileManager.Roots())
 	}
 
+	// The log reader is confined to where logs live, and to the files this
+	// panel's own catalogue names. Both locks matter: the catalogue is what
+	// stops a request naming a path, and the roots are what stop a *symlinked*
+	// log — /var/log/nginx/access.log is writable by the account nginx runs as
+	// on many hosts — from reading something outside them.
+	logProvider := logs.NewProvider(log, cfg.LogRoot, cfg.SiteRoot)
+	if !logProvider.Available() {
+		log.Warn("log reading is unavailable: the log roots could not be resolved",
+			"log_root", cfg.LogRoot, "site_root", cfg.SiteRoot)
+	}
+
 	// Database providers probe their servers here, at startup, so agent.info
 	// can report what this host runs rather than each operation discovering it
 	// separately.
@@ -470,6 +482,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		PHPMyAdmin:   phpMyAdmin,
 		Node:         nodeManager,
 		Files:        fileManager,
+		Logs:         logProvider,
 	})
 
 	return registry, jobRunner, nil

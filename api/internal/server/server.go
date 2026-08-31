@@ -22,6 +22,7 @@ import (
 	firewallpkg "github.com/jothost/panel/api/internal/firewall"
 	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/jobs"
+	logspkg "github.com/jothost/panel/api/internal/logs"
 	"github.com/jothost/panel/api/internal/metrics"
 	"github.com/jothost/panel/api/internal/middleware"
 	nodepkg "github.com/jothost/panel/api/internal/node"
@@ -58,6 +59,7 @@ type Server struct {
 	websites  *websites.Handler
 	webserver *webserverpkg.Handler
 	services  *servicespkg.Handler
+	logs      *logspkg.Handler
 	firewall  *firewallpkg.Handler
 	jobs      *jobs.Handler
 	php       *phppkg.Handler
@@ -296,6 +298,20 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// The host's own logs. Read-only, and read through the Agent: a request
+	// names a source key from the Agent's catalogue, never a path, which is
+	// what keeps this from being a file reader with a friendlier name.
+	s.logs = logspkg.NewHandler(logspkg.HandlerOptions{
+		Service: logspkg.NewService(logspkg.ServiceOptions{
+			Agent:    agent,
+			Audit:    auditRecorder,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		}),
+		Auth: authService,
+		Log:  log,
+	})
+
 	// The host's packet filter. No state of the panel's own: the provisional
 	// change and the timer that undoes it live in the Agent, which is the only
 	// place they survive the API becoming unreachable — which is precisely
@@ -418,6 +434,7 @@ func (s *Server) routes() http.Handler {
 	s.websites.Routes(mux)
 	s.webserver.Routes(mux)
 	s.services.Routes(mux)
+	s.logs.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)

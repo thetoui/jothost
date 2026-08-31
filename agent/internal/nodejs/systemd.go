@@ -125,8 +125,14 @@ func NewSystemd(provider *services.Provider) *Systemd {
 }
 
 // Available reports whether this host has systemd.
+//
+// Specifically systemd, not "a service manager". Everything below this line
+// writes a *systemd unit* into /etc/systemd/system, and a host running OpenRC
+// has neither the directory nor any use for the file — asking the broader
+// question sent deployments on an Alpine host down this path, where they failed
+// on a directory that does not exist.
 func (s *Systemd) Available() bool {
-	return s.services != nil && s.services.Available()
+	return s.services != nil && s.services.Manager() == services.ManagerSystemd
 }
 
 // Install writes an application's unit and asks systemd to read it.

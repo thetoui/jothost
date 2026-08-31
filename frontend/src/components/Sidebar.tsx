@@ -13,6 +13,7 @@ import {
   Lock,
   Layers,
   Server,
+  ScrollText,
   ServerCog,
   Shield,
   ShieldCheck,
@@ -69,6 +70,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Web server', to: '/webserver', icon: Layers, enabled: true },
       { label: 'Services', to: '/services', icon: ServerCog, enabled: true },
+      { label: 'Logs', to: '/logs', icon: ScrollText, enabled: true },
       { label: 'Firewall', to: '/firewall', icon: Shield, enabled: true },
       { label: 'Server', to: '/server', icon: Server, enabled: false },
       { label: 'Monitoring', to: '/monitoring', icon: Activity, enabled: false },

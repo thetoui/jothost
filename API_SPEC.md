@@ -945,25 +945,67 @@ GET /cron/:id/logs
 # 19. Logs
 
 ```http
-GET /logs/nginx/access
-GET /logs/nginx/error
-GET /logs/php
-GET /logs/node
-GET /logs/system
-GET /logs/security
-GET /logs/agent
+GET /logs
+GET /logs/:key
+GET /logs/:key/download
 ```
 
-Query:
+**As implemented in Phase 11.** A request names a **source key from the Agent's
+catalogue, never a path**. That is the whole security of the feature: a log
+viewer that took a path would be an unrestricted file reader, and no amount of
+validating the string afterwards would make it safe to have asked.
+
+`GET /logs` lists what this host has. Logs that are catalogued but absent are
+listed too, marked `present: false` — "nginx has recorded no errors" and "this
+panel does not offer that log" are different answers.
+
+The URLs above are the same thing as the keys, with the dot written as a path
+separator, so the routes this specification has always listed work unchanged:
+
+```http
+GET /logs/nginx/access      = /logs/nginx.access
+GET /logs/nginx/error       = /logs/nginx.error
+GET /logs/system            = /logs/system
+GET /logs/security          = /logs/security
+GET /logs/agent             = /logs/agent
+```
+
+Keys only knowable at runtime have a URL for the same reason: `php.8.4` for each
+installed PHP version, and `node.<app>.out` / `node.<app>.error` for each Node
+application. `/logs/php` and `/logs/node` on their own are **404s**, because
+this host has no single PHP or Node log to serve.
+
+Query on `GET /logs/:key`:
 
 ```text
-limit
-offset
-from
-to
-search
-level
+limit     lines to return, at most 2000 (default 200)
+search    substring, compared without case
+level     error | warn | info | debug
+after     byte offset from a previous read
 ```
+
+`after` is what makes following a log cheap: the response carries an `offset`,
+and passing it back returns only what was appended since. The offset is the end
+of the last *complete* line, so a line still being written arrives whole on the
+next read rather than in halves. A response with `rotated: true` means the file
+shrank underneath the caller — it was rotated or truncated — and the offsets
+from before it refer to a file that no longer exists.
+
+`offset`, `from` and `to` from the original sketch are **not implemented**:
+paging backwards through a log is what `search` is for, and filtering by time
+means parsing each daemon's own timestamp format, where a filter that silently
+returns nothing because it failed to parse a format is worse than one that is
+not offered. See docs/PHASE11.md section 6.
+
+`GET /logs/:key/download` streams the file as the daemon wrote it, always as
+`application/octet-stream` with an attachment disposition: a log is
+attacker-influenced content — anyone who can make a request can write a line
+into an access log — and it must never be rendered on the panel's own origin.
+Downloads are audited as `log.download`; reading a log on screen is not.
+
+Reading and downloading both require `server.view`. The host's logs are not one
+website's business: an access log names every site on the machine, and the
+authentication log names the people who administer it.
 
 ---
 

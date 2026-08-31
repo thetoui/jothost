@@ -42,28 +42,28 @@ Done, in the order they were built:
 4.5 Apache Hybrid Engine
 12  Service Manager
 16  Firewall
+11  Logs
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  11   Logs                   — before the things that produce logs
- 2.  10   Cron                   — needs 12 (crond) and 11 (its log view)
- 3.  17   SSH Security           — needs 12 (sshd reload)
- 4.  18   Fail2Ban               — reads logs (11), writes firewall rules (16)
- 5.  7.1  FTP Manager            — passive ports need 16; transfers need 11
- 6.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
- 7.  21   System Updates         — scheduled updates need 10
- 8.  19   Monitoring             — service monitoring needs 12
- 9.  14   Backup                 — scheduling needs 10
-10.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
-11.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
-12.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
-13.  27   Git & Webhook Actions  — deployment logs need 11
-14.  22   Multi-Tenant           — quota dimensions must exist first, mail included
-15.  23   Production Installer   — installs everything, so everything must exist
-16.  24   Production Hardening   — tests the finished system
-17.  25   Release                — last by definition
+ 1.  10   Cron                   — needs 12 (crond) and 11 (its log view)
+ 2.  17   SSH Security           — needs 12 (sshd reload)
+ 3.  18   Fail2Ban               — reads logs (11), writes firewall rules (16)
+ 4.  7.1  FTP Manager            — passive ports need 16; transfers need 11
+ 5.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
+ 6.  21   System Updates         — scheduled updates need 10
+ 7.  19   Monitoring             — service monitoring needs 12
+ 8.  14   Backup                 — scheduling needs 10
+ 9.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+10.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+11.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+12.  27   Git & Webhook Actions  — deployment logs need 11
+13.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+14.  23   Production Installer   — installs everything, so everything must exist
+15.  24   Production Hardening   — tests the finished system
+16.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -662,22 +662,44 @@ PrivateTmp, a bounded restart limit — which is the reason to prefer it.
 
 # PHASE 11 — Logs
 
+**Status: COMPLETE** — see [docs/PHASE11.md](docs/PHASE11.md) for scope,
+decisions, and known limitations.
+
 **Build order: 3 of 17.** Depends on nothing new: it reads files the Agent
 already writes.
 **Blocks** 18 (Fail2Ban decides bans by reading logs), 10, 7.1 and 27, each of
 which registers a log source rather than building its own viewer.
 
-- [ ] Nginx access logs
-- [ ] Nginx error logs
-- [ ] PHP logs
-- [ ] Node logs
-- [ ] Cron logs
-- [ ] Agent logs
-- [ ] System logs
-- [ ] Search
-- [ ] Filter
-- [ ] Live logs
-- [ ] Download
+- [x] Nginx access logs
+- [x] Nginx error logs
+- [x] PHP logs — one per installed version, contributed at runtime
+- [x] Node logs — output and errors per application, found on disk
+- [x] Cron logs
+- [x] Agent logs — the audit log, whose outcome field is read as its severity
+- [x] System logs — and the authentication log alongside it
+- [x] Search
+- [x] Filter — one severity vocabulary across seven formats
+- [x] Live logs
+- [x] Download
+
+Additionally required by the above:
+
+- [x] A catalogue: a request names a *key* the Agent knows, and the file is
+  chosen from a table in this repository. A log viewer that took a path would
+  be an unrestricted file reader
+- [x] Every catalogued path resolved through pathsec before it is opened —
+  nginx's access log is writable by the account nginx runs as, so a symlink
+  planted there must not be followed out of /var/log
+- [x] Reads bounded in three directions: how far back into the file, how many
+  lines, and how long one line may be
+- [x] A read that stops at the last complete line, so a log being written is not
+  shown in halves, and a rotated file reported rather than spliced onto the
+  previous one
+
+Deliberately not implemented, with reasons in docs/PHASE11.md section 6: the
+`from`/`to` time filters (one timestamp parser per daemon, and a filter that
+fails to parse looks like an empty log), page-number `offset`, per-website logs
+(they are on the website's own page, from Phase 4), and the systemd journal.
 
 ---
 

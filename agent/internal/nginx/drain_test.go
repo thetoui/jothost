@@ -22,22 +22,47 @@ func newFakeProc(t *testing.T) *fakeProc {
 	return &fakeProc{root: t.TempDir(), t: t}
 }
 
-func (f *fakeProc) add(pid int, name string, parent int) {
-	f.t.Helper()
+// tryAdd and tryRemove change the process table and report what went wrong.
+//
+// They return an error rather than failing the test because the tests below
+// change the table from a goroutine while a wait is in progress — that is what
+// a reload looks like — and t.Fatalf from a goroutine that outlives its test
+// panics the whole binary, taking every other test in the run with it. The
+// error goes back to the test body through a channel instead.
+func (f *fakeProc) tryAdd(pid int, name string, parent int) error {
 	dir := filepath.Join(f.root, fmt.Sprint(pid))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		f.t.Fatalf("create %s: %v", dir, err)
+		return fmt.Errorf("create %s: %w", dir, err)
 	}
 	content := fmt.Sprintf("Name:\t%s\nState:\tS (sleeping)\nPPid:\t%d\n", name, parent)
 	if err := os.WriteFile(filepath.Join(dir, "status"), []byte(content), 0o644); err != nil {
-		f.t.Fatalf("write status: %v", err)
+		return fmt.Errorf("write status: %w", err)
+	}
+	return nil
+}
+
+func (f *fakeProc) tryRemove(pid int) error {
+	if err := os.RemoveAll(filepath.Join(f.root, fmt.Sprint(pid))); err != nil {
+		return fmt.Errorf("remove %d: %w", pid, err)
+	}
+	return nil
+}
+
+// add and remove are the same thing for a test body to call directly.
+//
+// Only from the test's own goroutine: they end the test on failure, which is
+// what makes them convenient here and what makes them unusable anywhere else.
+func (f *fakeProc) add(pid int, name string, parent int) {
+	f.t.Helper()
+	if err := f.tryAdd(pid, name, parent); err != nil {
+		f.t.Fatal(err)
 	}
 }
 
 func (f *fakeProc) remove(pid int) {
 	f.t.Helper()
-	if err := os.RemoveAll(filepath.Join(f.root, fmt.Sprint(pid))); err != nil {
-		f.t.Fatalf("remove %d: %v", pid, err)
+	if err := f.tryRemove(pid); err != nil {
+		f.t.Fatal(err)
 	}
 }
 
@@ -90,10 +115,22 @@ func TestWaitForWorkersReturnsWhenTheyExit(t *testing.T) {
 
 	// The old workers finish while the wait is in progress, which is what a
 	// graceful reload looks like.
+	//
+	// The test waits for this goroutine before it returns, so its writes cannot
+	// land in a temporary directory the framework has already removed.
+	done := make(chan error, 1)
 	go func() {
 		time.Sleep(150 * time.Millisecond)
-		proc.remove(11)
-		proc.remove(12)
+		if err := proc.tryRemove(11); err != nil {
+			done <- err
+			return
+		}
+		done <- proc.tryRemove(12)
+	}()
+	defer func() {
+		if err := <-done; err != nil {
+			t.Errorf("changing the process table: %v", err)
+		}
 	}()
 
 	start := time.Now()
@@ -131,10 +168,19 @@ func TestWaitForWorkersIgnoresAReusedPID(t *testing.T) {
 
 	provider := proc.provider()
 
+	done := make(chan error, 1)
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		proc.remove(11)
-		proc.add(11, "php-fpm84", 1)
+		if err := proc.tryRemove(11); err != nil {
+			done <- err
+			return
+		}
+		done <- proc.tryAdd(11, "php-fpm84", 1)
+	}()
+	defer func() {
+		if err := <-done; err != nil {
+			t.Errorf("changing the process table: %v", err)
+		}
 	}()
 
 	remaining := provider.WaitForWorkers(context.Background(), []int{11}, 5*time.Second)

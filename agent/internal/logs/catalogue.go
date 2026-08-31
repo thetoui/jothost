@@ -117,6 +117,31 @@ func Catalogue() []Source {
 			},
 		},
 		{
+			Key:     "ftp",
+			Label:   "FTP server",
+			Summary: "Logins, refusals and errors from the FTP server.",
+			Group:   GroupSystem,
+			Format:  FormatSyslog,
+			Paths: []string{
+				"/var/log/proftpd/proftpd.log",
+				"/var/log/proftpd.log",
+			},
+		},
+		{
+			Key:   "ftp.transfer",
+			Label: "FTP transfers",
+			Summary: "Every file that moved over FTP: when, by whom, how big, " +
+				"and whether it completed.",
+			Group: GroupSystem,
+			// xferlog is a fixed set of space-separated columns with no
+			// severity in it, so there is no level to read out of a line.
+			Format: FormatPlain,
+			Paths: []string{
+				"/var/log/proftpd/xferlog",
+				"/var/log/xferlog",
+			},
+		},
+		{
 			Key:     "cron",
 			Label:   "Cron",
 			Summary: "Scheduled jobs, and what they printed.",

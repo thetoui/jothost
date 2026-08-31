@@ -25,6 +25,7 @@ import (
 	f2bpkg "github.com/jothost/panel/agent/internal/fail2ban"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
+	ftppkg "github.com/jothost/panel/agent/internal/ftp"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/logs"
 	"github.com/jothost/panel/agent/internal/nginx"
@@ -186,6 +187,18 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		// given here is a jail name from the Agent's catalogue or an address
 		// that has been parsed.
 		{Name: f2bpkg.CommandName, Path: cfg.Fail2BanPath, Timeout: 30 * time.Second},
+		// The FTP server and its tools. proftpd itself is here only to read a
+		// version and to validate a configuration (-t); the daemon is started
+		// and stopped through the service manager, so one thing on this host
+		// owns its lifecycle.
+		//
+		// ftpasswd is the only one of these that is ever given a secret, and it
+		// is given it on standard input rather than as an argument — an
+		// argument is visible in /proc to every account on the host.
+		{Name: ftppkg.CommandProftpd, Path: cfg.ProftpdPath, Timeout: 20 * time.Second},
+		{Name: ftppkg.CommandFtpasswd, Path: cfg.FtpasswdPath, Timeout: 15 * time.Second},
+		{Name: ftppkg.CommandFtpwho, Path: cfg.FtpwhoPath, Timeout: 10 * time.Second},
+		{Name: ftppkg.CommandFtpquota, Path: cfg.FtpquotaPath, Timeout: 15 * time.Second},
 		// sshd, used only to *read* the effective configuration (-T) and to
 		// validate a candidate one (-t). The panel never starts the server with
 		// it: that goes through the service manager, so there is one thing on
@@ -412,6 +425,22 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("fail2ban is not installed; the panel will offer to install it")
 	}
 
+	// The FTP server. Accounts are virtual — they live in a password file only
+	// proftpd reads and map to the system account that owns the website — so an
+	// FTP credential is never a login to the machine.
+	ftpProvider := ftppkg.NewProvider(ftppkg.Options{
+		Runner: runner,
+		Log:    log,
+		Paths: ftppkg.Paths{
+			ConfigDir: cfg.FTPConfigDir,
+			RunDir:    cfg.FTPRunDir,
+			LogDir:    cfg.FTPLogDir,
+		},
+	})
+	if !ftpProvider.Available() {
+		log.Info("an FTP server is not installed; the panel will offer to install it")
+	}
+
 	// The SSH server's configuration. The provider reads it through sshd itself
 	// rather than by parsing the file, because a directive that is commented out
 	// is still in force at its default — and the defaults differ between
@@ -556,7 +585,12 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Cron:         cronProvider,
 		SSH:          sshProvider,
 		Fail2Ban:     fail2banProvider,
+		FTP:          ftpProvider,
 	})
+
+	// Wired after the registry, because restarting the FTP daemon goes through
+	// the service manager the registry owns. See ftp.Provider.SetReloader.
+	ftpProvider.SetReloader(operations.FTPReloaderFor(registry))
 
 	return registry, jobRunner, nil
 }

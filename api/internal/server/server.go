@@ -22,6 +22,7 @@ import (
 	f2bpkg "github.com/jothost/panel/api/internal/fail2ban"
 	filespkg "github.com/jothost/panel/api/internal/files"
 	firewallpkg "github.com/jothost/panel/api/internal/firewall"
+	ftppkg "github.com/jothost/panel/api/internal/ftp"
 	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/jobs"
 	logspkg "github.com/jothost/panel/api/internal/logs"
@@ -66,6 +67,7 @@ type Server struct {
 	cron      *cronpkg.Handler
 	ssh       *sshpkg.Handler
 	fail2ban  *f2bpkg.Handler
+	ftp       *ftppkg.Handler
 	firewall  *firewallpkg.Handler
 	jobs      *jobs.Handler
 	php       *phppkg.Handler
@@ -332,6 +334,21 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// FTP. The accounts are the panel's record; proftpd's password file is what
+	// authenticates, and the Agent makes the second match the first on every
+	// change.
+	s.ftp = ftppkg.NewHandler(ftppkg.HandlerOptions{
+		Service: ftppkg.NewService(ftppkg.ServiceOptions{
+			Repo:     ftppkg.NewRepository(opts.Pool),
+			Websites: ftpWebsites{repo: websiteRepo, ssl: sslRepo},
+			Agent:    agent,
+			Audit:    auditRecorder,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		}),
+		Auth: authService,
+	})
+
 	// The SSH server's settings. No state of the panel's own: the configuration
 	// is files on the host, and every change is validated by sshd before it is
 	// installed and refused outright where it would leave nobody able to log in.
@@ -485,6 +502,7 @@ func (s *Server) routes() http.Handler {
 	s.cron.Routes(mux)
 	s.ssh.Routes(mux)
 	s.fail2ban.Routes(mux)
+	s.ftp.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)

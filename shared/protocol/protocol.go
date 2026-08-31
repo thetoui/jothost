@@ -142,6 +142,15 @@ const (
 	OperationFail2banUnban     OperationType = "fail2ban.unban"
 	OperationFail2banBan       OperationType = "fail2ban.ban"
 
+	// FTP. A request names accounts the panel has recorded and settings it
+	// validated; it never names a configuration directive or a file path the
+	// Agent has not resolved for itself.
+	OperationFTPStatus     OperationType = "ftp.status"
+	OperationFTPInstall    OperationType = "ftp.install"
+	OperationFTPReconcile  OperationType = "ftp.reconcile"
+	OperationFTPSessions   OperationType = "ftp.sessions"
+	OperationFTPDisconnect OperationType = "ftp.disconnect"
+
 	// SSH. Two of these can lock an operator out of the machine, so the Agent
 	// validates every configuration with sshd before installing it and refuses
 	// the changes that would leave nobody able to log in: see
@@ -262,6 +271,11 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationFail2banBanned:       {},
 	OperationFail2banUnban:        {},
 	OperationFail2banBan:          {},
+	OperationFTPStatus:            {},
+	OperationFTPInstall:           {},
+	OperationFTPReconcile:         {},
+	OperationFTPSessions:          {},
+	OperationFTPDisconnect:        {},
 	OperationSSHStatus:            {},
 	OperationSSHConfigure:         {},
 	OperationSSHKeyList:           {},

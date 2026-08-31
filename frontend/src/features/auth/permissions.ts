@@ -18,6 +18,7 @@ export const Permission = {
   FileRead: 'file.read',
   FileWrite: 'file.write',
   CronManage: 'cron.manage',
+  FTPManage: 'ftp.manage',
   DNSManage: 'dns.manage',
   AuditView: 'audit.view',
   UserManage: 'user.manage',

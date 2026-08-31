@@ -1364,6 +1364,92 @@ refusals included.
 
 ---
 
+# 27.1 FTP
+
+```http
+GET    /ftp
+POST   /ftp/install
+PUT    /ftp/settings
+GET    /ftp/users
+POST   /ftp/users
+PATCH  /ftp/users/:id
+DELETE /ftp/users/:id
+GET    /ftp/sessions
+DELETE /ftp/sessions/:pid
+GET    /websites/:id/ftp
+```
+
+**As implemented in Phase 7.1.** Reading needs `server.view`; every change needs
+`ftp.manage`, which migration 0013 adds. It is its own permission rather than
+`website.update`, because an FTP credential reaches a site's files without going
+through the panel at all and keeps working after the person holding it stops
+being a panel user.
+
+Accounts are **virtual**: they exist in the FTP server's own password file and
+nowhere else on the host, and each maps to the system account that owns its
+website. An FTP password is therefore never a login to the machine, and an
+uploaded file is owned by exactly the account that serves the site.
+
+`GET /ftp` reports what the *host* has, joined with what the panel recorded: the
+server's version, whether it is running, which optional modules it has (`mod_tls`
+decides whether FTPS can be offered at all), the accounts with the usage the
+server has counted for each, who is connected now, and whether the firewall
+actually admits the ports FTP needs.
+
+`POST /ftp/users` takes:
+
+```text
+website_id   required
+username     3-32 characters, starting with a letter
+password     optional — omitted, the panel generates one and returns it once
+home_subpath relative to the website's document root; empty means the root
+access_level "full" or "readonly"
+quota_mb     0 for no limit
+```
+
+The password is returned **once**, in the create response, and only when the
+panel generated it. Nothing stores it: it is written into the server's own hashed
+file and the panel does not keep a copy, encrypted or otherwise. "Show me the
+password" is answered by setting a new one.
+
+`PATCH /ftp/users/:id` changes the folder, the access level, the quota, whether
+the account is suspended, or its password. The name and the website cannot
+change: an account confined to a different site is a different account, and
+renaming one in the password file is a delete and a create with a password
+nobody has.
+
+Every change hands the Agent the **complete** set of accounts and the Agent makes
+the host match it, so a delete is performed by the account's absence from that
+set. An account the panel has recorded that the host does not have — a rebuilt
+machine, a restore — is reported as `missing_on_host` rather than failing the
+change: nothing holds its password, so failing would let one unusable account
+block every later FTP change permanently.
+
+`DELETE /ftp/sessions/:pid` ends one session. The pid is checked against the live
+session list *and* against `/proc` before anything is signalled: pids are reused,
+the Agent runs as root, and a signal sent to the wrong one would be delivered
+successfully. A pid that is not a current FTP session is a **404**.
+
+Refused with a **422**: a name that could not survive the password file's
+colon-separated format, a home directory containing `..` or starting with `/`
+(refused rather than trimmed — stripping the slash off `/etc` would silently
+give the operator a different directory), a password under 12 characters, a
+passive range of fewer than 16 ports (each transfer in progress uses one), and
+requiring encryption on a host with no certificate or no TLS module.
+
+A duplicate account name is a **409**: the server's password file has a single
+namespace, so two websites cannot each have a "backup" account.
+
+The passive port range is **reported against the firewall, not opened**. A
+firewall change is its own deliberate act with its own protocol (CLAUDE.md
+section 19), and performing one as a side effect would open ports without the
+operator seeing which and without the audit trail recording it. `GET /ftp`
+carries `firewall_open` and the reason, and the page says what to open.
+
+`ftp.user.create`, `.update`, `.password`, `.delete`, `ftp.configure`,
+`ftp.install` and `ftp.session.disconnect` are audited. The password itself never
+appears in an audit record.
+
 # 28. Jobs
 
 ```http

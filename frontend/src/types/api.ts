@@ -1131,3 +1131,132 @@ export interface NodeLogs {
   error_path: string;
   detail: string;
 }
+
+/** One FTP account, as the panel records it and the host reports it. */
+export interface FTPUser {
+  id: string;
+  server_id: string;
+  website_id: string;
+  username: string;
+  /** Relative to the website's document root. Empty means the root itself. */
+  home_subpath: string;
+  access_level: 'full' | 'readonly';
+  quota_mb: number;
+  suspended: boolean;
+  created_at: string;
+  updated_at: string;
+  website_domain?: string;
+  system_user?: string;
+  document_root?: string;
+  /** The absolute directory the account is confined to. */
+  home: string;
+  /**
+   * What proftpd counted this account uploading. Not a directory size: files
+   * removed through the file manager were never seen by the FTP server.
+   */
+  used_mb: number;
+  /** The host has this account disabled. */
+  locked: boolean;
+  /**
+   * The panel has this account recorded and the FTP server does not have it —
+   * a rebuilt host, or a restore. It cannot be repaired automatically, because
+   * nothing holds the password. Setting a new one puts it back.
+   */
+  missing_on_host: boolean;
+}
+
+/** One connected FTP client. */
+export interface FTPSession {
+  pid: number;
+  user: string;
+  elapsed: string;
+  activity: string;
+  client: string;
+  /** "ftp" or "ftps" — whether the password crossed the network encrypted. */
+  protocol: string;
+  location: string;
+}
+
+/** An FTP account as the host has it, with its usage. */
+export interface FTPAccount {
+  name: string;
+  uid: number;
+  gid: number;
+  home: string;
+  locked: boolean;
+  quota_mb: number;
+  used_mb: number;
+}
+
+/** A setting another configuration file also sets. */
+export interface FTPConflict {
+  directive: string;
+  file: string;
+  panel_wins: boolean;
+}
+
+/** The FTP server's own settings. */
+export interface FTPSettings {
+  server_id: string;
+  passive_from: number;
+  passive_to: number;
+  tls_website_id: string;
+  require_tls: boolean;
+  masquerade_address: string;
+  max_clients: number;
+  tls_domain?: string;
+}
+
+/** Everything the FTP page shows. */
+export interface FTPOverview {
+  available: boolean;
+  running: boolean;
+  can_install: boolean;
+  version: string;
+  reason: string;
+  /** What this build of the server can do. */
+  supports_tls: boolean;
+  supports_quota: boolean;
+  accounts: FTPAccount[];
+  sessions: FTPSession[];
+  config_path: string;
+  conflicts: FTPConflict[] | null;
+  /**
+   * Whether the ports FTP needs are actually admitted by the firewall. A
+   * blocked passive range is a server that accepts the login and then hangs on
+   * the first directory listing.
+   */
+  firewall_open: boolean;
+  firewall_reason: string;
+  users: FTPUser[];
+  settings: FTPSettings;
+}
+
+/** The result of creating an account. */
+export interface FTPCreateResult {
+  user: FTPUser;
+  /**
+   * Returned exactly once, and only when the panel generated it. Nothing
+   * stores it, so this response is the only chance to see it.
+   */
+  password?: string;
+}
+
+/** A change to an account. Omitted fields are left alone. */
+export interface FTPUserChange {
+  home_subpath?: string;
+  access_level?: 'full' | 'readonly';
+  quota_mb?: number;
+  suspended?: boolean;
+  password?: string;
+}
+
+/** A change to the server's settings. Omitted fields are left alone. */
+export interface FTPSettingsChange {
+  passive_from?: number;
+  passive_to?: number;
+  tls_website_id?: string;
+  require_tls?: boolean;
+  masquerade_address?: string;
+  max_clients?: number;
+}

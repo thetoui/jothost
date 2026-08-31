@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	cronpkg "github.com/jothost/panel/api/internal/cron"
+	ftppkg "github.com/jothost/panel/api/internal/ftp"
 	nodepkg "github.com/jothost/panel/api/internal/node"
 	phppkg "github.com/jothost/panel/api/internal/php"
 	sslpkg "github.com/jothost/panel/api/internal/ssl"
@@ -118,4 +119,51 @@ func servingSources(php *phppkg.Repository, ssl *sslpkg.Repository,
 		Certificates: certificateSource{repo: ssl},
 		Proxy:        proxySource{repo: node},
 	}
+}
+
+// ftpWebsites answers what the ftp package needs to know about a site: the
+// account a session runs as, the directory the account is confined inside, and
+// the certificate FTPS would present.
+//
+// The certificate is read from the SSL repository rather than stored with the
+// FTP settings, so a renewal that moved the files is picked up rather than
+// leaving FTPS presenting a path that no longer exists.
+type ftpWebsites struct {
+	repo *websites.Repository
+	ssl  *sslpkg.Repository
+}
+
+func (f ftpWebsites) LookupForFTP(ctx context.Context, id string) (ftppkg.WebsiteRef, error) {
+	site, err := f.repo.Get(ctx, id)
+	if err != nil {
+		return ftppkg.WebsiteRef{}, err
+	}
+
+	ref := ftppkg.WebsiteRef{
+		ID:           site.ID,
+		ServerID:     site.ServerID,
+		Domain:       site.PrimaryDomain,
+		SystemUser:   site.SystemUser,
+		DocumentRoot: site.DocumentRoot,
+	}
+
+	certificate, err := f.ssl.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, sslpkg.ErrNotFound) {
+			// No certificate is not an error here: most sites have none, and
+			// the caller's question is whether FTPS can be offered.
+			return ref, nil
+		}
+		return ftppkg.WebsiteRef{}, err
+	}
+	// A certificate row exists from the moment one is requested and the paths
+	// are filled in when it is issued. A pending row is not something FTPS can
+	// present, and naming it would stop proftpd from starting.
+	if certificate.CertificatePath == nil || certificate.PrivateKeyPath == nil {
+		return ref, nil
+	}
+	ref.SSLEnabled = true
+	ref.CertificatePath = *certificate.CertificatePath
+	ref.KeyPath = *certificate.PrivateKeyPath
+	return ref, nil
 }

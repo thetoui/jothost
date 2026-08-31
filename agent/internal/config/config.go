@@ -90,6 +90,17 @@ type Config struct {
 	// where its configuration lives.
 	Fail2BanPath      string
 	Fail2BanConfigDir string
+	// The FTP server and its tools. ProftpdPath is used to read the version and
+	// to validate a configuration — never to start the daemon, which is the
+	// service manager's job. FTPConfigDir is where its configuration lives, and
+	// FTPRunDir is where the scoreboard of live sessions goes.
+	ProftpdPath  string
+	FtpasswdPath string
+	FtpwhoPath   string
+	FtpquotaPath string
+	FTPConfigDir string
+	FTPRunDir    string
+	FTPLogDir    string
 	// SSHDPath is the SSH server binary, used to read and validate the
 	// configuration — never to start it. SSHConfigDir is where its
 	// configuration lives.
@@ -177,6 +188,13 @@ func Load() (Config, error) {
 		SiteRoot:          getString("AGENT_SITE_ROOT", "/var/www"),
 		LogRoot:           getString("AGENT_LOG_ROOT", "/var/log"),
 		Fail2BanPath:      getString("AGENT_FAIL2BAN_PATH", "/usr/bin/fail2ban-client"),
+		ProftpdPath:       getString("AGENT_PROFTPD_PATH", "/usr/sbin/proftpd"),
+		FtpasswdPath:      getString("AGENT_FTPASSWD_PATH", "/usr/bin/ftpasswd"),
+		FtpwhoPath:        getString("AGENT_FTPWHO_PATH", "/usr/bin/ftpwho"),
+		FtpquotaPath:      getString("AGENT_FTPQUOTA_PATH", "/usr/bin/ftpquota"),
+		FTPConfigDir:      getString("AGENT_FTP_CONFIG_DIR", "/etc/proftpd"),
+		FTPRunDir:         getString("AGENT_FTP_RUN_DIR", "/run/proftpd"),
+		FTPLogDir:         getString("AGENT_FTP_LOG_DIR", "/var/log/proftpd"),
 		Fail2BanConfigDir: getString("AGENT_FAIL2BAN_CONFIG_DIR", "/etc/fail2ban"),
 		SSHDPath:          getString("AGENT_SSHD_PATH", "/usr/sbin/sshd"),
 		SSHConfigDir:      getString("AGENT_SSH_CONFIG_DIR", "/etc/ssh"),

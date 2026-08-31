@@ -17,6 +17,7 @@ import (
 	"github.com/jothost/panel/agent/internal/fail2ban"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
+	"github.com/jothost/panel/agent/internal/ftp"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/logs"
 	"github.com/jothost/panel/agent/internal/nginx"
@@ -114,6 +115,7 @@ type Dependencies struct {
 	// it, means the panel offers to install it rather than pretending the
 	// settings are there.
 	Fail2Ban *fail2ban.Provider
+	FTP      *ftp.Provider
 
 	// SSH reads and changes the host's SSH server configuration. Nil, or a host
 	// with no sshd, means the panel reports that rather than offering settings
@@ -240,6 +242,12 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationFail2banBanned, r.handleFail2banBanned)
 	r.mustRegister(protocol.OperationFail2banUnban, r.handleFail2banUnban)
 	r.mustRegister(protocol.OperationFail2banBan, r.handleFail2banBan)
+
+	r.mustRegister(protocol.OperationFTPStatus, r.handleFTPStatus)
+	r.mustRegister(protocol.OperationFTPInstall, r.handleFTPInstall)
+	r.mustRegister(protocol.OperationFTPReconcile, r.handleFTPReconcile)
+	r.mustRegister(protocol.OperationFTPSessions, r.handleFTPSessions)
+	r.mustRegister(protocol.OperationFTPDisconnect, r.handleFTPDisconnect)
 
 	r.mustRegister(protocol.OperationSSHStatus, r.handleSSHStatus)
 	r.mustRegister(protocol.OperationSSHConfigure, r.handleSSHConfigure)

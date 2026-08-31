@@ -46,24 +46,24 @@ Done, in the order they were built:
 10  Cron
 17  SSH Security
 18  Fail2Ban
+7.1 FTP Manager
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  7.1  FTP Manager            — passive ports need 16; transfers need 11
- 2.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
- 3.  21   System Updates         — scheduled updates need 10
- 4.  19   Monitoring             — service monitoring needs 12
- 5.  14   Backup                 — scheduling needs 10
- 6.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
- 7.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
- 8.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
- 9.  27   Git & Webhook Actions  — deployment logs need 11
-10.  22   Multi-Tenant           — quota dimensions must exist first, mail included
-11.  23   Production Installer   — installs everything, so everything must exist
-12.  24   Production Hardening   — tests the finished system
-13.  25   Release                — last by definition
+ 1.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
+ 2.  21   System Updates         — scheduled updates need 10
+ 3.  19   Monitoring             — service monitoring needs 12
+ 4.  14   Backup                 — scheduling needs 10
+ 5.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+ 6.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+ 7.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+ 8.  27   Git & Webhook Actions  — deployment logs need 11
+ 9.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+10.  23   Production Installer   — installs everything, so everything must exist
+11.  24   Production Hardening   — tests the finished system
+12.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -529,22 +529,44 @@ Security:
 
 # PHASE 7.1 — FTP Manager (Plesk Style)
 
+**Status: COMPLETE** — see [docs/PHASE7.1.md](docs/PHASE7.1.md) for scope,
+decisions, and known limitations.
+
 **Build order: 7 of 17.** Depends on 12 (start and reload the daemon), 16 (the
 passive port range has to be opened), 11 (connection and transfer logs), and 6
 (FTPS binds a certificate the SSL phase already issues).
 
-- [ ] Pure-FTPd / ProFTPD provider & daemon configuration engine
-- [ ] FTP user database schema (Virtual FTP users tied to system accounts)
-- [ ] Additional FTP users per website/subscription
-- [ ] Strict Directory Chroot (chroot jail) to prevent path traversal outside home/document root
-- [ ] Granular permission assignment per FTP user (Read-only / Full access)
-- [ ] FTPS (FTP over TLS/SSL) enforcement & certificate binding
-- [ ] Passive port range configuration (PassivePortRange) & automatic firewall sync
-- [ ] Custom home directory mapping (e.g., restrict to specific subfolder /var/www/vhosts/example.com/httpdocs/assets)
-- [ ] FTP quota enforcement (Disk space limits per FTP user)
-- [ ] FTP active session monitor & disconnect user API
-- [ ] FTP connection & transfer logs tracking
-- [ ] FTP management UI tab in Website Manager (Plesk-style additional FTP accounts card)
+- [x] ProFTPD provider & daemon configuration engine — Pure-FTPd was rejected
+  after testing: Alpine's build has no TLS at all, which would put every FTP
+  password on the wire in clear text
+- [x] FTP user database schema (virtual FTP users tied to system accounts)
+- [x] Additional FTP users per website
+- [x] Strict directory chroot, proved by a real client being refused the escape
+- [x] Read-only / full access per user
+- [x] FTPS enforcement & certificate binding — the certificate is read from the
+  SSL phase's record rather than copied, so a renewal is picked up
+- [x] Passive port range configuration, with the firewall **reported** rather
+  than changed as a side effect (see docs/PHASE7.1.md section 6)
+- [x] Custom home directory mapping, created and given to the website's account
+- [x] FTP quota enforcement, proved by an upload that exceeds it being refused
+- [x] Active session monitor & disconnect API
+- [x] Connection & transfer logs — contributed to Phase 11's catalogue as two
+  sources, with the paths written by the panel rather than guessed at
+- [x] FTP tab in the Website Manager, where accounts are created
+
+Additionally required by the above:
+
+- [x] A `ftp.manage` permission of its own: an FTP credential reaches a site's
+  files without going through the panel, and keeps working after the person
+  holding it stops being a panel user
+- [x] No password column anywhere in the panel. One is written to the server's
+  hashed file and returned to the operator once
+- [x] Module detection that accounts for DSO modules. `proftpd -l` lists only
+  what is compiled in, and an `<IfModule>` block for an absent module is skipped
+  in silence — so a panel that assumed mod_tls would report FTPS was on while
+  serving plain FTP
+- [x] A declarative reconcile: the panel hands the Agent the complete set of
+  accounts and the Agent makes the host match, so nothing can drift
 
 ---
 

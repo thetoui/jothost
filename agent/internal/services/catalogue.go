@@ -181,6 +181,18 @@ var catalogue = []Definition{
 		// alert nobody reads.
 	},
 	{
+		Key:     "proftpd",
+		Label:   "FTP Server",
+		Role:    RoleSystem,
+		Summary: "Serves files over FTP and FTPS.",
+		Units:   []string{"proftpd.service"},
+		// The FTP page changes the configuration and asks for a restart; it is
+		// the Services page that starts and stops the daemon, so there is one
+		// thing on this host that owns its lifecycle.
+		Processes: []string{"proftpd"},
+		Binaries:  []string{"/usr/sbin/proftpd", "/usr/bin/proftpd"},
+	},
+	{
 		Key:       "cron",
 		Label:     "Cron",
 		Role:      RoleSystem,

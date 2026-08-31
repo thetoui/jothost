@@ -112,6 +112,8 @@ RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       openssh-server openssh-keygen \
       fail2ban \
       apache2 apache2-proxy \
+      proftpd proftpd-utils proftpd-openrc \
+      proftpd-mod_tls proftpd-mod_quotatab proftpd-mod_quotatab_file \
       php82-fpm php83-fpm php84-fpm \
       php84 \
       php82-opcache php83-opcache php84-opcache \

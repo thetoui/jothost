@@ -4,13 +4,14 @@ A self-hosted Linux hosting control panel: websites, PHP and Node.js application
 databases, SSL, files, cron, backups, monitoring, and security from one web interface.
 
 **Status:** Phases 0–12 complete, plus 4.1 (subdomains), 4.5
-(the Apache hybrid arrangement), 16 (the firewall), 17 (SSH security) and
-18 (intrusion prevention): foundation, authentication, Host Agent, dashboard,
+(the Apache hybrid arrangement), 7.1 (FTP), 16 (the firewall), 17 (SSH security)
+and 18 (intrusion prevention): foundation, authentication, Host Agent, dashboard,
 websites, subdomains, the nginx + Apache engine, PHP, SSL, files, the code
 editor, databases, Node.js applications, scheduled jobs, the log viewer, host
-services, the packet filter, the SSH server's settings, and fail2ban.
+services, FTP accounts, the packet filter, the SSH server's settings, and
+fail2ban.
 
-Next is Phase 7.1 (FTP). Phases are built in dependency order rather
+Next is Phase 13 (DNS). Phases are built in dependency order rather
 than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md for the
 sequence and why each phase sits where it does. The per-phase notes in
 [docs/](docs/) say what each one does and does not include.
@@ -184,6 +185,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE16.md](docs/PHASE16.md) | Phase 16 scope, decisions, and known limitations |
 | [docs/PHASE17.md](docs/PHASE17.md) | Phase 17 scope, decisions, and known limitations |
 | [docs/PHASE18.md](docs/PHASE18.md) | Phase 18 scope, decisions, and known limitations |
+| [docs/PHASE7.1.md](docs/PHASE7.1.md) | Phase 7.1 scope, decisions, and known limitations |
 
 ---
 

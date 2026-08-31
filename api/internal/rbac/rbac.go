@@ -34,9 +34,13 @@ const (
 	PermFileRead       = "file.read"
 	PermFileWrite      = "file.write"
 	PermCronManage     = "cron.manage"
-	PermDNSManage      = "dns.manage"
-	PermAuditView      = "audit.view"
-	PermUserManage     = "user.manage"
+	// PermFTPManage is its own rather than website.update: an FTP credential
+	// reaches a site's files without going through the panel, and it keeps
+	// working after the person holding it stops being a panel user.
+	PermFTPManage  = "ftp.manage"
+	PermDNSManage  = "dns.manage"
+	PermAuditView  = "audit.view"
+	PermUserManage = "user.manage"
 )
 
 // ErrRoleNotFound is returned when a named role does not exist.

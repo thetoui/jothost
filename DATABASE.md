@@ -802,6 +802,66 @@ created_at TIMESTAMPTZ NOT NULL
 
 ---
 
+# 28.2 ftp_users
+
+Added by Phase 7.1 (migration 0013).
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+website_id UUID REFERENCES websites(id)
+username VARCHAR(32) NOT NULL
+home_subpath VARCHAR(255) NOT NULL DEFAULT ''
+access_level VARCHAR(20) NOT NULL DEFAULT 'full'
+quota_mb INTEGER NOT NULL DEFAULT 0
+suspended BOOLEAN NOT NULL DEFAULT FALSE
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+**There is no password column, and no encrypted one.** The panel writes a
+password once into the FTP server's own hashed file and does not keep it.
+Storing one would put a copy of every customer's FTP credential in a database
+that is backed up, replicated, and read by every part of the panel that touches
+this table. "Show me the password" is answered by setting a new one.
+
+`home_subpath` is relative to the website's document root, and the CHECK
+constraints refuse a leading slash, a backslash and `..` — the three ways a
+subpath stops being one. The absolute path is computed, never stored: a stored
+copy would be wrong the moment a website's document root moved.
+
+`username` is unique per **server**, not per website: the FTP server's password
+file has a single namespace, so two websites cannot each have a "backup"
+account.
+
+---
+
+# 28.3 ftp_settings
+
+Added by Phase 7.1 (migration 0013). One row per host.
+
+```sql
+server_id UUID PRIMARY KEY REFERENCES servers(id)
+passive_from INTEGER NOT NULL DEFAULT 30000
+passive_to INTEGER NOT NULL DEFAULT 30100
+tls_website_id UUID REFERENCES websites(id) ON DELETE SET NULL
+require_tls BOOLEAN NOT NULL DEFAULT FALSE
+masquerade_address VARCHAR(255) NOT NULL DEFAULT ''
+max_clients INTEGER NOT NULL DEFAULT 0
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+The passive range is stored rather than left to the daemon because the firewall
+has to admit exactly these ports: without a fixed range every passive transfer on
+a firewalled host hangs after a successful login.
+
+`tls_website_id` names the site whose certificate FTPS presents. The certificate
+itself is not copied here — Phase 6 owns it and knows where it is, and a second
+copy would go stale at the first renewal, silently.
+
+---
+
 # 28.1 schema_migrations
 
 Created and maintained by the migration runner

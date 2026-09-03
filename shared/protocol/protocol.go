@@ -167,6 +167,12 @@ const (
 	// Backups. Creating and restoring are the two operations in this panel
 	// that move an unbounded amount of data, so both are asynchronous; the
 	// rest answer inside a request.
+	// The two host probes the Security Center needs and nothing else has.
+	// Both are read-only and take no parameters: a scanner that accepted a
+	// path would be a way to enumerate the filesystem.
+	OperationSecurityPorts       OperationType = "security.ports"
+	OperationSecurityPermissions OperationType = "security.permissions"
+
 	OperationBackupCapabilities OperationType = "backup.capabilities"
 	OperationBackupCreate       OperationType = "backup.create"
 	OperationBackupVerify       OperationType = "backup.verify"
@@ -308,6 +314,8 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationUpdatesCheck:         {},
 	OperationUpdatesApply:         {},
 	OperationUpdatesRevert:        {},
+	OperationSecurityPorts:        {},
+	OperationSecurityPermissions:  {},
 	OperationBackupCapabilities:   {},
 	OperationBackupCreate:         {},
 	OperationBackupVerify:         {},

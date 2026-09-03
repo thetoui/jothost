@@ -1432,11 +1432,74 @@ Firewall API must enforce emergency rollback.
 # 25. Security
 
 ```http
-GET /security/score
-GET /security/findings
-POST /security/scan
+GET   /security/score
+GET   /security/findings
+POST  /security/scan
 PATCH /security/findings/:id
+GET   /security/history
 ```
+
+**As implemented in Phase 15.** Everything needs `security.view`, which
+migration 0018 adds and grants to admin and operator. It is deliberately not
+`server.view`: a findings list is a list of the ways into this machine, with the
+exact port and the exact path, and it is the most sensitive read in the panel.
+
+Reading and accepting share the permission on purpose. Splitting them would mean
+the people who can see "we still allow password logins" are not the people who
+can record that it is deliberate, and the finding would be re-reported forever
+by a panel nobody can quiet.
+
+`GET /security/score` answers with the findings, the accepted risks and the
+per-scanner outcomes as well as the number. The score alone would be a number
+with no way to act on it, and a page that made two calls would show the number
+first and the reasons a moment later — which is the wrong order to read them in.
+
+**The field that carries the phase is `checks_run` against `checks_total`.** A
+scanner that could not answer contributes neither a finding nor a clean bill of
+health, so a score is never returned without the number of checks behind it. A
+100 from two checks is not a 100, and `complete: false` says so; the `summary`
+then reads "incomplete rather than reassuring" and names the checks that could
+not run. TASKS.md warns about exactly this in the phase's dependency note — a
+score computed from blanks looks identical to a good one.
+
+A host that has **never been scanned** gets `last_scan: null` and a grade of
+`unknown` rather than a zero. A host nobody has looked at is not a host with
+problems and it is not a host without them, and a number there would make one of
+those up.
+
+`POST /security/scan` runs all seven scanners. It is a POST because it is not
+free: it walks a filesystem and reaches the Agent seven times, and a GET that did
+that would be re-run by every retry and every prefetch. It is synchronous rather
+than a job, because a scan reads and changes nothing — there is nothing to
+reconcile if it fails halfway — and an operator pressing "scan" wants the answer
+rather than a job to follow. A second scan while one is running is a **409**.
+
+`PATCH /security/findings/:id` takes `status` of `accepted` or `open`, and
+`reason`.
+
+**`status: "resolved"` is refused with a 422.** Whether a weakness still exists
+is the scanner's to decide, and a panel where a person can mark an open port as
+closed is a panel that will one day say an open port is closed. A finding is
+resolved when a scan no longer finds it.
+
+Accepting requires a reason of at least a few characters. An acceptance with no
+reason is a mute button, and a mute button on a security page is how a real
+problem becomes permanent — somebody will read it in a year and needs to know it
+was a decision rather than an oversight. The severity at the moment of
+acceptance is stored, and **a rescan that finds the same thing worse re-opens
+it**: accepting "SSH listens on port 22" is not accepting "SSH permits root
+login with a password".
+
+Accepted findings cost no score and are never hidden: the count sits beside the
+score and they have their own section in the response.
+
+`GET /security/findings` filters by `status`, `scanner` and `severity`. An
+unknown scanner or severity is a **422** rather than an empty list, because an
+empty list reads as "nothing wrong".
+
+`security.finding.accept` and `.reopen` are audited. Running a scan is not: it
+changes nothing, and a scheduled one would drown the log it is meant to make
+readable.
 
 ---
 

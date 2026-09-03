@@ -36,6 +36,7 @@ import (
 	"github.com/jothost/panel/api/internal/ratelimit"
 	"github.com/jothost/panel/api/internal/rbac"
 	"github.com/jothost/panel/api/internal/secrets"
+	securitypkg "github.com/jothost/panel/api/internal/security"
 	"github.com/jothost/panel/api/internal/servers"
 	servicespkg "github.com/jothost/panel/api/internal/services"
 	"github.com/jothost/panel/api/internal/sessions"
@@ -75,6 +76,7 @@ type Server struct {
 	dns       *dnspkg.Handler
 	updates   *updatespkg.Handler
 	backup    *backuppkg.Handler
+	security  *securitypkg.Handler
 	// backupScheduler takes the backups that are due. Like the update
 	// scheduler, it is the panel's own loop rather than a crontab entry:
 	// reading every file of every site needs root, which only the Agent has.
@@ -490,6 +492,25 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// The Security Center. It is built after the phases it scans, because it
+	// asks them rather than probing what they manage a second time — a security
+	// page that disagreed with the SSH page would be worse than no security
+	// page, and two probes of one thing is exactly how that happens.
+	securityService := securitypkg.NewService(securitypkg.ServiceOptions{
+		Repository:   securitypkg.NewRepository(opts.Pool),
+		Agent:        agent,
+		Audit:        auditRecorder,
+		Certificates: sslRepo,
+		Websites:     securitypkg.NewWebsiteAdapter(websiteRepo),
+		Updates:      securitypkg.NewUpdateAdapter(updateRepo, opts.LocalServerID),
+		Log:          log,
+		ServerID:     opts.LocalServerID,
+	})
+	s.security = securitypkg.NewHandler(securitypkg.HandlerOptions{
+		Service: securityService,
+		Auth:    authService,
+	})
+
 	// Backups. The service is built before the worker because the worker needs
 	// it twice over: as an observer, to move a backup row to completed or
 	// failed, and as the payload resolver that keeps storage credentials out of
@@ -638,6 +659,7 @@ func (s *Server) routes() http.Handler {
 	s.updates.Routes(mux)
 	s.monitoring.Routes(mux)
 	s.backup.Routes(mux)
+	s.security.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)

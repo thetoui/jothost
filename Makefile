@@ -139,6 +139,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-updates
 	$(MAKE) docker-test-monitoring
 	$(MAKE) docker-test-backup
+	$(MAKE) docker-test-security
 	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
@@ -249,6 +250,10 @@ docker-test-updates: create-integration-admin ## Run the Phase 21 system update 
 .PHONY: docker-test-monitoring
 docker-test-monitoring: create-integration-admin ## Run the Phase 19 monitoring checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase19_monitoring.sh
+
+.PHONY: docker-test-security
+docker-test-security: create-integration-admin ## Run the Phase 15 Security Center checks
+	$(COMPOSE) exec -T agent sh /tests/integration/phase15_security.sh
 
 .PHONY: docker-test-backup
 docker-test-backup: create-integration-admin ## Run the Phase 14 backup checks

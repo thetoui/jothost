@@ -52,8 +52,17 @@ const (
 	// server.manage would mean the only people who can silence a false alarm
 	// are the ones who can also stop nginx.
 	PermMonitorManage = "monitor.manage"
-	PermAuditView     = "audit.view"
-	PermUserManage    = "user.manage"
+	// PermSecurityView is its own rather than server.view: a findings list is a
+	// list of the ways into this machine, with the exact port and the exact
+	// path. It is the most sensitive read in the panel and it belongs behind a
+	// grant somebody makes deliberately.
+	//
+	// It covers accepting a risk as well as reading one. Splitting them would
+	// mean the people who can see "we still allow password logins" are not the
+	// people who can record that it is deliberate.
+	PermSecurityView = "security.view"
+	PermAuditView    = "audit.view"
+	PermUserManage   = "user.manage"
 )
 
 // ErrRoleNotFound is returned when a named role does not exist.

@@ -33,9 +33,14 @@ describe('Sidebar', () => {
     );
     // Backups became a real destination in Phase 14.
     expect(screen.getByRole('link', { name: 'Backups' })).toHaveAttribute('href', '/backups');
+    // Security Center became a real destination in Phase 15.
+    expect(screen.getByRole('link', { name: 'Security Center' })).toHaveAttribute(
+      'href',
+      '/security-center',
+    );
     // Future-phase modules are visible but must not be clickable links.
-    expect(screen.queryByRole('link', { name: 'Security Center' })).not.toBeInTheDocument();
-    expect(screen.getByTitle('Security Center — not yet implemented')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Server' })).not.toBeInTheDocument();
+    expect(screen.getByTitle('Server — not yet implemented')).toBeInTheDocument();
   });
 
   it('collapses in response to UI state', () => {

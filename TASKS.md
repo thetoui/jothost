@@ -51,19 +51,19 @@ Done, in the order they were built:
 21  System Updates
 19  Monitoring
 14  Backup
+15  Security Center
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
- 2.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
- 3.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
- 4.  27   Git & Webhook Actions  — deployment logs need 11
- 5.  22   Multi-Tenant           — quota dimensions must exist first, mail included
- 6.  23   Production Installer   — installs everything, so everything must exist
- 7.  24   Production Hardening   — tests the finished system
- 8.  25   Release                — last by definition
+ 1.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+ 2.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+ 3.  27   Git & Webhook Actions  — deployment logs need 11
+ 4.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+ 5.  23   Production Installer   — installs everything, so everything must exist
+ 6.  24   Production Hardening   — tests the finished system
+ 7.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -911,20 +911,49 @@ Critical tests:
 
 # PHASE 15 — Security Center
 
+**Status: COMPLETE** — see [docs/PHASE15.md](docs/PHASE15.md) for scope,
+decisions, the divergence from DATABASE.md, and known limitations.
+
 **Build order: 12 of 17.** Depends on 16, 17, 21, 6 and 7 — it scans what those
 phases manage, so every one of them has to exist first or the score is computed
 from blanks.
 **Blocks** 20 (security alerts).
 
-- [ ] Security score
-- [ ] SSH scanner
-- [ ] Firewall scanner
-- [ ] Open port scanner
-- [ ] File permission scanner
-- [ ] SSL scanner
-- [ ] Package update scanner
-- [ ] Security findings
-- [ ] Security UI
+- [x] Security score — 100 minus a weight per open finding, with the weights far
+  enough apart that no number of hygiene issues adds up to one wide-open
+  database. Reported **only** alongside the number of checks it is built from
+- [x] SSH scanner — Phase 17's own findings, mapped rather than re-derived: two
+  interpretations of one setting is two answers that eventually disagree
+- [x] Firewall scanner — absent, installed-but-off, default-allow, and a change
+  still waiting to be confirmed
+- [x] Open port scanner — read from /proc, no `ss` and no `netstat`. The
+  distinction it exists for is loopback against everything else: a database on
+  0.0.0.0 is invisible from every other page in this panel
+- [x] File permission scanner — world-writable files, setuid binaries, `.env`
+  and `.git` inside a served directory, and private keys anyone can read
+- [x] SSL scanner — expired, expiring, renewing by hand, and sites with no
+  certificate at all
+- [x] Package update scanner — carrying Phase 21's rule through unchanged: a
+  check that never succeeded is *unknown*, not clean
+- [x] Security findings — rows with a stable fingerprint, so a rescan updates
+  rather than duplicating and `first_seen_at` means how long this host has been
+  wrong about it
+- [x] Security UI — the score, what it is built from, what to fix first, and
+  what somebody has decided to live with
+
+Additionally required by the above:
+
+- [x] **A check that did not run is not a check that passed.** An unavailable
+  scanner costs no score, gains no score, and leaves its findings alone — an
+  unreadable firewall must never resolve "the firewall is disabled"
+- [x] A host that has never been scanned told apart from a clean one, everywhere
+- [x] Accepting that is **not** resolving, with a reason required, the accepted
+  count never hidden, and automatic re-opening if the risk gets worse than what
+  was accepted
+- [x] Two read-only host probes that take no parameters at all: one accepting a
+  path would be a way to enumerate the filesystem
+- [x] A `security.view` permission of its own — a findings list is a list of the
+  ways into this machine, with the exact port and the exact path
 
 ---
 

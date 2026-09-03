@@ -1870,3 +1870,113 @@ export interface BackupScheduleInput {
   keep_last: number;
   enabled?: boolean;
 }
+
+// -------------------------------------------------------------- security
+
+/** How bad a finding is. */
+export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+/** What the panel checks. */
+export type SecurityScanner =
+  | 'ssh'
+  | 'firewall'
+  | 'ports'
+  | 'permissions'
+  | 'ssl'
+  | 'updates'
+  | 'fail2ban';
+
+/** One thing wrong with the host. */
+export interface SecurityFinding {
+  id: string;
+  server_id: string;
+  scanner: SecurityScanner;
+  severity: FindingSeverity;
+  category: string;
+  title: string;
+  description: string;
+  /** What to do about it. A finding without a next step is a nag. */
+  remediation: string;
+  fingerprint: string;
+  status: 'open' | 'accepted' | 'resolved';
+  metadata?: Record<string, unknown>;
+  /** How long this host has been wrong about this. */
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+  accepted_at: string | null;
+  accepted_by: string | null;
+  accepted_reason: string | null;
+  accepted_severity: string | null;
+  created_at: string;
+}
+
+/** What one scanner did. */
+export interface ScannerOutcome {
+  scanner: SecurityScanner;
+  /**
+   * False when the scanner could not answer.
+   *
+   * Its findings are then left alone rather than resolved, and it counts
+   * towards neither a pass nor a failure in the score.
+   */
+  ran: boolean;
+  reason?: string;
+  findings: number;
+  duration_ms: number;
+}
+
+/** One run of the scanners. */
+export interface SecurityScan {
+  id: string;
+  server_id: string;
+  score: number;
+  checks_run: number;
+  checks_total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+  accepted: number;
+  resolved: number;
+  scanners: ScannerOutcome[] | null;
+  duration_ms: number;
+  triggered_by: string | null;
+  created_at: string;
+}
+
+/** The computed posture of the host. */
+export interface SecurityScore {
+  value: number;
+  /** A word rather than a letter: it says what to do with the number. */
+  grade: string;
+  checks_run: number;
+  checks_total: number;
+  complete: boolean;
+  summary: string;
+}
+
+/** How many live findings there are, by severity. */
+export interface SecurityCounts {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+  open: number;
+  /** Never hidden: a score carried by accepted risk is not a clean one. */
+  accepted: number;
+}
+
+/** Everything the Security Center shows. */
+export interface SecurityOverview {
+  score: SecurityScore;
+  counts: SecurityCounts;
+  findings: SecurityFinding[] | null;
+  accepted: SecurityFinding[] | null;
+  /** Null when this host has never been scanned, which is its own fact. */
+  last_scan: SecurityScan | null;
+  scanners: ScannerOutcome[] | null;
+  severities: FindingSeverity[];
+}

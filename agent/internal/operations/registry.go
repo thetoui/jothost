@@ -26,6 +26,7 @@ import (
 	"github.com/jothost/panel/agent/internal/nodejs"
 	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/pma"
+	"github.com/jothost/panel/agent/internal/security"
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/ssh"
@@ -130,6 +131,13 @@ type Dependencies struct {
 	// rather than accepting schedules that would silently never produce
 	// anything.
 	Backup *backup.Provider
+
+	// Security answers the two questions about a host nothing else in this
+	// panel can: what is listening, and what is writable. Nil means the
+	// Security Center reports those two checks as unknown rather than as
+	// passing — a score computed from blanks is the failure this phase is
+	// most able to commit.
+	Security *security.Scanner
 
 	// DNS runs the host's authoritative name server. Nil, or a host without
 	// BIND, means the panel offers to install one rather than accepting zones
@@ -271,6 +279,9 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationUpdatesCheck, r.handleUpdatesCheck)
 	r.mustRegister(protocol.OperationUpdatesApply, r.handleUpdatesApply)
 	r.mustRegister(protocol.OperationUpdatesRevert, r.handleUpdatesRevert)
+
+	r.mustRegister(protocol.OperationSecurityPorts, r.handleSecurityPorts)
+	r.mustRegister(protocol.OperationSecurityPermissions, r.handleSecurityPermissions)
 
 	r.mustRegister(protocol.OperationBackupCapabilities, r.handleBackupCapabilities)
 	r.mustRegister(protocol.OperationBackupCreate, r.handleBackupCreate)

@@ -84,7 +84,7 @@ const navGroups: NavGroup[] = [
       { label: 'System updates', to: '/updates', icon: PackageSearch, enabled: true },
       { label: 'Server', to: '/server', icon: Server, enabled: false },
       { label: 'Monitoring', to: '/monitoring', icon: Activity, enabled: true },
-      { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: false },
+      { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: true },
       { label: 'Account security', to: '/security', icon: UserCog, enabled: true },
     ],
   },

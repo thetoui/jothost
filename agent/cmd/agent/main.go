@@ -35,6 +35,7 @@ import (
 	"github.com/jothost/panel/agent/internal/operations"
 	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/pma"
+	securitypkg "github.com/jothost/panel/agent/internal/security"
 	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/socket"
@@ -635,6 +636,16 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 			"detail", "install one through the panel, or with the host's package manager")
 	}
 
+	// The security probes. Read-only, and given the directories to walk rather
+	// than accepting them from a request — the site root and the web server's
+	// configuration are what this panel put things in, and scanning /usr would
+	// produce a long list of things it did not create and cannot fix.
+	securityScanner := securitypkg.NewScanner(securitypkg.Options{
+		Log:      log,
+		ProcRoot: cfg.ProcRoot,
+		Roots:    []string{cfg.SiteRoot},
+	})
+
 	// Backups. The working directory is the Agent's own staging area, and the
 	// local roots are the only directories a local destination may write into
 	// — without that bound, "back up to /etc/nginx" would be a way to write a
@@ -690,6 +701,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		DNS:          dnsProvider,
 		Updates:      updatesProvider,
 		Backup:       backupProvider,
+		Security:     securityScanner,
 	})
 
 	// Wired after the registry, because restarting the FTP daemon goes through

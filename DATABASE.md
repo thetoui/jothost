@@ -1145,18 +1145,98 @@ zero would be indistinguishable from a genuinely idle machine.
 
 # 27. security_findings
 
+Built by migration 0018. The columns below are the specification's, plus the
+ones a *rescan* needs — a findings table that cannot be rescanned doubles in
+size every hour.
+
 ```sql
 id UUID PRIMARY KEY
 server_id UUID REFERENCES servers(id)
+scanner VARCHAR(30) NOT NULL
 severity VARCHAR(20) NOT NULL
 category VARCHAR(100) NOT NULL
 title VARCHAR(255) NOT NULL
 description TEXT
-status VARCHAR(30)
+remediation TEXT
+fingerprint VARCHAR(200) NOT NULL
+status VARCHAR(30) NOT NULL DEFAULT 'open'
 metadata JSONB
-created_at TIMESTAMPTZ NOT NULL
+first_seen_at TIMESTAMPTZ NOT NULL
+last_seen_at TIMESTAMPTZ NOT NULL
 resolved_at TIMESTAMPTZ
+accepted_at TIMESTAMPTZ
+accepted_by UUID REFERENCES users(id)
+accepted_reason TEXT
+accepted_severity VARCHAR(20)
+created_at TIMESTAMPTZ NOT NULL
 ```
+
+**`fingerprint` is the identity of the thing being reported, not of the row.**
+Without it every scan inserts a fresh copy, and an operator running a nightly
+scan accumulates three hundred rows describing one setting. With it a rescan
+updates in place, and `first_seen_at` means something: how long this host has
+been wrong about this, which is usually the sentence that gets something fixed.
+
+A unique index on `(server_id, fingerprint)` is **partial on `status <>
+'resolved'`**, so something fixed in March and undone in June is two rows. That
+is the correct answer: collapsing them would hide the second incident.
+
+**`remediation` exists because a finding without a next step is a nag**, and a
+page full of nags is one nobody opens twice.
+
+**The acceptance columns are separate from `status`** for the same reason Phase
+19 keeps `acknowledged_at` apart from an alert's status: whether a condition
+still holds is the machine's to decide. A CHECK enforces that an accepted
+finding always records who and why — an acceptance with no reason is a mute
+button. `accepted_severity` is what makes accepting safe: a rescan that finds
+the same thing at a higher severity re-opens it and clears the acceptance,
+because accepting a medium risk is not accepting the critical version of it.
+
+---
+
+# 27.1 security_scans
+
+Added by migration 0018, and not in this specification.
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+score SMALLINT NOT NULL
+checks_run SMALLINT NOT NULL
+checks_total SMALLINT NOT NULL
+critical, high, medium, low, info INTEGER NOT NULL
+accepted, resolved INTEGER NOT NULL
+scanners JSONB NOT NULL
+duration_ms INTEGER NOT NULL
+triggered_by UUID REFERENCES users(id)
+created_at TIMESTAMPTZ NOT NULL
+```
+
+Two things are impossible without it. A score is only meaningful next to when it
+was taken — "68" means nothing and "68, an hour ago, down from 91 last week"
+means a great deal. And a panel with no scan row cannot distinguish "this host is
+clean" from "this host has never been looked at", which are opposite facts that a
+findings table alone renders identically, as no rows.
+
+`checks_run` against `checks_total` is the phase's central rule made durable: a
+scanner that could not answer counts towards neither a pass nor a failure, and
+the score is never stored without the number of checks behind it.
+
+`scanners` records which ran, which could not, and why — so a score that dropped
+because the firewall became unreadable can be told apart from one that dropped
+because the firewall was switched off.
+
+---
+
+# 27.2 severity_rank()
+
+A small immutable SQL function added by migration 0018, mapping the severity
+scale to a sortable integer with an unknown value ranking last.
+
+It exists because the panel orders findings by severity in several places and
+re-opens an accepted finding when its severity *rises*, and both have to mean
+exactly what `shared/validate.FindingRank` means. Two copies of an ordering are
+two things that can drift.
 
 ---
 

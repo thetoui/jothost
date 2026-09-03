@@ -39,6 +39,7 @@ import (
 	"github.com/jothost/panel/agent/internal/socket"
 	sshpkg "github.com/jothost/panel/agent/internal/ssh"
 	"github.com/jothost/panel/agent/internal/ssl"
+	updatespkg "github.com/jothost/panel/agent/internal/updates"
 	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/protocol"
 	"github.com/jothost/panel/shared/version"
@@ -204,6 +205,17 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		// validate a candidate one (-t). The panel never starts the server with
 		// it: that goes through the service manager, so there is one thing on
 		// this host that owns the daemon's lifecycle.
+		// The read-only companions apt needs. apt-get itself is already
+		// allowlisted for Phase 5; these answer questions it cannot: which
+		// packages are held, which versions still exist in the archive, and
+		// what is actually installed on the disk.
+		//
+		// They are registered whether or not the binaries are there, the same
+		// arrangement Node's runtime uses: Runner.Available checks at call
+		// time, so on an Alpine host they are simply never usable.
+		{Name: updatespkg.CommandAPTCache, Path: cfg.AptCachePath, Timeout: 60 * time.Second},
+		{Name: updatespkg.CommandAPTMark, Path: cfg.AptMarkPath, Timeout: 30 * time.Second},
+		{Name: updatespkg.CommandDpkgQuery, Path: cfg.DpkgQueryPath, Timeout: 60 * time.Second},
 		// BIND and its checkers. named is here only to read a version — the
 		// daemon is started through the service manager, so one thing on this
 		// host owns its lifecycle — and named-checkconf and named-checkzone are
@@ -456,6 +468,18 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("an FTP server is not installed; the panel will offer to install it")
 	}
 
+	// The host's package updates. The provider detects apk or apt-get itself,
+	// through the same runner Phase 5 installs packages with.
+	updatesProvider := updatespkg.NewProvider(updatespkg.Options{
+		Runner:     runner,
+		Log:        log,
+		WorldPath:  cfg.APKWorldPath,
+		RebootFlag: cfg.RebootFlagPath,
+	})
+	if !updatesProvider.Available() {
+		log.Info("no supported package manager was found; updates cannot be reported")
+	}
+
 	// The authoritative name server. The panel owns the zone files and one
 	// include of zone statements; it does not own named.conf, which it writes
 	// only when the host has none and otherwise extends by a single line.
@@ -617,6 +641,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Fail2Ban:     fail2banProvider,
 		FTP:          ftpProvider,
 		DNS:          dnsProvider,
+		Updates:      updatesProvider,
 	})
 
 	// Wired after the registry, because restarting the FTP daemon goes through

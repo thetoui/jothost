@@ -20,6 +20,7 @@ export const Permission = {
   CronManage: 'cron.manage',
   FTPManage: 'ftp.manage',
   DNSManage: 'dns.manage',
+  UpdateManage: 'update.manage',
   AuditView: 'audit.view',
   UserManage: 'user.manage',
 } as const;

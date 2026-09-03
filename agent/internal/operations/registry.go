@@ -29,6 +29,7 @@ import (
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/ssh"
 	"github.com/jothost/panel/agent/internal/ssl"
+	"github.com/jothost/panel/agent/internal/updates"
 	"github.com/jothost/panel/shared/protocol"
 )
 
@@ -117,6 +118,11 @@ type Dependencies struct {
 	// settings are there.
 	Fail2Ban *fail2ban.Provider
 	FTP      *ftp.Provider
+
+	// Updates reports and applies the host's package updates. Nil, or a host
+	// with no package manager the panel drives, means the panel reports that
+	// rather than showing an empty list that reads as "up to date".
+	Updates *updates.Provider
 
 	// DNS runs the host's authoritative name server. Nil, or a host without
 	// BIND, means the panel offers to install one rather than accepting zones
@@ -254,6 +260,10 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationFTPReconcile, r.handleFTPReconcile)
 	r.mustRegister(protocol.OperationFTPSessions, r.handleFTPSessions)
 	r.mustRegister(protocol.OperationFTPDisconnect, r.handleFTPDisconnect)
+
+	r.mustRegister(protocol.OperationUpdatesCheck, r.handleUpdatesCheck)
+	r.mustRegister(protocol.OperationUpdatesApply, r.handleUpdatesApply)
+	r.mustRegister(protocol.OperationUpdatesRevert, r.handleUpdatesRevert)
 
 	r.mustRegister(protocol.OperationDNSStatus, r.handleDNSStatus)
 	r.mustRegister(protocol.OperationDNSInstall, r.handleDNSInstall)

@@ -753,6 +753,78 @@ provider which has been failing quietly for a month is visible.
 
 ---
 
+# 20.4 update_checks, update_runs and update_settings
+
+Added by Phase 21 (migration 0015).
+
+`update_checks` is a **cache**, which is unusual here: everywhere else in this
+panel the rows are intent and the host is made to match. The host's package
+manager is the authority on what is outstanding, and these rows are what it last
+said — kept because a check refreshes the package index and reaches the network.
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+manager VARCHAR(20) NOT NULL
+succeeded BOOLEAN NOT NULL DEFAULT FALSE
+reason TEXT NOT NULL DEFAULT ''
+security_known BOOLEAN NOT NULL DEFAULT FALSE
+package_count, security_count, held_count INTEGER NOT NULL
+unavailable_repositories, stale_repositories INTEGER NOT NULL
+reboot_required BOOLEAN NOT NULL DEFAULT FALSE
+packages JSONB NOT NULL DEFAULT '[]'
+held JSONB NOT NULL DEFAULT '[]'
+checked_at TIMESTAMPTZ NOT NULL
+```
+
+`succeeded` is why the table has this shape. A check that could not reach the
+repositories produces an empty package list that is indistinguishable from a
+host with nothing to do — and "up to date" is what an operator reads to decide
+they are safe. A row with `succeeded` false is *not known*, and the page says so
+rather than showing zero.
+
+`packages` and `held` are JSONB rather than child tables: this is a snapshot of
+somebody else's data, replaced wholesale at the next check, never queried by
+package and never joined to. A child table would be a delete-and-insert of a few
+hundred rows every time, for a list only ever read whole.
+
+`update_runs` is one application of updates, and it is this phase's answer to
+"rollback". Neither apk nor apt keeps the package it replaced, so what the panel
+can do is record exactly what moved, from which version to which:
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+trigger VARCHAR(20) NOT NULL      -- manual, scheduled, revert
+status VARCHAR(20) NOT NULL       -- running, succeeded, failed
+requested TEXT[] NOT NULL
+changes JSONB NOT NULL
+output, error TEXT NOT NULL
+reboot_required BOOLEAN NOT NULL
+started_at TIMESTAMPTZ NOT NULL
+finished_at TIMESTAMPTZ
+requested_by UUID REFERENCES users(id) ON DELETE SET NULL
+```
+
+The row is written **before** the work rather than after, so a panel restarted
+mid-upgrade leaves a run stuck in `running` — which is a true and useful thing
+to see. A row written only on success would leave no trace of the upgrade that
+took the machine down.
+
+`changes` is routinely longer than `requested`: a package manager resolves
+dependencies, so applying one update moves several, and it is read back from the
+host rather than assumed. `requested_by` is NULL for the schedule, which has no
+user behind it — inventing one in an audit trail would be worse than a record
+that plainly says the schedule did it.
+
+`update_settings` is one row per host: the automatic policy (`off` by default,
+because applying updates restarts daemons), how often to check, the day and time
+to apply in, and the packages never to apply automatically. That exclusion list
+is the panel's own and is not a pin — the host's package manager is never told
+about it, so nothing there changes what a person can do at a shell.
+
+---
+
 # 21. cron_jobs
 
 ```sql

@@ -1541,6 +1541,84 @@ carries `firewall_open` and the reason, and the page says what to open.
 `ftp.install` and `ftp.session.disconnect` are audited. The password itself never
 appears in an audit record.
 
+# 27.2 System updates
+
+```http
+GET  /updates
+POST /updates/check
+POST /updates/apply
+POST /updates/revert
+PUT  /updates/settings
+GET  /updates/history
+```
+
+**As implemented in Phase 21.** Reading needs `server.view` — knowing a host is
+behind is not itself a privilege, and hiding it from the people who look after
+the sites on it would make the panel worse at the one job this phase has.
+Everything that changes the host needs `update.manage`, which migration 0015
+adds. It is not `server.manage`: applying an update restarts daemons and can
+change the version of PHP a customer's site runs on, which is a different kind
+of decision from restarting a service somebody already chose to run.
+
+`GET /updates` is the panel's cached reading, not a live one. Checking refreshes
+the host's package index and reaches the network, so asking on every page load
+would make the page slow and hammer a distribution's mirrors.
+
+The field that matters most in the response is **`succeeded`**, not the package
+list. A check that could not reach the repositories produces an empty list that
+is indistinguishable from a host with nothing to do — and both package managers
+exit zero either way. `succeeded: false` means the lists are *not known*, and
+`reason` says why; `has_check: false` means nobody has looked yet. Neither is
+"up to date".
+
+`security_known` says whether this host can tell security updates apart at all.
+apt can, from the origin it prints with each candidate; apk cannot, because
+Alpine publishes security fixes as ordinary versions. On such a host
+`security_count` is not "none" — it is "cannot tell", and the page says so
+rather than reporting zero.
+
+`held` is separate from `packages` on purpose. A version-pinned package appears
+in a version comparison forever and is deliberately never upgraded, so listing
+it as outstanding would show a queue that never empties. The pending list comes
+from what the package manager says it will *do* — `apk upgrade --simulate`,
+`apt-get -s upgrade` — rather than from a version comparison.
+
+`POST /updates/check` is a POST because it is not free: it refreshes the index.
+A GET that did that would be re-run by every retry and every prefetch.
+
+`POST /updates/apply` takes `packages` (empty applies everything outstanding) or
+`security_only`. It answers with the **run**, and a run that started and then
+failed is answered with the run rather than an error envelope: an upgrade that
+failed halfway still moved packages, and the record of which ones is the most
+useful thing the caller can be given. The run's `changes` are read back from the
+host afterwards rather than taken from the request — a package manager resolves
+dependencies, so asking for one package routinely moves several.
+
+`POST /updates/revert` puts one package back, and **is not a rollback**. The
+Agent asks the package manager whether that exact version can still be installed
+and refuses with a **404** when it cannot, which on a host whose repositories
+carry only the current version is the ordinary answer. Neither apk nor apt keeps
+what it replaced, so a panel promising to undo an update would be promising
+something the host cannot do; see docs/PHASE21.md section 5.
+
+`PUT /updates/settings` sets the automatic policy — `off` (the default),
+`security` or `all` — the window it runs in, how often the panel checks, and the
+packages it will never apply automatically. The window is a day and a time
+rather than a cron expression, and "every day" is `-1`: zero is Sunday, and
+confusing the two would quietly turn a nightly schedule into a weekly one. The
+exclusion list is the panel's own and does not pin anything on the host.
+
+Refused with a **422**: a package name that would be read as an option (a
+leading dash — `--allow-untrusted` is a flag, not a package), a name carrying a
+version, an unknown policy, an hour outside the day, a check interval under an
+hour or over a week, a security-only apply on a host that cannot identify
+security updates, and applying anything at all on the basis of a check that
+failed. Two updates at once is a **409**.
+
+`update.apply`, `update.revert` and `update.configure` are audited. A check is
+not: reading is not a change, and a six-hourly automatic check would drown the
+log it is supposed to make readable.
+
 # 28. Jobs
 
 ```http

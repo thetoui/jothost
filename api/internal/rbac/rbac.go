@@ -37,10 +37,16 @@ const (
 	// PermFTPManage is its own rather than website.update: an FTP credential
 	// reaches a site's files without going through the panel, and it keeps
 	// working after the person holding it stops being a panel user.
-	PermFTPManage  = "ftp.manage"
-	PermDNSManage  = "dns.manage"
-	PermAuditView  = "audit.view"
-	PermUserManage = "user.manage"
+	PermFTPManage = "ftp.manage"
+	PermDNSManage = "dns.manage"
+	// PermUpdateManage is its own rather than server.manage: applying an update
+	// restarts daemons and can change the version of PHP a customer's site runs
+	// on, which is a different kind of decision from restarting a service
+	// somebody already chose to run. Reading what is outstanding needs only
+	// server.view — knowing a host is behind is not itself a privilege.
+	PermUpdateManage = "update.manage"
+	PermAuditView    = "audit.view"
+	PermUserManage   = "user.manage"
 )
 
 // ErrRoleNotFound is returned when a named role does not exist.

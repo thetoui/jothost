@@ -40,6 +40,7 @@ import (
 	sshpkg "github.com/jothost/panel/api/internal/ssh"
 	sslpkg "github.com/jothost/panel/api/internal/ssl"
 	"github.com/jothost/panel/api/internal/twofactor"
+	updatespkg "github.com/jothost/panel/api/internal/updates"
 	"github.com/jothost/panel/api/internal/users"
 	webserverpkg "github.com/jothost/panel/api/internal/webserver"
 	"github.com/jothost/panel/api/internal/websites"
@@ -70,13 +71,19 @@ type Server struct {
 	fail2ban  *f2bpkg.Handler
 	ftp       *ftppkg.Handler
 	dns       *dnspkg.Handler
-	firewall  *firewallpkg.Handler
-	jobs      *jobs.Handler
-	php       *phppkg.Handler
-	ssl       *sslpkg.Handler
-	files     *filespkg.Handler
-	databases *databasespkg.Handler
-	node      *nodepkg.Handler
+	updates   *updatespkg.Handler
+	// updateScheduler checks for updates on a cadence and applies them in
+	// their window. It is the panel's own loop rather than a cron entry: the
+	// privileged half belongs to the Agent, and a schedule in a crontab is one
+	// the panel can no longer describe.
+	updateScheduler *updatespkg.Scheduler
+	firewall        *firewallpkg.Handler
+	jobs            *jobs.Handler
+	php             *phppkg.Handler
+	ssl             *sslpkg.Handler
+	files           *filespkg.Handler
+	databases       *databasespkg.Handler
+	node            *nodepkg.Handler
 	// worker realises queued jobs against the Agent. It is nil when no server
 	// is registered, because there is no host to provision against.
 	worker *jobs.Worker
@@ -372,6 +379,31 @@ func New(opts Options) (*Server, error) {
 
 	s.dns = dnspkg.NewHandler(dnspkg.HandlerOptions{Service: dnsService, Auth: authService})
 
+	// System updates. The host's package manager is the authority on what is
+	// outstanding; the panel caches what it last said, because a check
+	// refreshes the package index and reaches the network.
+	updateRepo := updatespkg.NewRepository(opts.Pool)
+	updateService := updatespkg.NewService(updatespkg.ServiceOptions{
+		Repo:     updateRepo,
+		Agent:    agent,
+		Audit:    auditRecorder,
+		Runtimes: updateRuntimes{php: phpRepo, node: nodeRepo},
+		Log:      log,
+		ServerID: opts.LocalServerID,
+	})
+	s.updates = updatespkg.NewHandler(updatespkg.HandlerOptions{
+		Service: updateService,
+		Auth:    authService,
+	})
+	if opts.LocalServerID != "" {
+		s.updateScheduler = updatespkg.NewScheduler(updatespkg.SchedulerOptions{
+			Service:  updateService,
+			Repo:     updateRepo,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		})
+	}
+
 	// The SSH server's settings. No state of the panel's own: the configuration
 	// is files on the host, and every change is validated by sshd before it is
 	// installed and refused outright where it would leave nobody able to log in.
@@ -527,6 +559,7 @@ func (s *Server) routes() http.Handler {
 	s.fail2ban.Routes(mux)
 	s.ftp.Routes(mux)
 	s.dns.Routes(mux)
+	s.updates.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)
@@ -665,6 +698,14 @@ func (s *Server) Run(ctx context.Context) error {
 	// the difference between issuing certificates and keeping sites working.
 	if s.renewer != nil {
 		go s.renewer.Run(ctx, sslpkg.SweepInterval)
+	}
+
+	// A host nobody updates is the one that gets broken into. The loop only
+	// applies anything when an operator has asked for it — the default policy
+	// is off — but it checks either way, so the panel can say how far behind
+	// this machine is without anybody having to ask.
+	if s.updateScheduler != nil {
+		go s.updateScheduler.Run(ctx)
 	}
 
 	go func() {

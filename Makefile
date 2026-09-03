@@ -136,6 +136,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-fail2ban
 	$(MAKE) docker-test-ftp
 	$(MAKE) docker-test-dns
+	$(MAKE) docker-test-updates
 	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
@@ -238,6 +239,10 @@ docker-test-ftp: create-integration-admin ## Run the Phase 7.1 FTP integration c
 .PHONY: docker-test-dns
 docker-test-dns: create-integration-admin ## Run the Phase 13 DNS integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase13_dns.sh
+
+.PHONY: docker-test-updates
+docker-test-updates: create-integration-admin ## Run the Phase 21 system update checks
+	$(COMPOSE) exec -T agent sh /tests/integration/phase21_updates.sh
 
 .PHONY: docker-test-hybrid
 docker-test-hybrid: create-integration-admin ## Run the Phase 4.5 Apache hybrid integration checks

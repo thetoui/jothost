@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"strings"
 
 	cronpkg "github.com/jothost/panel/api/internal/cron"
 	dnspkg "github.com/jothost/panel/api/internal/dns"
@@ -186,6 +187,54 @@ func (d dnsWebsites) LookupForDNS(ctx context.Context, id string) (dnspkg.Websit
 		ServerID: site.ServerID,
 		Domain:   site.PrimaryDomain,
 	}, nil
+}
+
+// updateRuntimes tells the updates package which packages belong to the
+// language runtimes this panel manages.
+//
+// It is a join rather than a second question: a PHP update *is* a package
+// update, and asking the host separately would be two answers that can
+// disagree. What the panel adds is knowing which packages are PHP, because
+// Phase 5 installed them.
+type updateRuntimes struct {
+	php  *phppkg.Repository
+	node *nodepkg.Repository
+}
+
+// PHPPackagePrefixes returns the prefixes this host's PHP is installed under.
+//
+// Alpine names them php84-fpm, php84-opcache and so on; Debian php8.4-fpm. Both
+// start with the version's own prefix, which is what the panel already records,
+// so the match is on that rather than on a list of package names this phase
+// would have to keep in step with Phase 5's.
+func (u updateRuntimes) PHPPackagePrefixes(ctx context.Context) []string {
+	if u.php == nil {
+		return nil
+	}
+	versions, err := u.php.ListVersions(ctx)
+	if err != nil {
+		return nil
+	}
+
+	prefixes := make([]string, 0, len(versions)*2)
+	for _, version := range versions {
+		if !version.Installed {
+			continue
+		}
+		// "8.4" is written "php84" by Alpine and "php8.4" by Debian.
+		compact := strings.ReplaceAll(version.Version, ".", "")
+		prefixes = append(prefixes, "php"+compact, "php"+version.Version)
+	}
+	return prefixes
+}
+
+// NodePackageNames returns the packages the Node.js runtime uses.
+//
+// Fixed names rather than a lookup: both distributions call them the same
+// thing, and a runtime the panel did not install is still the runtime its
+// applications run on.
+func (u updateRuntimes) NodePackageNames(context.Context) []string {
+	return []string{"nodejs", "nodejs-current", "npm"}
 }
 
 // dnsHost answers what this machine's address is.

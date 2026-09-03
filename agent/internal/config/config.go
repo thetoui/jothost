@@ -101,6 +101,19 @@ type Config struct {
 	FTPConfigDir string
 	FTPRunDir    string
 	FTPLogDir    string
+	// The read-only companions the update reporter needs on a Debian host.
+	// AptCachePath answers what versions exist, AptMarkPath which packages are
+	// held, and DpkgQueryPath what is installed on the disk.
+	AptCachePath  string
+	AptMarkPath   string
+	DpkgQueryPath string
+	// APKWorldPath is Alpine's list of explicitly installed packages, where a
+	// version pin lives — which is how a package that apk will never upgrade is
+	// told apart from one that is simply outstanding. RebootFlagPath is the
+	// file Debian touches when a restart is needed.
+	APKWorldPath   string
+	RebootFlagPath string
+
 	// The name server and its checkers. NamedPath is used to read a version,
 	// never to start the daemon. DNSConfigDir is where BIND's configuration
 	// lives, and DNSStateDir is where the panel's zone files, the journals
@@ -210,6 +223,11 @@ func Load() (Config, error) {
 		FTPRunDir:          getString("AGENT_FTP_RUN_DIR", "/run/proftpd"),
 		FTPLogDir:          getString("AGENT_FTP_LOG_DIR", "/var/log/proftpd"),
 		Fail2BanConfigDir:  getString("AGENT_FAIL2BAN_CONFIG_DIR", "/etc/fail2ban"),
+		AptCachePath:       getString("AGENT_APT_CACHE_PATH", "/usr/bin/apt-cache"),
+		AptMarkPath:        getString("AGENT_APT_MARK_PATH", "/usr/bin/apt-mark"),
+		DpkgQueryPath:      getString("AGENT_DPKG_QUERY_PATH", "/usr/bin/dpkg-query"),
+		APKWorldPath:       getString("AGENT_APK_WORLD_PATH", "/etc/apk/world"),
+		RebootFlagPath:     getString("AGENT_REBOOT_FLAG_PATH", "/var/run/reboot-required"),
 		NamedPath:          getString("AGENT_NAMED_PATH", "/usr/sbin/named"),
 		NamedCheckconfPath: getString("AGENT_NAMED_CHECKCONF_PATH", "/usr/bin/named-checkconf"),
 		NamedCheckzonePath: getString("AGENT_NAMED_CHECKZONE_PATH", "/usr/bin/named-checkzone"),

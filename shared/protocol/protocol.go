@@ -151,6 +151,15 @@ const (
 	OperationFTPSessions   OperationType = "ftp.sessions"
 	OperationFTPDisconnect OperationType = "ftp.disconnect"
 
+	// System updates. A request names packages, and every name is checked
+	// against validate.PackageName before it becomes an argument to a program
+	// running as root — a name starting with a dash is an option, not a
+	// package. No repository, path or manager flag is ever taken from a
+	// request.
+	OperationUpdatesCheck  OperationType = "updates.check"
+	OperationUpdatesApply  OperationType = "updates.apply"
+	OperationUpdatesRevert OperationType = "updates.revert"
+
 	// DNS. A request names zones and records the panel has validated, never a
 	// configuration directive and never a file path: the Agent resolves every
 	// path from the zone's own name, which has been checked to be a domain
@@ -286,6 +295,9 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationFTPReconcile:         {},
 	OperationFTPSessions:          {},
 	OperationFTPDisconnect:        {},
+	OperationUpdatesCheck:         {},
+	OperationUpdatesApply:         {},
+	OperationUpdatesRevert:        {},
 	OperationDNSStatus:            {},
 	OperationDNSInstall:           {},
 	OperationDNSReconcile:         {},

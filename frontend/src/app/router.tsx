@@ -14,6 +14,7 @@ import { FirewallPage } from '@/pages/FirewallPage';
 import { CronPage } from '@/pages/CronPage';
 import { Fail2BanPage } from '@/pages/Fail2BanPage';
 import { DnsPage } from '@/pages/DnsPage';
+import { UpdatesPage } from '@/pages/UpdatesPage';
 import { FtpPage } from '@/pages/FtpPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { SSHPage } from '@/pages/SSHPage';
@@ -90,6 +91,7 @@ export const router = createBrowserRouter(
             { path: 'fail2ban', element: <Fail2BanPage /> },
             { path: 'ftp', element: <FtpPage /> },
             { path: 'dns', element: <DnsPage /> },
+            { path: 'updates', element: <UpdatesPage /> },
             { path: 'firewall', element: <FirewallPage /> },
             { path: 'databases', element: <DatabasesPage /> },
             { path: 'node', element: <NodePage /> },

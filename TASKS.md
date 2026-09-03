@@ -48,22 +48,22 @@ Done, in the order they were built:
 18  Fail2Ban
 7.1 FTP Manager
 13  DNS & Local Name Server
+21  System Updates
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  21   System Updates         — scheduled updates need 10
- 2.  19   Monitoring             — service monitoring needs 12
- 3.  14   Backup                 — scheduling needs 10
- 4.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
- 5.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
- 6.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
- 7.  27   Git & Webhook Actions  — deployment logs need 11
- 8.  22   Multi-Tenant           — quota dimensions must exist first, mail included
- 9.  23   Production Installer   — installs everything, so everything must exist
-10.  24   Production Hardening   — tests the finished system
-11.  25   Release                — last by definition
+ 1.  19   Monitoring             — service monitoring needs 12
+ 2.  14   Backup                 — scheduling needs 10
+ 3.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+ 4.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+ 5.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+ 6.  27   Git & Webhook Actions  — deployment logs need 11
+ 7.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+ 8.  23   Production Installer   — installs everything, so everything must exist
+ 9.  24   Production Hardening   — tests the finished system
+10.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -1055,21 +1055,57 @@ switches with nothing behind them.
 
 # PHASE 21 — System Updates
 
-**Build order: 9 of 17.** Depends on 10 for the scheduled half.
+**Status: COMPLETE**, with one item deliberately not done and written up —
+see [docs/PHASE21.md](docs/PHASE21.md) for scope, decisions, and known
+limitations.
+
+**Build order: 9 of 17.** Depends on 10 for the scheduled half — though see
+below: the schedule is *not* a cron entry, and the reason is in
+docs/PHASE21.md section 8.
 **Blocks** 15 (the package update scanner).
 
 Initial version:
 
-- [ ] Package update detection
-- [ ] Security update detection
-- [ ] PHP update detection
-- [ ] Node update detection
+- [x] Package update detection, from what the package manager says it will
+  **do** rather than from a version comparison. The two disagree: a pinned
+  package appears in the comparison forever and is never upgraded, so listing it
+  as pending would show a queue that never empties
+- [x] Security update detection on apt, from the origin it prints with each
+  candidate. apk **cannot** identify them, and the panel says so rather than
+  reporting "0 security updates" — a sentence that answers a question nothing
+  asked and reads as "nothing urgent"
+- [x] PHP update detection, as a view over the same list filtered to the
+  packages Phase 5 installed
+- [x] Node update detection, the same way
 
 Later:
 
-- [ ] Automatic updates
-- [ ] Scheduled updates
-- [ ] Rollback
+- [x] Automatic updates — off by default, because applying updates restarts
+  daemons and an operator who has not asked for that should not learn it from
+  their monitoring at three in the morning
+- [x] Scheduled updates, in a window the panel owns rather than a crontab
+  entry: those run as a website's unprivileged account, and a schedule in a file
+  is one the panel can no longer describe
+- [ ] **Rollback — not implemented, deliberately.** Neither apk nor apt keeps
+  the package it replaced, and a Debian security update's predecessor is
+  normally gone from the archive the moment it is superseded, so the button
+  would take a service down and then fail. What is there instead: a *revert*
+  that asks the package manager whether that exact version can still be
+  installed and refuses when it cannot, and a history recording every version
+  that moved — which is what makes a manual recovery possible. See
+  docs/PHASE21.md section 5
+
+Additionally required by the above:
+
+- [x] Three states rather than two. "Outstanding", "nothing outstanding" and
+  **"not known"** — because both package managers exit zero and print an empty
+  list when every repository is unreachable, so a panel with two states says
+  "up to date" to somebody whose machine it could not read
+- [x] An `update.manage` permission of its own. Applying an update restarts
+  daemons and can change the version of PHP a customer's site runs on, which is
+  a different decision from restarting a service somebody already chose to run
+- [x] A scheduler in the panel, alongside the metric sampler, so the privileged
+  half stays in the Agent and the schedule stays describable
 
 ---
 

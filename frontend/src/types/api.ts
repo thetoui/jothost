@@ -1480,3 +1480,119 @@ export interface DNSZoneChange {
   masters?: string[];
   website_id?: string;
 }
+
+/* ---------------------------------------------------------------- Updates */
+
+/** One package update the host has waiting. */
+export interface UpdatePackage {
+  name: string;
+  installed: string;
+  available: string;
+  /** Only meaningful when the check's `security_known` is true. */
+  security: boolean;
+  origin?: string;
+}
+
+/**
+ * A package with something newer available that the host will not upgrade.
+ *
+ * Separate from the pending list on purpose: somebody pinned it, and listing it
+ * as outstanding work would be a queue that never empties.
+ */
+export interface UpdateHeld {
+  name: string;
+  installed: string;
+  available: string;
+  reason: string;
+}
+
+/** One reading of what the host has waiting. */
+export interface UpdateCheck {
+  id: string;
+  server_id: string;
+  manager: string;
+  /**
+   * Whether the check actually worked.
+   *
+   * False means the lists below are *not known*, not empty — a check that could
+   * not reach the repositories looks exactly like a host with nothing to do.
+   */
+  succeeded: boolean;
+  reason?: string;
+  /** Whether this host can distinguish security updates at all. */
+  security_known: boolean;
+  package_count: number;
+  security_count: number;
+  held_count: number;
+  unavailable_repositories: number;
+  stale_repositories: number;
+  reboot_required: boolean;
+  packages: UpdatePackage[] | null;
+  held: UpdateHeld[] | null;
+  checked_at: string;
+}
+
+/** One package an update moved. */
+export interface UpdateChange {
+  name: string;
+  from: string;
+  to: string;
+}
+
+/** One application of updates. */
+export interface UpdateRun {
+  id: string;
+  server_id: string;
+  trigger: 'manual' | 'scheduled' | 'revert';
+  status: 'running' | 'succeeded' | 'failed';
+  requested: string[];
+  /** What actually moved, which is routinely more than was requested. */
+  changes: UpdateChange[];
+  output?: string;
+  error?: string;
+  reboot_required: boolean;
+  started_at: string;
+  finished_at?: string;
+  requested_by?: string;
+}
+
+/** When and whether the panel applies updates by itself. */
+export interface UpdateSettings {
+  server_id: string;
+  policy: 'off' | 'security' | 'all';
+  check_interval_hours: number;
+  /** -1 means every day. */
+  day_of_week: number;
+  hour: number;
+  minute: number;
+  excluded: string[];
+  last_checked_at?: string;
+  last_run_at?: string;
+}
+
+/** The pending list, filtered to the runtimes the panel manages. */
+export interface RuntimeUpdates {
+  php: UpdatePackage[] | null;
+  node: UpdatePackage[] | null;
+}
+
+/** Everything the updates page shows. */
+export interface UpdateOverview {
+  check: UpdateCheck;
+  /** False on a host nobody has checked yet, which is not "nothing to do". */
+  has_check: boolean;
+  settings: UpdateSettings;
+  running?: UpdateRun;
+  runtime: RuntimeUpdates;
+  recent: UpdateRun[] | null;
+}
+
+/** A change to the automatic-update settings. */
+export interface UpdateSettingsChange {
+  policy?: string;
+  check_interval_hours?: number;
+  day_of_week?: number;
+  hour?: number;
+  minute?: number;
+  excluded?: string[];
+}

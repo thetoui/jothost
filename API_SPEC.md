@@ -1619,6 +1619,91 @@ failed. Two updates at once is a **409**.
 not: reading is not a change, and a six-hourly automatic check would drown the
 log it is supposed to make readable.
 
+# 27.3 Monitoring
+
+```http
+GET    /monitoring
+GET    /monitoring/alerts
+POST   /monitoring/alerts/:id/acknowledge
+
+GET    /monitoring/rules
+POST   /monitoring/rules
+PATCH  /monitoring/rules/:id
+DELETE /monitoring/rules/:id
+
+GET    /monitoring/services/:service
+```
+
+**As implemented in Phase 19.** Reading needs `server.view`; changing a rule or
+acknowledging an alert needs `monitor.manage`, which migration 0016 adds. It is
+deliberately not `server.manage`: tuning a threshold that is crying wolf, or
+acknowledging a disk alert at three in the morning, cannot change what the
+server does — and the person who looks after the sites is exactly who needs to
+do both.
+
+These alerts are **not** the dashboard's. The dashboard's are computed from the
+reading in front of them and answer "what is wrong now"; these are rows and
+answer "what has been wrong, since when, and is it still". Only the second can
+be acknowledged, looked back at, or delivered by Phase 20. The two share their
+*thresholds* — the dashboard reads them from these rules — so they cannot
+disagree about what "nearly full" means.
+
+A rule fires when its condition has held for **`for_seconds`**, not when one
+reading crossed a line. That field is the whole phase: a rule that pages for a
+backup job briefly filling memory gets muted within a week, and a muted monitor
+is worse than none. Zero fires on the first reading, which is right for a
+service being down and wrong for almost everything else.
+
+`GET /monitoring` carries the open alerts, the recent ones including resolved,
+the rules, what every watched service is doing and for how long, and the counts
+— including how many nobody has acknowledged, which is the number that decides
+whether to worry.
+
+`POST /monitoring/rules` takes:
+
+```text
+name        what an alert from this rule will be called
+metric      cpu, memory, disk, swap, load, network_rx, network_tx or service
+target      a mount point, or a service key; empty watches every instance
+comparison  "above" or "below"
+threshold   the number
+for_seconds how long the breach must last
+severity    "warning" or "critical"
+enabled     defaults to true
+```
+
+`PATCH` cannot change `metric` or `target`. A rule that watched something else
+would be a different rule, and the alerts it had already opened would be
+attributed to a condition it never observed — so that is a **422**.
+
+`POST /monitoring/alerts/:id/acknowledge` records that somebody has seen an
+alert. **There is no endpoint that resolves one**, and that is deliberate:
+whether a condition has cleared is a fact about the machine, and a panel where a
+person can mark a full disk as fine is a panel that will one day say a full disk
+is fine. Alerts resolve when the monitor next finds the condition gone, when
+their rule is disabled, or when what they watched stops being reported.
+
+One alert exists per `(metric, target, severity)` at a time. A second breach
+refreshes it — keeping the original `opened_at`, raising `worst`, updating the
+message — rather than opening another; without that a flapping disk would
+produce hundreds of rows about one filesystem.
+
+Refused with a **422**: a metric this panel cannot measure, a percentage
+threshold above 100 (it could never be reached, so accepting it would let
+somebody switch an alert off while believing they had set one), a service rule
+that names no service, a blank name, and a duration longer than a day. A second
+rule on the same metric, target and severity is a **409**.
+
+`monitor.rule.create`, `.update`, `.delete` and `monitor.alert.acknowledge` are
+audited: "why did nobody get told the disk was full" has an answer.
+
+**Metric history** (section 5) gains two ranges, `90d` and `1y`, served from the
+hourly summaries rather than the raw samples — which is what lets them outlive
+the samples' retention. Their points carry a maximum alongside the average,
+because a day's average of 40% hides an hour at 99%, and `sample_count`, because
+a bucket built from two readings is not the same evidence as one built from a
+hundred.
+
 # 28. Jobs
 
 ```http

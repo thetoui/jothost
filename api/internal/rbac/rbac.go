@@ -45,8 +45,15 @@ const (
 	// somebody already chose to run. Reading what is outstanding needs only
 	// server.view — knowing a host is behind is not itself a privilege.
 	PermUpdateManage = "update.manage"
-	PermAuditView    = "audit.view"
-	PermUserManage   = "user.manage"
+	// PermMonitorManage is its own rather than server.manage: tuning a
+	// threshold that is crying wolf, or acknowledging a disk alert at three in
+	// the morning, cannot change what the server does — and the person who
+	// looks after the sites is exactly who needs to do both. Making it
+	// server.manage would mean the only people who can silence a false alarm
+	// are the ones who can also stop nginx.
+	PermMonitorManage = "monitor.manage"
+	PermAuditView     = "audit.view"
+	PermUserManage    = "user.manage"
 )
 
 // ErrRoleNotFound is returned when a named role does not exist.

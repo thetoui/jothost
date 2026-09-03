@@ -5,13 +5,14 @@ databases, SSL, files, cron, backups, monitoring, and security from one web inte
 
 **Status:** Phases 0–13 complete, plus 4.1 (subdomains), 4.5
 (the Apache hybrid arrangement), 7.1 (FTP), 16 (the firewall), 17 (SSH security),
-18 (intrusion prevention) and 21 (system updates): foundation, authentication,
-Host Agent, dashboard, websites, subdomains, the nginx + Apache engine, PHP, SSL,
-files, the code editor, databases, Node.js applications, scheduled jobs, the log
-viewer, host services, FTP accounts, DNS and the local name server, the packet
-filter, the SSH server's settings, fail2ban, and package updates.
+18 (intrusion prevention), 19 (monitoring) and 21 (system updates): foundation,
+authentication, Host Agent, dashboard, websites, subdomains, the nginx + Apache
+engine, PHP, SSL, files, the code editor, databases, Node.js applications,
+scheduled jobs, the log viewer, host services, FTP accounts, DNS and the local
+name server, the packet filter, the SSH server's settings, fail2ban, package
+updates, and the alert engine.
 
-Next is Phase 19 (Monitoring). Phases are built in dependency order rather
+Next is Phase 14 (Backup). Phases are built in dependency order rather
 than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md for the
 sequence and why each phase sits where it does. The per-phase notes in
 [docs/](docs/) say what each one does and does not include.
@@ -188,6 +189,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE7.1.md](docs/PHASE7.1.md) | Phase 7.1 scope, decisions, and known limitations |
 | [docs/PHASE13.md](docs/PHASE13.md) | Phase 13 scope, decisions, and known limitations |
 | [docs/PHASE21.md](docs/PHASE21.md) | Phase 21 scope, decisions, and known limitations |
+| [docs/PHASE19.md](docs/PHASE19.md) | Phase 19 scope, decisions, and known limitations |
 
 ---
 

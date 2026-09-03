@@ -1596,3 +1596,114 @@ export interface UpdateSettingsChange {
   minute?: number;
   excluded?: string[];
 }
+
+/* ------------------------------------------------------------- Monitoring */
+
+/** The metrics an alert rule can watch. */
+export type AlertMetric =
+  | 'cpu'
+  | 'memory'
+  | 'disk'
+  | 'swap'
+  | 'load'
+  | 'network_rx'
+  | 'network_tx'
+  | 'service';
+
+/** One condition the panel watches. */
+export interface AlertRule {
+  id: string;
+  server_id: string;
+  name: string;
+  metric: AlertMetric;
+  /** Which instance: a mount point for disk, a service key for service. Empty means any. */
+  target: string;
+  comparison: 'above' | 'below';
+  threshold: number;
+  /**
+   * How long the breach must last before it becomes an alert.
+   *
+   * Zero fires on the first reading, which is right for a service being down
+   * and wrong for almost everything else.
+   */
+  for_seconds: number;
+  severity: 'warning' | 'critical';
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A condition that has been true for long enough to matter. */
+export interface Alert {
+  id: string;
+  server_id: string;
+  rule_id?: string;
+  metric: AlertMetric;
+  target: string;
+  severity: 'warning' | 'critical';
+  threshold?: number;
+  status: 'open' | 'resolved';
+  message: string;
+  /** The reading that opened it, the worst since, and the most recent. */
+  value?: number;
+  worst?: number;
+  last_value?: number;
+  opened_at: string;
+  last_seen_at: string;
+  resolved_at?: string;
+  /**
+   * Acknowledging says "I know". It does not resolve the alert — the monitor
+   * decides that, when the condition clears.
+   */
+  acknowledged_at?: string;
+  acknowledged_by?: string;
+}
+
+/** One stretch of time a service spent in one state. */
+export interface ServiceStateRecord {
+  id: string;
+  server_id: string;
+  service: string;
+  running: boolean;
+  status: string;
+  started_at: string;
+  ended_at?: string;
+}
+
+/** A service and how long it has been as it is. */
+export interface MonitoredService {
+  service: string;
+  running: boolean;
+  status: string;
+  since: string;
+  for_seconds: number;
+}
+
+/** How many alerts are open. */
+export interface AlertCounts {
+  critical: number;
+  warning: number;
+  /** What nobody has said they are dealing with. */
+  unacknowledged: number;
+}
+
+/** Everything the monitoring page shows. */
+export interface MonitoringOverview {
+  open: Alert[] | null;
+  recent: Alert[] | null;
+  rules: AlertRule[] | null;
+  services: MonitoredService[] | null;
+  counts: AlertCounts;
+}
+
+/** A rule to create or change. */
+export interface AlertRuleInput {
+  name?: string;
+  metric?: AlertMetric;
+  target?: string;
+  comparison?: 'above' | 'below';
+  threshold?: number;
+  for_seconds?: number;
+  severity?: 'warning' | 'critical';
+  enabled?: boolean;
+}

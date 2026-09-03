@@ -28,7 +28,11 @@ type Sampler struct {
 	// pruneEvery bounds how often retention runs; pruning on every sample
 	// would be a delete scan per interval for no benefit.
 	pruneEvery time.Duration
-	now        func() time.Time
+	// rollupRetention is how long the aggregated buckets are kept. Far longer
+	// than the samples they came from — that is the whole point of them — but
+	// not unbounded.
+	rollupRetention time.Duration
+	now             func() time.Time
 }
 
 // SamplerOptions configures a Sampler.
@@ -42,6 +46,9 @@ type SamplerOptions struct {
 	Interval time.Duration
 	// Retention is how long samples are kept.
 	Retention time.Duration
+	// RollupRetention is how long the aggregated buckets are kept. Defaults to
+	// a year, which is under nine thousand rows per server.
+	RollupRetention time.Duration
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -54,20 +61,24 @@ func NewSampler(opts SamplerOptions) *Sampler {
 	if opts.Retention <= 0 {
 		opts.Retention = 30 * 24 * time.Hour
 	}
+	if opts.RollupRetention <= 0 {
+		opts.RollupRetention = 365 * 24 * time.Hour
+	}
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
 
 	return &Sampler{
-		agent:      opts.Agent,
-		metrics:    opts.Metrics,
-		servers:    opts.Servers,
-		log:        opts.Log,
-		serverID:   opts.ServerID,
-		interval:   opts.Interval,
-		retention:  opts.Retention,
-		pruneEvery: time.Hour,
-		now:        opts.Now,
+		agent:           opts.Agent,
+		metrics:         opts.Metrics,
+		servers:         opts.Servers,
+		log:             opts.Log,
+		serverID:        opts.ServerID,
+		interval:        opts.Interval,
+		retention:       opts.Retention,
+		pruneEvery:      time.Hour,
+		rollupRetention: opts.RollupRetention,
+		now:             opts.Now,
 	}
 }
 
@@ -100,6 +111,10 @@ func (s *Sampler) Run(ctx context.Context) {
 		case <-ticker.C:
 			s.sampleOnce(ctx)
 		case <-pruneTicker.C:
+			// Summarising before pruning, and in that order: the summaries are
+			// built from the raw samples, so a prune that ran first would throw
+			// away the evidence for an hour nobody had aggregated yet.
+			s.rollup(ctx)
 			s.prune(ctx)
 		}
 	}
@@ -211,6 +226,35 @@ func (s *Sampler) prune(ctx context.Context) {
 	}
 	if removed > 0 {
 		s.log.Info("pruned expired metric samples", "removed", removed)
+	}
+}
+
+// rollup summarises every completed hour that has no summary yet.
+//
+// Run on the same slow ticker as retention rather than on every sample: a
+// bucket cannot be finished more than once an hour, so asking more often is
+// work with no possible result. Catching up after the panel has been off for a
+// week is the same statement, and costs one pass.
+func (s *Sampler) rollup(ctx context.Context) {
+	rollupCtx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
+	written, err := s.metrics.Rollup(rollupCtx, s.serverID, s.now())
+	if err != nil {
+		s.log.Error("failed to summarise metric samples", logger.KeyError, err.Error())
+		return
+	}
+	if written > 0 {
+		s.log.Debug("summarised metric samples", "buckets", written)
+	}
+
+	removed, err := s.metrics.PruneRollups(rollupCtx, s.now().Add(-s.rollupRetention))
+	if err != nil {
+		s.log.Error("failed to prune metric summaries", logger.KeyError, err.Error())
+		return
+	}
+	if removed > 0 {
+		s.log.Info("pruned expired metric summaries", "removed", removed)
 	}
 }
 

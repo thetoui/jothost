@@ -841,6 +841,86 @@ updated_at TIMESTAMPTZ NOT NULL
 
 ---
 
+# 26.1 metric_rollups, service_states, alert_rules and alerts
+
+Added by Phase 19 (migration 0016).
+
+`metric_rollups` summarises completed hours of `system_metrics` and is kept far
+longer than the samples are — the PRD's "aggregated metrics: longer retention".
+Each bucket carries an **average and a maximum**: the average is what a graph
+plots, and the maximum is what stops an hour of aggregation hiding the
+five-minute spike that filled a disk. `sample_count` goes with them because a
+bucket built from two readings is not the same evidence as one built from a
+hundred. Primary key `(server_id, bucket_start)`, which is what makes the
+summarising idempotent.
+
+`service_states` records **transitions, not samples**. A row per service per poll
+would be tens of thousands a day saying "still running", and the question an
+operator asks — "when did it go down, and for how long" — is answered by the
+changes alone. `ended_at` is NULL while a state is current, and a unique partial
+index enforces one open stretch per service: two would make every duration
+ambiguous.
+
+`alert_rules` is what the panel watches for:
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+name VARCHAR(100) NOT NULL
+metric VARCHAR(30) NOT NULL     -- cpu, memory, disk, swap, load, network_*, service
+target VARCHAR(255) NOT NULL    -- a mount point or service key; empty means any
+comparison VARCHAR(10) NOT NULL -- above or below
+threshold NUMERIC(12,2) NOT NULL
+for_seconds INTEGER NOT NULL DEFAULT 300
+severity VARCHAR(20) NOT NULL
+enabled BOOLEAN NOT NULL DEFAULT TRUE
+```
+
+Thresholds are rows rather than constants because the right number is a property
+of the machine, not of this software: 85% memory is alarming on a web server and
+ordinary on a database host told to cache aggressively. A panel with hardcoded
+thresholds gets muted, and a muted panel is worse than none.
+
+`for_seconds` is the field the phase turns on. A rule that fires on a single
+reading turns one backup job into a page at three in the morning; the same rule
+with five minutes of sustained breach fires when something is actually wrong.
+Zero means "on the first reading", which is right for a service being down.
+
+A unique index on `(server_id, metric, target, severity)` stops two rules
+watching one thing: both would fire, and the operator would get two alerts about
+one problem.
+
+`alerts` is a condition that has been true long enough to matter:
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+rule_id UUID REFERENCES alert_rules(id) ON DELETE SET NULL
+metric, target, severity, threshold   -- copied from the rule
+status VARCHAR(20) NOT NULL           -- open or resolved
+message TEXT NOT NULL
+value, worst, last_value NUMERIC(12,2)
+opened_at, last_seen_at, resolved_at TIMESTAMPTZ
+acknowledged_at TIMESTAMPTZ
+acknowledged_by UUID REFERENCES users(id) ON DELETE SET NULL
+```
+
+The rule's details are **copied** rather than only referenced, so an alert still
+describes itself after its rule is edited or deleted — otherwise an alert whose
+threshold changed after the fact would silently rewrite its own history. That is
+also why `rule_id` is `ON DELETE SET NULL`: deleting a rule must not erase the
+record of what it caught.
+
+A unique partial index on `(server_id, metric, target, severity) WHERE status =
+'open'` is what keeps a flapping disk to one alert instead of four hundred rows.
+
+`acknowledged_at` is separate from `status`, and there is no way to set `status`
+to resolved from outside: acknowledging says "I know", and whether a condition
+has cleared is the machine's to decide. A panel where a person can mark a full
+disk as fine is a panel that will one day say a full disk is fine.
+
+---
+
 # 22. backups
 
 ```sql

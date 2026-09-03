@@ -21,6 +21,7 @@ export const Permission = {
   FTPManage: 'ftp.manage',
   DNSManage: 'dns.manage',
   UpdateManage: 'update.manage',
+  MonitorManage: 'monitor.manage',
   AuditView: 'audit.view',
   UserManage: 'user.manage',
 } as const;

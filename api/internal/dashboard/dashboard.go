@@ -97,6 +97,17 @@ type Thresholds struct {
 	LoadCritical float64
 }
 
+// ThresholdSource supplies the numbers to judge a reading by.
+//
+// It exists so the panel does not hold two opinions. From Phase 19 the
+// thresholds live in alert rules an operator can edit, and the dashboard reads
+// them from there — while still computing its own alerts from the snapshot in
+// front of it, which is what stops them going stale. One definition, two views.
+//
+// Nil falls back to the fixed thresholds, which is what a host looks like
+// before any rules have been written.
+type ThresholdSource func(ctx context.Context, fallback Thresholds) Thresholds
+
 // DefaultThresholds are conservative enough not to cry wolf.
 func DefaultThresholds() Thresholds {
 	return Thresholds{
@@ -129,6 +140,10 @@ type Service struct {
 	servers    *servers.Repository
 	log        *slog.Logger
 	thresholds Thresholds
+	// thresholdSource, when set, is asked for the current thresholds on every
+	// snapshot rather than once at startup: an operator who raises the disk
+	// threshold should see the alert clear without restarting the panel.
+	thresholdSource ThresholdSource
 	// checkDependency reports whether an API-side dependency is healthy. It is
 	// injected so the dashboard does not reach into the server package.
 	checkDependency func(ctx context.Context, name string) bool
@@ -141,10 +156,12 @@ type Service struct {
 
 // Options configures a Service.
 type Options struct {
-	Agent           *agentclient.Client
-	Servers         *servers.Repository
-	Log             *slog.Logger
-	Thresholds      Thresholds
+	Agent      *agentclient.Client
+	Servers    *servers.Repository
+	Log        *slog.Logger
+	Thresholds Thresholds
+	// ThresholdSource overrides Thresholds when set. See ThresholdSource.
+	ThresholdSource ThresholdSource
 	Dependencies    []string
 	CheckDependency func(ctx context.Context, name string) bool
 	Now             func() time.Time
@@ -178,6 +195,7 @@ func NewService(opts Options) *Service {
 		servers:         opts.Servers,
 		log:             opts.Log,
 		thresholds:      opts.Thresholds,
+		thresholdSource: opts.ThresholdSource,
 		dependencies:    opts.Dependencies,
 		checkDependency: opts.CheckDependency,
 		now:             opts.Now,
@@ -333,18 +351,27 @@ func runningStatus(running bool) string {
 	return "unreachable"
 }
 
+// currentThresholds returns the numbers this snapshot is judged by.
+func (s *Service) currentThresholds(ctx context.Context) Thresholds {
+	if s.thresholdSource == nil {
+		return s.thresholds
+	}
+	return s.thresholdSource(ctx, s.thresholds)
+}
+
 // buildAlerts derives the alert list from a snapshot.
 //
 // Alerts are computed from the reading that produced them rather than stored,
 // so they cannot go stale or disagree with the panel beside them.
 func (s *Service) buildAlerts(ctx context.Context, snapshot Snapshot) []Alert {
 	alerts := []Alert{}
+	thresholds := s.currentThresholds(ctx)
 
 	if snapshot.Disk.Available && snapshot.Disk.Data != nil {
 		// Per filesystem, not on the aggregate: a full /var matters even when
 		// a large idle /home keeps the overall figure low.
 		for _, fs := range snapshot.Disk.Data.Filesystems {
-			if severity, breached := classify(fs.UsedPercent, s.thresholds.DiskWarning, s.thresholds.DiskCritical); breached {
+			if severity, breached := classify(fs.UsedPercent, thresholds.DiskWarning, thresholds.DiskCritical); breached {
 				alerts = append(alerts, Alert{
 					Severity: severity,
 					Category: "disk",
@@ -356,7 +383,7 @@ func (s *Service) buildAlerts(ctx context.Context, snapshot Snapshot) []Alert {
 
 	if snapshot.Memory.Available && snapshot.Memory.Data != nil {
 		memory := snapshot.Memory.Data
-		if severity, breached := classify(memory.UsedPercent, s.thresholds.MemoryWarning, s.thresholds.MemoryCritical); breached {
+		if severity, breached := classify(memory.UsedPercent, thresholds.MemoryWarning, thresholds.MemoryCritical); breached {
 			alerts = append(alerts, Alert{
 				Severity: severity,
 				Category: "memory",
@@ -376,7 +403,7 @@ func (s *Service) buildAlerts(ctx context.Context, snapshot Snapshot) []Alert {
 
 	if snapshot.Load.Available && snapshot.Load.Data != nil {
 		load := snapshot.Load.Data
-		if severity, breached := classify(load.LoadPerCore, s.thresholds.LoadWarning, s.thresholds.LoadCritical); breached {
+		if severity, breached := classify(load.LoadPerCore, thresholds.LoadWarning, thresholds.LoadCritical); breached {
 			alerts = append(alerts, Alert{
 				Severity: severity,
 				Category: "cpu",

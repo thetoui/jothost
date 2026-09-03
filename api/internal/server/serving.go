@@ -4,15 +4,19 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	cronpkg "github.com/jothost/panel/api/internal/cron"
+	"github.com/jothost/panel/api/internal/dashboard"
 	dnspkg "github.com/jothost/panel/api/internal/dns"
 	ftppkg "github.com/jothost/panel/api/internal/ftp"
+	monitoringpkg "github.com/jothost/panel/api/internal/monitoring"
 	nodepkg "github.com/jothost/panel/api/internal/node"
 	phppkg "github.com/jothost/panel/api/internal/php"
 	"github.com/jothost/panel/api/internal/servers"
 	sslpkg "github.com/jothost/panel/api/internal/ssl"
 	"github.com/jothost/panel/api/internal/websites"
+	"github.com/jothost/panel/shared/validate"
 )
 
 // The adapters below let the websites package assemble a site's complete vhost
@@ -265,4 +269,43 @@ func (d dnsHost) Address(ctx context.Context) (string, error) {
 		return *server.IPv6, nil
 	}
 	return "", nil
+}
+
+// dashboardThresholds feeds the dashboard the numbers an operator has actually
+// set.
+//
+// The dashboard still computes its alerts from the snapshot in front of it —
+// that is what stops them going stale — but the thresholds come from the alert
+// rules, so the two pages cannot disagree about what "nearly full" means.
+//
+// A metric with no enabled host-wide rule keeps the configured fallback, which
+// is what a host looks like before the defaults have been written.
+func dashboardThresholds(service *monitoringpkg.Service) dashboard.ThresholdSource {
+	return func(ctx context.Context, fallback dashboard.Thresholds) dashboard.Thresholds {
+		current := service.Thresholds(ctx, map[string]float64{
+			"disk." + validate.SeverityWarning:    fallback.DiskWarning,
+			"disk." + validate.SeverityCritical:   fallback.DiskCritical,
+			"memory." + validate.SeverityWarning:  fallback.MemoryWarning,
+			"memory." + validate.SeverityCritical: fallback.MemoryCritical,
+			"load." + validate.SeverityWarning:    fallback.LoadWarning,
+			"load." + validate.SeverityCritical:   fallback.LoadCritical,
+		})
+
+		return dashboard.Thresholds{
+			DiskWarning:    current["disk."+validate.SeverityWarning],
+			DiskCritical:   current["disk."+validate.SeverityCritical],
+			MemoryWarning:  current["memory."+validate.SeverityWarning],
+			MemoryCritical: current["memory."+validate.SeverityCritical],
+			LoadWarning:    current["load."+validate.SeverityWarning],
+			LoadCritical:   current["load."+validate.SeverityCritical],
+		}
+	}
+}
+
+// maxDuration returns the longer of two durations.
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
 }

@@ -29,6 +29,7 @@ import (
 	logspkg "github.com/jothost/panel/api/internal/logs"
 	"github.com/jothost/panel/api/internal/metrics"
 	"github.com/jothost/panel/api/internal/middleware"
+	monitoringpkg "github.com/jothost/panel/api/internal/monitoring"
 	nodepkg "github.com/jothost/panel/api/internal/node"
 	phppkg "github.com/jothost/panel/api/internal/php"
 	"github.com/jothost/panel/api/internal/ratelimit"
@@ -62,16 +63,21 @@ type Server struct {
 	dashboard *dashboard.Handler
 	sampler   *metrics.Sampler
 
-	websites  *websites.Handler
-	webserver *webserverpkg.Handler
-	services  *servicespkg.Handler
-	logs      *logspkg.Handler
-	cron      *cronpkg.Handler
-	ssh       *sshpkg.Handler
-	fail2ban  *f2bpkg.Handler
-	ftp       *ftppkg.Handler
-	dns       *dnspkg.Handler
-	updates   *updatespkg.Handler
+	websites   *websites.Handler
+	webserver  *webserverpkg.Handler
+	services   *servicespkg.Handler
+	logs       *logspkg.Handler
+	cron       *cronpkg.Handler
+	ssh        *sshpkg.Handler
+	fail2ban   *f2bpkg.Handler
+	ftp        *ftppkg.Handler
+	dns        *dnspkg.Handler
+	updates    *updatespkg.Handler
+	monitoring *monitoringpkg.Handler
+	// monitor takes readings on a cadence and drives the alert engine. It is
+	// a loop of its own beside the sampler: the sampler records what the host
+	// said, and this decides what it means.
+	monitor *monitoringpkg.Monitor
 	// updateScheduler checks for updates on a cadence and applies them in
 	// their window. It is the panel's own loop rather than a cron entry: the
 	// privileged half belongs to the Agent, and a schedule in a crontab is one
@@ -165,6 +171,21 @@ func New(opts Options) (*Server, error) {
 		metrics: metricRepo,
 	}
 
+	// Monitoring is built before the dashboard because the dashboard's
+	// thresholds come from the alert rules this service owns — one definition
+	// rather than two that can disagree.
+	monitorRepo := monitoringpkg.NewRepository(opts.Pool)
+	monitorService := monitoringpkg.NewService(monitoringpkg.ServiceOptions{
+		Repo:     monitorRepo,
+		Audit:    auditRecorder,
+		Log:      log,
+		ServerID: opts.LocalServerID,
+	})
+	s.monitoring = monitoringpkg.NewHandler(monitoringpkg.HandlerOptions{
+		Service: monitorService,
+		Auth:    authService,
+	})
+
 	dashboardService := dashboard.NewService(dashboard.Options{
 		Agent:   agent,
 		Servers: serverRepo,
@@ -177,6 +198,9 @@ func New(opts Options) (*Server, error) {
 			LoadWarning:    cfg.Dashboard.LoadWarnPerCore,
 			LoadCritical:   cfg.Dashboard.LoadCritPerCore,
 		},
+		// The numbers above are the fallback; the live ones come from the alert
+		// rules, so raising a threshold raises it on both pages at once.
+		ThresholdSource: dashboardThresholds(monitorService),
 		// Postgres and Redis are checked by the API itself: it holds the
 		// pools, so its own probe is a better answer than asking the Agent
 		// whether a unit happens to be running.
@@ -478,6 +502,19 @@ func New(opts Options) (*Server, error) {
 	}
 
 	if opts.LocalServerID != "" {
+		s.monitor = monitoringpkg.NewMonitor(monitoringpkg.MonitorOptions{
+			Repo:     monitorRepo,
+			Agent:    agent,
+			Metrics:  metricRepo,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+			// No finer than the sampler: evaluating the same sample twice can
+			// only reach the same conclusion.
+			Interval: maxDuration(cfg.Dashboard.SampleInterval, time.Minute),
+		})
+	}
+
+	if opts.LocalServerID != "" {
 		s.sampler = metrics.NewSampler(metrics.SamplerOptions{
 			Agent:     agent,
 			Metrics:   metricRepo,
@@ -560,6 +597,7 @@ func (s *Server) routes() http.Handler {
 	s.ftp.Routes(mux)
 	s.dns.Routes(mux)
 	s.updates.Routes(mux)
+	s.monitoring.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)
@@ -706,6 +744,13 @@ func (s *Server) Run(ctx context.Context) error {
 	// this machine is without anybody having to ask.
 	if s.updateScheduler != nil {
 		go s.updateScheduler.Run(ctx)
+	}
+
+	// A monitor that has stopped looks exactly like a host with no problems,
+	// which is why it is started here rather than lazily and why it logs when
+	// it starts.
+	if s.monitor != nil {
+		go s.monitor.Run(ctx)
 	}
 
 	go func() {

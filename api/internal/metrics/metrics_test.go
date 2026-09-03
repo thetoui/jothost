@@ -35,7 +35,10 @@ func TestParseRange(t *testing.T) {
 		t.Fatalf("empty range must default to 1h, got %q (%v)", rng, err)
 	}
 
-	for _, value := range []string{"1h", "24h", "7d", "30d"} {
+	// The last two are Phase 19's, answered from the aggregated history rather
+	// than the raw samples — which is what lets them outlive the samples'
+	// retention.
+	for _, value := range []string{"1h", "24h", "7d", "30d", "90d", "1y"} {
 		if _, err := ParseRange(value); err != nil {
 			t.Fatalf("range %q must be accepted: %v", value, err)
 		}
@@ -43,7 +46,7 @@ func TestParseRange(t *testing.T) {
 
 	// Anything else must be refused rather than silently treated as a default:
 	// a typo returning an hour of data looks like a working graph.
-	for _, value := range []string{"2h", "1y", "all", "1h; DROP TABLE", "-1h", "0"} {
+	for _, value := range []string{"2h", "5y", "all", "1h; DROP TABLE", "-1h", "0"} {
 		if _, err := ParseRange(value); !errors.Is(err, ErrInvalidRange) {
 			t.Fatalf("range %q must be rejected, got %v", value, err)
 		}
@@ -340,8 +343,12 @@ func TestHistoryIsolatesServers(t *testing.T) {
 }
 
 func TestRangesCoverTheDocumentedSet(t *testing.T) {
-	// API_SPEC.md section 5 names exactly these.
-	want := map[Range]bool{Range1h: false, Range24h: false, Range7d: false, Range30d: false}
+	// API_SPEC.md section 5 names exactly these. The last two arrived with
+	// Phase 19's aggregated history.
+	want := map[Range]bool{
+		Range1h: false, Range24h: false, Range7d: false, Range30d: false,
+		Range90d: false, Range1y: false,
+	}
 	for _, rng := range Ranges() {
 		if _, ok := want[rng]; !ok {
 			t.Fatalf("unexpected range %q", rng)

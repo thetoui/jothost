@@ -52,6 +52,18 @@ type Point struct {
 	// than a rate is what makes this possible at any resolution.
 	NetworkRxPerSecond *float64 `json:"network_rx_per_second"`
 	NetworkTxPerSecond *float64 `json:"network_tx_per_second"`
+
+	// The worst reading in the bucket, filled in only for the aggregated
+	// ranges. A day's average of 40% hides an hour at 99%, and on a disk that
+	// hour is the whole story — so the long views carry both and the caller can
+	// show either.
+	CPUMax    *float64 `json:"cpu_max,omitempty"`
+	MemoryMax *float64 `json:"memory_max,omitempty"`
+	DiskMax   *float64 `json:"disk_max,omitempty"`
+	Load1Max  *float64 `json:"load_1_max,omitempty"`
+	// SampleCount is how many raw readings a bucket was built from. Absent on
+	// the raw ranges, where every bucket is built from whatever arrived.
+	SampleCount *int `json:"sample_count,omitempty"`
 }
 
 // Range is a supported history window (API_SPEC.md section 5).
@@ -90,15 +102,21 @@ func ParseRange(value string) (Range, error) {
 	}
 
 	r := Range(value)
-	if _, ok := rangeSpecs[r]; !ok {
-		return "", fmt.Errorf("%w: %q", ErrInvalidRange, value)
+	if _, ok := rangeSpecs[r]; ok {
+		return r, nil
 	}
-	return r, nil
+	if IsRollupRange(r) {
+		return r, nil
+	}
+	return "", fmt.Errorf("%w: %q", ErrInvalidRange, value)
 }
 
 // Ranges returns the supported ranges, for documentation and error messages.
+//
+// The last two are served from the aggregated history rather than the raw
+// samples, which is what lets them outlive the samples' retention.
 func Ranges() []Range {
-	return []Range{Range1h, Range24h, Range7d, Range30d}
+	return []Range{Range1h, Range24h, Range7d, Range30d, Range90d, Range1y}
 }
 
 // Series is a metric history response.
@@ -157,10 +175,35 @@ func (r *Repository) Insert(ctx context.Context, serverID string, sample Sample)
 // reboot) produces a negative delta, which is dropped rather than plotted as a
 // spike.
 func (r *Repository) History(ctx context.Context, serverID string, rng Range, now time.Time) (Series, error) {
+	// The long ranges are answered from the aggregated history, because the raw
+	// samples behind them have usually been pruned by the time anybody asks.
+	if IsRollupRange(rng) {
+		series, err := r.RollupHistory(ctx, serverID, rng, now)
+		if err != nil {
+			return Series{}, err
+		}
+		if len(series.Points) > 0 {
+			return series, nil
+		}
+		// A panel whose first hour has not finished yet has no summaries, and
+		// answering "no history" when the raw samples are sitting right there
+		// would be a chart that is empty for an hour after installation. Fall
+		// through to the raw table, which is a worse source for this window and
+		// a much better answer than nothing.
+		return r.rawHistory(ctx, serverID, rng, now, rollupSpecs[rng])
+	}
+
 	spec, ok := rangeSpecs[rng]
 	if !ok {
 		return Series{}, fmt.Errorf("%w: %q", ErrInvalidRange, rng)
 	}
+	return r.rawHistory(ctx, serverID, rng, now, spec)
+}
+
+// rawHistory buckets the raw samples.
+func (r *Repository) rawHistory(ctx context.Context, serverID string, rng Range,
+	now time.Time, spec rangeSpec,
+) (Series, error) {
 
 	from := now.Add(-spec.duration)
 

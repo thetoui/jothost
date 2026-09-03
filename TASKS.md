@@ -49,21 +49,21 @@ Done, in the order they were built:
 7.1 FTP Manager
 13  DNS & Local Name Server
 21  System Updates
+19  Monitoring
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  19   Monitoring             — service monitoring needs 12
- 2.  14   Backup                 — scheduling needs 10
- 3.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
- 4.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
- 5.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
- 6.  27   Git & Webhook Actions  — deployment logs need 11
- 7.  22   Multi-Tenant           — quota dimensions must exist first, mail included
- 8.  23   Production Installer   — installs everything, so everything must exist
- 9.  24   Production Hardening   — tests the finished system
-10.  25   Release                — last by definition
+ 1.  14   Backup                 — scheduling needs 10
+ 2.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+ 3.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+ 4.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+ 5.  27   Git & Webhook Actions  — deployment logs need 11
+ 6.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+ 7.  23   Production Installer   — installs everything, so everything must exist
+ 8.  24   Production Hardening   — tests the finished system
+ 9.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -1018,20 +1018,50 @@ Additionally required by the above:
 
 # PHASE 19 — Monitoring
 
+**Status: COMPLETE** — see [docs/PHASE19.md](docs/PHASE19.md) for scope,
+decisions, and known limitations.
+
 **Build order: 10 of 17.** Depends on 12 (service monitoring) and on the metric
 collection built in Phase 3.
 **Blocks** 20 (the alert engine is what notifications deliver) and 22 (disk usage
 is a quota dimension).
 
-- [ ] Metrics storage
-- [ ] CPU history
-- [ ] RAM history
-- [ ] Disk history
-- [ ] Network history
-- [ ] Load history
-- [ ] Service monitoring
-- [ ] Alert engine
-- [ ] Alert rules
+- [x] Metrics storage — Phase 3's samples, plus the **aggregated** half the PRD
+  asks for: completed hours summarised and kept far longer than the samples,
+  each bucket carrying a maximum as well as an average so an hour of averaging
+  cannot hide the spike that filled a disk
+- [x] CPU history
+- [x] RAM history
+- [x] Disk history
+- [x] Network history
+- [x] Load history — all five as Phase 3 built them, now with `90d` and `1y`
+  ranges served from the summaries, which is what lets them outlive the raw
+  samples' retention
+- [x] Service monitoring — recorded as **transitions**, so "when did it go down
+  and for how long" is a subtraction rather than a search, and a row per poll
+  saying "still running" never exists
+- [x] Alert engine — with a **sustained breach**: a rule fires when its
+  condition has held for its whole duration, not when one reading crossed a
+  line. That is the difference between a panel somebody keeps and a panel
+  somebody mutes
+- [x] Alert rules — rows an operator can edit, because the right threshold is a
+  property of the machine rather than of this software
+
+Additionally required by the above:
+
+- [x] One definition of a threshold. The dashboard's alerts stay — they answer
+  "what is wrong now" and cannot go stale — but their numbers now come from
+  these rules, so the two pages cannot disagree
+- [x] Sustained breach that survives a restart, asked of the stored samples
+  rather than kept in memory: a panel restarted mid-incident must not forget
+  that a machine has been at 99% for an hour
+- [x] One open alert per thing watched, enforced by a unique partial index —
+  without it a flapping disk is four hundred rows about one filesystem
+- [x] Acknowledging that is **not** resolving, and no endpoint that resolves by
+  hand: whether a condition has cleared is the machine's to decide
+- [x] A `monitor.manage` permission of its own, granted to operators too: the
+  person who looks after the sites is who needs to silence a false alarm at
+  three in the morning, and that is not the same as being able to stop nginx
 
 ---
 

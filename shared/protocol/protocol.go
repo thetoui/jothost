@@ -164,6 +164,16 @@ const (
 	// configuration directive and never a file path: the Agent resolves every
 	// path from the zone's own name, which has been checked to be a domain
 	// name and so contains no separator.
+	// Backups. Creating and restoring are the two operations in this panel
+	// that move an unbounded amount of data, so both are asynchronous; the
+	// rest answer inside a request.
+	OperationBackupCapabilities OperationType = "backup.capabilities"
+	OperationBackupCreate       OperationType = "backup.create"
+	OperationBackupVerify       OperationType = "backup.verify"
+	OperationBackupRestore      OperationType = "backup.restore"
+	OperationBackupDelete       OperationType = "backup.delete"
+	OperationBackupCheckTarget  OperationType = "backup.destination.check"
+
 	OperationDNSStatus     OperationType = "dns.status"
 	OperationDNSInstall    OperationType = "dns.install"
 	OperationDNSReconcile  OperationType = "dns.reconcile"
@@ -298,6 +308,12 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationUpdatesCheck:         {},
 	OperationUpdatesApply:         {},
 	OperationUpdatesRevert:        {},
+	OperationBackupCapabilities:   {},
+	OperationBackupCreate:         {},
+	OperationBackupVerify:         {},
+	OperationBackupRestore:        {},
+	OperationBackupDelete:         {},
+	OperationBackupCheckTarget:    {},
 	OperationDNSStatus:            {},
 	OperationDNSInstall:           {},
 	OperationDNSReconcile:         {},

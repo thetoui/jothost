@@ -69,7 +69,7 @@ const navGroups: NavGroup[] = [
       { label: 'Editor', to: '/editor', icon: Code2, enabled: true },
       { label: 'Scheduled jobs', to: '/cron', icon: Clock, enabled: true },
       { label: 'FTP', to: '/ftp', icon: FolderKey, enabled: true },
-      { label: 'Backups', to: '/backups', icon: HardDrive, enabled: false },
+      { label: 'Backups', to: '/backups', icon: HardDrive, enabled: true },
     ],
   },
   {

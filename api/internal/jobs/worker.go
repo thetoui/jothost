@@ -34,11 +34,28 @@ type Observer interface {
 	JobFinished(ctx context.Context, job Job, state State, result map[string]any, failure string)
 }
 
+// PayloadResolver fills in the parts of a job's payload that must not be
+// stored.
+//
+// It exists for exactly one reason: a backup's payload names a destination, and
+// a destination carries an S3 secret key or an SSH private key. The queue is a
+// table, and a table is backed up, replicated and read by anyone with database
+// access — so the row holds the backup's id and nothing else, and the
+// credentials are decrypted here, at dispatch, for the length of one call.
+//
+// It returns the payload to send. Returning the job's own payload unchanged is
+// the correct answer for every job type but that one, which is what the nil
+// resolver does.
+type PayloadResolver interface {
+	ResolvePayload(ctx context.Context, job Job) (map[string]any, error)
+}
+
 // Options configure a Worker.
 type Options struct {
 	Repository *Repository
 	Dispatcher Dispatcher
 	Observer   Observer
+	Resolver   PayloadResolver
 	Log        *slog.Logger
 
 	// PollInterval is how often an idle worker looks for new work.
@@ -71,6 +88,7 @@ type Worker struct {
 	repo       *Repository
 	dispatcher Dispatcher
 	observer   Observer
+	resolver   PayloadResolver
 	log        *slog.Logger
 
 	pollInterval      time.Duration
@@ -107,6 +125,7 @@ func NewWorker(opts Options) *Worker {
 		repo:              opts.Repository,
 		dispatcher:        opts.Dispatcher,
 		observer:          opts.Observer,
+		resolver:          opts.Resolver,
 		log:               opts.Log,
 		pollInterval:      opts.PollInterval,
 		agentPollInterval: opts.AgentPollInterval,
@@ -255,7 +274,22 @@ func (w *Worker) dispatch(ctx context.Context, job Job) (State, map[string]any, 
 	// trails together, so one identifier follows the work across the boundary.
 	requestID := "job_" + job.ID
 
-	agentJobID, err := w.dispatcher.SubmitAsync(ctx, requestID, operation, job.Payload)
+	payload := job.Payload
+	if w.resolver != nil {
+		resolved, err := w.resolver.ResolvePayload(ctx, job)
+		if err != nil {
+			// A payload that cannot be completed is a job that must not be
+			// attempted: dispatching the stored one would send a backup to a
+			// destination with no credentials and fail in a way that looks
+			// like the destination is broken.
+			return StateFailed, nil, describeFailure(err)
+		}
+		if resolved != nil {
+			payload = resolved
+		}
+	}
+
+	agentJobID, err := w.dispatcher.SubmitAsync(ctx, requestID, operation, payload)
 	if err != nil {
 		if agentclient.IsBusy(err) {
 			return StateDeferred, nil, describeFailure(err)

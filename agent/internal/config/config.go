@@ -160,6 +160,8 @@ type Config struct {
 	// exist at all. When one is set it reaches the client through a mode-0600
 	// file, never through a command-line argument.
 	MySQLPath         string
+	MysqldumpPath     string
+	PgDumpPath        string
 	MySQLSocket       string
 	MySQLAdminUser    string
 	MySQLAdminPass    string
@@ -168,6 +170,20 @@ type Config struct {
 	PostgresPort      int
 	PostgresAdminUser string
 	PostgresAdminPass string
+
+	// Backups. BackupWorkDir is where an archive is staged before it is sent
+	// anywhere and where it is downloaded to before a restore; it holds a
+	// complete copy of whatever is being backed up, so it needs the room.
+	//
+	// BackupLocalRoots bounds where a *local* destination may write. It is a
+	// list rather than one directory because a host commonly has a second disk
+	// mounted for backups, and it exists at all because without it "back up to
+	// /etc/nginx" would be a way to write a file anywhere as root.
+	//
+	// SFTPPath is the OpenSSH client an off-host destination uses.
+	BackupWorkDir    string
+	BackupLocalRoots []string
+	SFTPPath         string
 }
 
 // Load reads and validates Agent configuration.
@@ -249,6 +265,8 @@ func Load() (Config, error) {
 		// The MariaDB client is preferred because a MariaDB host ships it
 		// under this name and a MySQL host symlinks the same name to its own.
 		MySQLPath:      getString("AGENT_MYSQL_PATH", "/usr/bin/mariadb"),
+		MysqldumpPath:  getString("AGENT_MYSQLDUMP_PATH", "/usr/bin/mariadb-dump"),
+		PgDumpPath:     getString("AGENT_PG_DUMP_PATH", "/usr/bin/pg_dump"),
 		MySQLSocket:    getString("AGENT_MYSQL_SOCKET", "/run/mysqld/mysqld.sock"),
 		MySQLAdminUser: getString("AGENT_MYSQL_ADMIN_USER", "root"),
 		MySQLAdminPass: getString("AGENT_MYSQL_ADMIN_PASSWORD", ""),
@@ -260,6 +278,14 @@ func Load() (Config, error) {
 		PostgresPort:      getInt("AGENT_POSTGRES_PORT", 5432),
 		PostgresAdminUser: getString("AGENT_POSTGRES_ADMIN_USER", "postgres"),
 		PostgresAdminPass: getString("AGENT_POSTGRES_ADMIN_PASSWORD", ""),
+
+		BackupWorkDir: getString("AGENT_BACKUP_WORK_DIR", "/var/lib/jothost/backups"),
+		// The working directory is itself an allowed local destination, which
+		// is what makes a panel work out of the box on a host with one disk.
+		// Adding another is a deliberate configuration change.
+		BackupLocalRoots: getList("AGENT_BACKUP_LOCAL_ROOTS",
+			[]string{"/var/lib/jothost/backups", "/backup", "/backups"}),
+		SFTPPath: getString("AGENT_SFTP_PATH", "/usr/bin/sftp"),
 	}
 
 	var problems []string
@@ -291,6 +317,13 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_ADDUSER_PATH", cfg.AdduserPath)...)
 	problems = append(problems, validateAbsolute("AGENT_MYSQL_PATH", cfg.MySQLPath)...)
 	problems = append(problems, validateAbsolute("AGENT_PSQL_PATH", cfg.PsqlPath)...)
+	problems = append(problems, validateAbsolute("AGENT_MYSQLDUMP_PATH", cfg.MysqldumpPath)...)
+	problems = append(problems, validateAbsolute("AGENT_PG_DUMP_PATH", cfg.PgDumpPath)...)
+	problems = append(problems, validateAbsolute("AGENT_SFTP_PATH", cfg.SFTPPath)...)
+	problems = append(problems, validateAbsolute("AGENT_BACKUP_WORK_DIR", cfg.BackupWorkDir)...)
+	for _, root := range cfg.BackupLocalRoots {
+		problems = append(problems, validateAbsolute("AGENT_BACKUP_LOCAL_ROOTS", root)...)
+	}
 
 	if cfg.AuditLogPath != "" {
 		problems = append(problems, validateAbsolute("AGENT_AUDIT_LOG", cfg.AuditLogPath)...)
@@ -365,6 +398,27 @@ func getString(key, fallback string) string {
 		return strings.TrimSpace(v)
 	}
 	return fallback
+}
+
+// getList parses a comma-separated list of strings, falling back when unset.
+//
+// An empty entry is dropped rather than kept: a trailing comma is a typo, and a
+// list containing "" would be a directory check against the empty path.
+func getList(key string, fallback []string) []string {
+	raw, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return fallback
+	}
+	values := []string{}
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	if len(values) == 0 {
+		return fallback
+	}
+	return values
 }
 
 func getInt(key string, fallback int) int {

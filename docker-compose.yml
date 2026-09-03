@@ -103,6 +103,19 @@ services:
       # puts it in argv, only in a mode-0600 pgpass file it reads through
       # PGPASSFILE.
       AGENT_POSTGRES_ADMIN_PASSWORD: ${AGENT_POSTGRES_ADMIN_PASSWORD:-jothost_pg_admin_dev}
+
+      # Backups. The working directory stages an archive before it is sent
+      # anywhere, so it holds a complete copy of whatever is being backed up.
+      # The local roots bound where a *local* destination may write; without
+      # them "back up to /etc/nginx" would be a way to write a file anywhere on
+      # this host as root.
+      AGENT_BACKUP_WORK_DIR: /var/lib/jothost/backups
+      AGENT_BACKUP_LOCAL_ROOTS: /var/lib/jothost/backups,/backups
+      # Alpine's mariadb-client installs the dump tool under its own name; the
+      # mysqldump symlink is not always present.
+      AGENT_MYSQLDUMP_PATH: /usr/bin/mariadb-dump
+      AGENT_PG_DUMP_PATH: /usr/bin/pg_dump
+      AGENT_SFTP_PATH: /usr/bin/sftp
     ports:
       # Websites the panel creates are served by the nginx this container
       # manages. This is the managed host's HTTP port, not the panel's.

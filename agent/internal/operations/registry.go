@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 
 	"github.com/jothost/panel/agent/internal/apache"
+	"github.com/jothost/panel/agent/internal/backup"
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/cron"
 	"github.com/jothost/panel/agent/internal/database"
@@ -123,6 +124,12 @@ type Dependencies struct {
 	// with no package manager the panel drives, means the panel reports that
 	// rather than showing an empty list that reads as "up to date".
 	Updates *updates.Provider
+
+	// Backup takes, verifies and restores backups. Nil, or a host with no
+	// working directory it can stage an archive in, means the panel says so
+	// rather than accepting schedules that would silently never produce
+	// anything.
+	Backup *backup.Provider
 
 	// DNS runs the host's authoritative name server. Nil, or a host without
 	// BIND, means the panel offers to install one rather than accepting zones
@@ -264,6 +271,13 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationUpdatesCheck, r.handleUpdatesCheck)
 	r.mustRegister(protocol.OperationUpdatesApply, r.handleUpdatesApply)
 	r.mustRegister(protocol.OperationUpdatesRevert, r.handleUpdatesRevert)
+
+	r.mustRegister(protocol.OperationBackupCapabilities, r.handleBackupCapabilities)
+	r.mustRegister(protocol.OperationBackupCreate, r.handleBackupCreate)
+	r.mustRegister(protocol.OperationBackupVerify, r.handleBackupVerify)
+	r.mustRegister(protocol.OperationBackupRestore, r.handleBackupRestore)
+	r.mustRegister(protocol.OperationBackupDelete, r.handleBackupDelete)
+	r.mustRegister(protocol.OperationBackupCheckTarget, r.handleBackupCheckTarget)
 
 	r.mustRegister(protocol.OperationDNSStatus, r.handleDNSStatus)
 	r.mustRegister(protocol.OperationDNSInstall, r.handleDNSInstall)

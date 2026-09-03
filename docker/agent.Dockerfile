@@ -86,6 +86,13 @@ FROM alpine:3.21 AS runtime
 # The package list is the one agent/internal/operations/apache.go installs;
 # apache2-proxy is not optional, because PHP runs through mod_proxy_fcgi.
 #
+# openssh-client is here for a different reason from openssh-server: Phase 14
+# sends backups to another machine with the sftp client, and a destination kind
+# that is only ever exercised against a mock is a destination kind nobody has
+# actually used. The integration test points an SFTP destination at this
+# container's own sshd, which is a real SSH connection with a real host key
+# check over a real key pair.
+#
 # OpenSSH is here because Phase 17 configures it, and configuring sshd is the
 # one thing in this panel that can lock an operator out of their own machine.
 # Every change is validated by asking sshd itself, and a validator that is not
@@ -125,7 +132,7 @@ FROM alpine:3.21 AS runtime
 RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       iptables ip6tables ufw \
       openrc busybox-openrc \
-      openssh-server openssh-keygen \
+      openssh-server openssh-keygen openssh-client \
       fail2ban \
       apache2 apache2-proxy \
       proftpd proftpd-utils proftpd-openrc \
@@ -141,6 +148,7 @@ RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       postgresql16 postgresql16-client \
     && addgroup -g 10001 jothost \
     && mkdir -p /etc/nginx/conf.d /var/www /run/nginx /run/php-fpm \
+                /var/lib/jothost/backups /backups \
                 /etc/jothost/ssl /var/www/.acme-challenge/.well-known/acme-challenge \
                 /run/mysqld /var/lib/mysql /run/postgresql /var/lib/postgresql/data \
     && chown -R mysql:mysql /run/mysqld /var/lib/mysql \

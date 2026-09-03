@@ -1707,3 +1707,166 @@ export interface AlertRuleInput {
   severity?: 'warning' | 'critical';
   enabled?: boolean;
 }
+
+// ---------------------------------------------------------------- backups
+
+/** What a backup is of. */
+export type BackupType = 'website' | 'database' | 'full';
+
+/** Where a backup is written. */
+export type DestinationKind = 'local' | 's3' | 'sftp';
+
+/** What the host can actually do, which is not what the panel offers. */
+export interface BackupCapabilities {
+  available: boolean;
+  reason?: string;
+  local: boolean;
+  s3: boolean;
+  sftp: boolean;
+  mysql_dump: boolean;
+  postgres_dump: boolean;
+  engines: string[] | null;
+  work_dir?: string;
+}
+
+/** Where backups go. It never carries the credential, only whether one is set. */
+export interface BackupDestination {
+  id: string;
+  server_id: string;
+  name: string;
+  kind: DestinationKind;
+  config: Record<string, unknown>;
+  has_credentials: boolean;
+  last_check_at: string | null;
+  last_check_ok: boolean | null;
+  last_check_detail: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One archive the panel has taken. */
+export interface Backup {
+  id: string;
+  server_id: string;
+  website_id: string | null;
+  database_id: string | null;
+  subject: string;
+  type: BackupType;
+  destination_id: string | null;
+  destination: string;
+  path: string | null;
+  size_bytes: number | null;
+  checksum: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'deleting';
+  /**
+   * When the panel last read the archive back and found it intact.
+   *
+   * Null on a completed backup means the bytes were written and could not be
+   * confirmed, which is not the same as a backup.
+   */
+  verified_at: string | null;
+  verify_detail: string | null;
+  manifest?: Record<string, unknown>;
+  error: string | null;
+  job_id: string | null;
+  schedule_id: string | null;
+  created_by: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+/** A standing instruction to take a backup. */
+export interface BackupSchedule {
+  id: string;
+  server_id: string;
+  name: string;
+  type: BackupType;
+  website_id: string | null;
+  database_id: string | null;
+  destination_id: string;
+  destination_name: string;
+  hour: number;
+  minute: number;
+  /** 0-6 with Sunday first; -1 means every day. */
+  day_of_week: number;
+  retention_days: number;
+  keep_last: number;
+  enabled: boolean;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_backup_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** How many backups a server has, and how many are known to be intact. */
+export interface BackupStats {
+  total: number;
+  completed: number;
+  verified: number;
+  failed: number;
+  running: number;
+  bytes: number;
+  latest_at: string | null;
+}
+
+/** Everything the backups page shows. */
+export interface BackupOverview {
+  capabilities: BackupCapabilities;
+  backups: Backup[] | null;
+  destinations: BackupDestination[] | null;
+  schedules: BackupSchedule[] | null;
+  stats: BackupStats;
+  types: BackupType[];
+  destination_kinds: DestinationKind[];
+}
+
+/** The outcome of reading a stored backup back. */
+export interface BackupVerifyResult {
+  key: string;
+  ok: boolean;
+  size: number;
+  bytes_read: number;
+  checksum: string;
+  expected?: string;
+  detail?: string;
+  members: number;
+}
+
+/** A destination to create or change. */
+export interface BackupDestinationInput {
+  name: string;
+  kind: DestinationKind;
+  directory?: string;
+  endpoint?: string;
+  region?: string;
+  bucket?: string;
+  prefix?: string;
+  access_key?: string;
+  secret_key?: string;
+  path_style?: boolean;
+  /** Accepts a plain-http endpoint that is not on this machine. */
+  allow_insecure?: boolean;
+  host?: string;
+  port?: number;
+  user?: string;
+  path?: string;
+  private_key?: string;
+  host_key?: string;
+}
+
+/** A schedule to create or change. */
+export interface BackupScheduleInput {
+  name: string;
+  type: BackupType;
+  website_id?: string;
+  database_id?: string;
+  destination_id: string;
+  hour: number;
+  minute: number;
+  day_of_week: number;
+  retention_days: number;
+  keep_last: number;
+  enabled?: boolean;
+}

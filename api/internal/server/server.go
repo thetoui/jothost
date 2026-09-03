@@ -15,6 +15,7 @@ import (
 	"github.com/jothost/panel/api/internal/agentclient"
 	"github.com/jothost/panel/api/internal/audit"
 	"github.com/jothost/panel/api/internal/auth"
+	backuppkg "github.com/jothost/panel/api/internal/backup"
 	"github.com/jothost/panel/api/internal/config"
 	cronpkg "github.com/jothost/panel/api/internal/cron"
 	"github.com/jothost/panel/api/internal/dashboard"
@@ -63,17 +64,22 @@ type Server struct {
 	dashboard *dashboard.Handler
 	sampler   *metrics.Sampler
 
-	websites   *websites.Handler
-	webserver  *webserverpkg.Handler
-	services   *servicespkg.Handler
-	logs       *logspkg.Handler
-	cron       *cronpkg.Handler
-	ssh        *sshpkg.Handler
-	fail2ban   *f2bpkg.Handler
-	ftp        *ftppkg.Handler
-	dns        *dnspkg.Handler
-	updates    *updatespkg.Handler
-	monitoring *monitoringpkg.Handler
+	websites  *websites.Handler
+	webserver *webserverpkg.Handler
+	services  *servicespkg.Handler
+	logs      *logspkg.Handler
+	cron      *cronpkg.Handler
+	ssh       *sshpkg.Handler
+	fail2ban  *f2bpkg.Handler
+	ftp       *ftppkg.Handler
+	dns       *dnspkg.Handler
+	updates   *updatespkg.Handler
+	backup    *backuppkg.Handler
+	// backupScheduler takes the backups that are due. Like the update
+	// scheduler, it is the panel's own loop rather than a crontab entry:
+	// reading every file of every site needs root, which only the Agent has.
+	backupScheduler *backuppkg.Scheduler
+	monitoring      *monitoringpkg.Handler
 	// monitor takes readings on a cadence and drives the alert engine. It is
 	// a loop of its own beside the sampler: the sampler records what the host
 	// said, and this decides what it means.
@@ -484,6 +490,27 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// Backups. The service is built before the worker because the worker needs
+	// it twice over: as an observer, to move a backup row to completed or
+	// failed, and as the payload resolver that keeps storage credentials out of
+	// the jobs table.
+	backupRepo := backuppkg.NewRepository(opts.Pool)
+	backupService := backuppkg.NewService(backuppkg.ServiceOptions{
+		Repository: backupRepo,
+		Jobs:       jobRepo,
+		Agent:      agent,
+		Audit:      auditRecorder,
+		Crypto:     encrypter,
+		Sites:      backuppkg.NewSiteAdapter(websiteRepo),
+		Databases:  backuppkg.NewDatabaseAdapter(databaseRepo),
+		Log:        log,
+		ServerID:   opts.LocalServerID,
+	})
+	s.backup = backuppkg.NewHandler(backuppkg.HandlerOptions{
+		Service: backupService,
+		Auth:    authService,
+	})
+
 	if opts.LocalServerID != "" {
 		// The worker reconciles websites through the service, so a finished
 		// job moves the site to active or failed rather than leaving it in
@@ -493,11 +520,23 @@ func New(opts Options) (*Server, error) {
 		s.worker = jobs.NewWorker(jobs.Options{
 			Repository: jobRepo,
 			Dispatcher: agent,
-			Observer:   jobs.Observers{websiteService, s.phpSync, s.renewer},
-			Log:        log,
+			Observer:   jobs.Observers{websiteService, s.phpSync, s.renewer, backupService},
+			// The resolver rebuilds a backup job's payload at dispatch, so the
+			// queue never stores an S3 secret key or an SSH private key.
+			Resolver: backupService,
+			Log:      log,
 			// Installing a PHP package downloads and unpacks it, which takes
 			// far longer than any other operation the panel runs.
 			JobTimeout: phpInstallTimeout,
+		})
+	}
+
+	if opts.LocalServerID != "" {
+		s.backupScheduler = backuppkg.NewScheduler(backuppkg.SchedulerOptions{
+			Service:  backupService,
+			Repo:     backupRepo,
+			Log:      log,
+			ServerID: opts.LocalServerID,
 		})
 	}
 
@@ -598,6 +637,7 @@ func (s *Server) routes() http.Handler {
 	s.dns.Routes(mux)
 	s.updates.Routes(mux)
 	s.monitoring.Routes(mux)
+	s.backup.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)
@@ -751,6 +791,13 @@ func (s *Server) Run(ctx context.Context) error {
 	// it starts.
 	if s.monitor != nil {
 		go s.monitor.Run(ctx)
+	}
+
+	// A schedule nobody runs is a backup page that lists intentions. This loop
+	// is what turns them into archives, and it takes a missed window late
+	// rather than skipping it: a late backup is a backup.
+	if s.backupScheduler != nil {
+		go s.backupScheduler.Run(ctx)
 	}
 
 	go func() {

@@ -31,9 +31,11 @@ describe('Sidebar', () => {
       'href',
       '/databases',
     );
+    // Backups became a real destination in Phase 14.
+    expect(screen.getByRole('link', { name: 'Backups' })).toHaveAttribute('href', '/backups');
     // Future-phase modules are visible but must not be clickable links.
-    expect(screen.queryByRole('link', { name: 'Backups' })).not.toBeInTheDocument();
-    expect(screen.getByTitle('Backups — not yet implemented')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Security Center' })).not.toBeInTheDocument();
+    expect(screen.getByTitle('Security Center — not yet implemented')).toBeInTheDocument();
   });
 
   it('collapses in response to UI state', () => {

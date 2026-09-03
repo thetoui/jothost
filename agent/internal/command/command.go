@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -173,6 +174,19 @@ type Options struct {
 	// passed as an argument is visible to every account on the machine for as
 	// long as the command runs.
 	Stdin string
+	// StdinFile streams a file into the child's standard input instead of a
+	// string.
+	//
+	// It exists for exactly one shape of work: feeding a database dump to a
+	// client that reads a stream. A dump is unbounded — a customer's database
+	// may be gigabytes — and Stdin would mean holding all of it in the Agent's
+	// memory to hand to a program that is going to read it a buffer at a time
+	// anyway.
+	//
+	// The path is opened by this package and must be absolute. It is never a
+	// value from a request: every caller passes a path the Agent itself
+	// created.
+	StdinFile string
 	// Env adds variables to the sanitised base environment. Every name must
 	// appear in the spec's AllowedEnv or the execution is refused.
 	Env map[string]string
@@ -236,8 +250,23 @@ func (r *Runner) RunWith(ctx context.Context, name string, opts Options, args ..
 	// Never hand the child a terminal or the parent's own stdin. A caller that
 	// supplied input gets a reader over exactly that string and nothing else.
 	cmd.Stdin = nil
+	if opts.Stdin != "" && opts.StdinFile != "" {
+		return Result{}, fmt.Errorf("%w: input may come from a string or a file, not both",
+			ErrInvalidArg)
+	}
 	if opts.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opts.Stdin)
+	}
+	if opts.StdinFile != "" {
+		if !strings.HasPrefix(opts.StdinFile, "/") {
+			return Result{}, fmt.Errorf("%w: an input file must be absolute", ErrInvalidArg)
+		}
+		input, err := os.Open(opts.StdinFile)
+		if err != nil {
+			return Result{}, fmt.Errorf("open input file: %w", err)
+		}
+		defer func() { _ = input.Close() }()
+		cmd.Stdin = input
 	}
 
 	// The child gets its own process group, and cancellation kills the group

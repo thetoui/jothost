@@ -923,19 +923,107 @@ disk as fine is a panel that will one day say a full disk is fine.
 
 # 22. backups
 
+Built by migration 0017. The columns below are the specification's, plus the
+ones Phase 14 found it could not do without.
+
 ```sql
 id UUID PRIMARY KEY
 server_id UUID REFERENCES servers(id)
-website_id UUID REFERENCES websites(id)
+website_id UUID REFERENCES websites(id)   -- ON DELETE SET NULL
+database_id UUID REFERENCES databases(id) -- ON DELETE SET NULL
+subject VARCHAR(255) NOT NULL             -- what it was called at the time
 type VARCHAR(30) NOT NULL
-destination VARCHAR(255)
-path TEXT
+destination_id UUID REFERENCES backup_destinations(id)
+destination VARCHAR(255) NOT NULL         -- its name at the time
+path TEXT                                 -- the object key, not a host path
 size_bytes BIGINT
-status VARCHAR(30)
+checksum VARCHAR(64)
+status VARCHAR(30) NOT NULL
+verified_at TIMESTAMPTZ
+verify_detail TEXT
+manifest JSONB
+error TEXT
+job_id UUID REFERENCES jobs(id)
+schedule_id UUID REFERENCES backup_schedules(id)
+created_by UUID REFERENCES users(id)
 started_at TIMESTAMPTZ
 completed_at TIMESTAMPTZ
 created_at TIMESTAMPTZ NOT NULL
 ```
+
+**`verified_at` is separate from `status` and carries the phase.** "The upload
+returned success" and "the bytes are there and correct" are different claims,
+and only the second is a backup. A backup that finished and could not be read
+back is stored as `failed` with the reason, because a listing where "completed"
+sometimes means "probably" cannot be used to decide whether anybody is safe.
+
+**Every reference is ON DELETE SET NULL, and the details are copied.** The
+moment somebody most needs last night's copy of a site is immediately after
+deleting the site, and a backup that can no longer say what it is a backup of is
+unrestorable in practice. So `subject` holds the domain or database name as it
+was, and `destination` the destination's name as it was.
+
+**`path` is an object key, not a filesystem path.** For S3 and SFTP there is no
+host path, and for a local destination the key is joined to the directory by the
+Agent rather than trusted from the panel.
+
+A CHECK enforces that a `completed` row has a path, a size and a checksum: a
+completed backup that cannot say where it is or how big it is is not a backup,
+it is a row.
+
+`manifest` holds what went into the archive, read from the archive's own
+manifest after it was written. The per-file list is dropped first: an archive of
+a WordPress site has forty thousand entries, and keeping them per backup would
+make this table larger than the data it describes. The digests stay in the
+archive, where a verify reads them.
+
+---
+
+# 22.1 backup_destinations
+
+Added by migration 0017, and a divergence from section 23 below.
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+name VARCHAR(100) NOT NULL
+kind VARCHAR(20) NOT NULL          -- local, s3, sftp
+config JSONB NOT NULL
+credentials_encrypted TEXT         -- NULL for local
+last_check_at TIMESTAMPTZ
+last_check_ok BOOLEAN
+last_check_detail TEXT
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+Section 23 puts `destination_type` and `destination_config_encrypted` on the
+schedule. That is one table fewer and it is wrong in three ways, so it is
+deliberately not what was built:
+
+* A **manual** backup needs a destination too, and the spec's shape gives it
+  nowhere to come from but a copy of a schedule's.
+* Credentials would be duplicated per schedule. Rotating an S3 key would mean
+  editing every schedule that used it, and missing one is a backup that silently
+  stops working.
+* A backup row could name a destination that no longer describes anything,
+  because there would be nothing to reference.
+
+`credentials_encrypted` is AES-256-GCM bound to this row's id as additional
+authenticated data, so a ciphertext moved from another row fails to decrypt
+rather than quietly authenticating somewhere it should not (section 30). It
+holds only the halves that grant access — an S3 secret key, an SSH private key.
+The *access* key is in `config`: it is an identifier, it appears in every
+request's Authorization header anyway, and a page needs to show which key a
+destination uses.
+
+A CHECK enforces that a local destination has no credential and the other two
+always do. An S3 destination with no secret key is one that fails at the worst
+possible moment.
+
+The `last_check_*` columns exist because **a destination that has never been
+reached is the most dangerous object in this phase: it looks like protection and
+is not.** The panel shows this.
 
 ---
 
@@ -943,15 +1031,41 @@ created_at TIMESTAMPTZ NOT NULL
 
 ```sql
 id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+name VARCHAR(100) NOT NULL
+type VARCHAR(30) NOT NULL
 website_id UUID REFERENCES websites(id)
-schedule VARCHAR(100) NOT NULL
+database_id UUID REFERENCES databases(id)
+destination_id UUID NOT NULL REFERENCES backup_destinations(id) ON DELETE RESTRICT
+hour SMALLINT NOT NULL
+minute SMALLINT NOT NULL
+day_of_week SMALLINT NOT NULL   -- 0-6 Sunday first, -1 every day
 retention_days INTEGER NOT NULL
-enabled BOOLEAN DEFAULT TRUE
-destination_type VARCHAR(30)
-destination_config_encrypted TEXT
+keep_last INTEGER NOT NULL
+enabled BOOLEAN NOT NULL DEFAULT TRUE
+last_run_at TIMESTAMPTZ
+last_status VARCHAR(30)
+last_backup_id UUID REFERENCES backups(id)
 created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
 ```
+
+An hour, a minute and a day rather than the spec's cron expression. Backing up
+needs root and a crontab entry runs as somebody; and a schedule written into a
+file the panel does not own is a schedule the panel can no longer answer
+questions about. The API's scheduler decides when one is due, the same
+arrangement Phase 21 uses for updates.
+
+`keep_last` is the addition that matters. Retention by age alone deletes
+everything you have the day after a panel is off for a fortnight; a count floor
+is what makes "keep 7 days" fail safe rather than fail empty. CHECKs enforce
+that neither can be set to zero: a retention of zero days would delete a backup
+the moment it finished, and a schedule that can prune its way to nothing is a
+schedule that eventually does.
+
+`ON DELETE RESTRICT` on the destination: deleting one a schedule still uses
+would leave the schedule unable to run, which is a backup that silently stops
+happening.
 
 ---
 

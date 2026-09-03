@@ -17,6 +17,7 @@ import (
 
 	"github.com/jothost/panel/agent/internal/apache"
 	"github.com/jothost/panel/agent/internal/audit"
+	backuppkg "github.com/jothost/panel/agent/internal/backup"
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/command"
 	"github.com/jothost/panel/agent/internal/config"
@@ -262,6 +263,31 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		{Name: firewall.CommandName, Path: cfg.UFWPath, Timeout: 30 * time.Second},
 		{Name: apache.CommandHTTPD, Path: cfg.ApachePath, Timeout: 20 * time.Second},
 		{Name: apache.CommandApache2, Path: cfg.Apache2Path, Timeout: 20 * time.Second},
+		// The two dump tools, and the sftp client an off-host backup needs.
+		//
+		// All three are allowlisted whether or not the binary is there, the
+		// same arrangement the database clients use: an absent binary is
+		// reported by Runner.Available, which is how the panel learns it cannot
+		// dump that engine or reach an SFTP destination — and registering the
+		// path here is what stops any other program ever running in its place.
+		//
+		// The timeouts are the longest in this allowlist by a wide margin,
+		// because these are the only entries whose work is proportional to how
+		// much data a customer has rather than to anything this panel controls.
+		// A dump that gave up after thirty seconds would work on every test
+		// database and on no real one.
+		{
+			Name: database.CommandMysqldump, Path: cfg.MysqldumpPath,
+			Timeout: 6 * time.Hour,
+		},
+		{
+			Name: database.CommandPgDump, Path: cfg.PgDumpPath,
+			Timeout: 6 * time.Hour,
+		},
+		{
+			Name: backuppkg.CommandSFTP, Path: cfg.SFTPPath,
+			Timeout: 6 * time.Hour,
+		},
 		{Name: sites.CommandUseradd, Path: cfg.UseraddPath, Timeout: 15 * time.Second},
 		{Name: sites.CommandAdduser, Path: cfg.AdduserPath, Timeout: 15 * time.Second},
 		{Name: sites.CommandUserdel, Path: cfg.UserdelPath, Timeout: 15 * time.Second},
@@ -609,6 +635,27 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 			"detail", "install one through the panel, or with the host's package manager")
 	}
 
+	// Backups. The working directory is the Agent's own staging area, and the
+	// local roots are the only directories a local destination may write into
+	// — without that bound, "back up to /etc/nginx" would be a way to write a
+	// file anywhere on the host as root.
+	backupProvider := backuppkg.NewProvider(backuppkg.Options{
+		Runner:     runner,
+		Databases:  databaseManager,
+		Log:        log,
+		WorkDir:    cfg.BackupWorkDir,
+		SiteRoot:   cfg.SiteRoot,
+		LocalRoots: cfg.BackupLocalRoots,
+	})
+	if capabilities := backupProvider.Capabilities(); !capabilities.Available {
+		log.Warn("backups are unavailable on this host", "detail", capabilities.Reason)
+	} else {
+		log.Info("backups ready",
+			"work_dir", capabilities.WorkDir,
+			"sftp", capabilities.SFTP,
+			"engines", capabilities.Engines)
+	}
+
 	jobRunner := jobs.NewRunner(jobs.Options{
 		MaxConcurrent: cfg.MaxConcurrentJobs,
 		MaxJobs:       cfg.MaxJobs,
@@ -642,6 +689,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		FTP:          ftpProvider,
 		DNS:          dnsProvider,
 		Updates:      updatesProvider,
+		Backup:       backupProvider,
 	})
 
 	// Wired after the registry, because restarting the FTP daemon goes through

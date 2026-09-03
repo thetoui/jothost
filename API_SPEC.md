@@ -1270,24 +1270,147 @@ POST /processes/:pid/kill
 # 22. Backups
 
 ```http
-GET /backups
-POST /backups
-GET /backups/:id
+GET    /backups
+POST   /backups
+GET    /backups/:id
 DELETE /backups/:id
-POST /backups/:id/restore
-GET /backups/:id/download
+POST   /backups/:id/restore
+POST   /backups/:id/verify
 ```
+
+**As implemented in Phase 14.** Everything here needs `backup.manage`, which
+migration 0002 seeded and granted to admin and operator. Reading is not split
+out to a lesser permission: a backup listing names every website and database on
+the host, and a manifest names every file in them. That is a map of the machine,
+and it belongs behind the same permission as the thing it describes.
+
+`GET /backups` carries the host's *capabilities* as well as the backups, the
+destinations, the schedules and the counts. A destination kind the host cannot
+reach — SFTP where no sftp client is installed — has to be visible before
+somebody configures one and finds out at three in the morning.
+
+The field that carries the weight is **`verified_at`**. A backup row with a
+`completed` status and a `verified_at` claims four things: the archive is at its
+destination, it is this many bytes, it hashes to this, and the panel read it
+back and got the same answer. "The upload returned success" and "the bytes are
+there and correct" are different claims and only the second is a backup — so a
+backup that finished and could not be confirmed is stored as **failed**, with
+the reason. A listing where "completed" sometimes means "probably" is a listing
+nobody can use to decide whether they are safe.
+
+`POST /backups` takes:
+
+```text
+type              website, database or full
+website_id        for a website backup
+database_id       for a database backup
+destination_id    where it goes
+include_databases defaults to true on a website backup
+```
+
+It answers **201** with the row, which is `pending` — the work goes through the
+job queue, because a backup of a busy host moves an unbounded amount of data and
+a request that waited for it would time out first.
+
+`include_databases` defaults to *true* because a site's files restored without
+the schema its application expects produce a site that is broken in a more
+confusing way than one that is simply gone.
+
+`POST /backups/:id/restore` requires **`confirm` to be the backup's own id**.
+CLAUDE.md section 18 requires a restore to be confirmed explicitly, and a boolean
+would not be one: a `confirm: true` is something a script sets once and forgets.
+It answers **202** with the job. A backup that has not been verified is a
+**422**: offering to restore an archive the panel could not read back is
+offering something it has no reason to believe will work.
+
+`POST /backups/:id/verify` reads the archive back from its destination and
+checks it — the whole file against its recorded digest, and every member against
+the manifest. It answers **200** with `ok: false` and a reason when the archive
+is bad, not an error: the check ran and produced an answer, and an error
+envelope has nowhere to put the detail saying which part is wrong.
+
+`DELETE /backups/:id` removes the archive from its destination and then the row.
+That order is deliberate: a row removed first would leave an object nothing
+knows about, accruing storage charges forever with no way to find it.
+
+`GET /backups/:id/download` is **not implemented**, and docs/PHASE14.md section
+12 says why: streaming a multi-gigabyte archive through an API that cannot reach
+the destination itself would mean proxying it through the Agent's socket.
+
+---
+
+# 22.1 Backup Destinations
+
+```http
+GET    /backup-destinations
+POST   /backup-destinations
+PATCH  /backup-destinations/:id
+DELETE /backup-destinations/:id
+POST   /backup-destinations/:id/check
+```
+
+A destination is a row of its own rather than fields on a schedule; DATABASE.md
+section 26.2 explains the divergence.
+
+A destination **never returns its credential**, only whether one is stored. The
+serialised struct has no field for it at all: a field that is only sometimes
+cleared is a field that will one day be returned.
+
+`POST /backup-destinations/:id/check` writes a small object, reads it back, and
+removes it. It is what turns "somebody typed a bucket name" into "the panel has
+written there and read the same bytes out", at the one moment anybody is
+watching. It answers **200** with the destination whether or not the check
+passed: "we could not reach it, and here is what the storage said" is the
+answer, and it belongs on the destination where the page shows it.
+
+Refused with a **422**: a local directory that is relative or contains `..`; an
+S3 endpoint carrying a path, a query, or credentials; an S3 endpoint that is
+plain http, is not on this machine, and has not been explicitly accepted with
+`allow_insecure`; an S3 destination with no secret key; an SFTP destination with
+no host key — without one there is no way to tell the intended server from
+whatever answers on port 22 — and an SFTP username that would be read as an
+option. A name already in use is a **409**, and so is deleting a destination a
+schedule still points at.
 
 ---
 
 # 23. Backup Schedules
 
 ```http
-GET /backup-schedules
-POST /backup-schedules
-PATCH /backup-schedules/:id
+GET    /backup-schedules
+POST   /backup-schedules
+PATCH  /backup-schedules/:id
 DELETE /backup-schedules/:id
+POST   /backup-schedules/:id/run
 ```
+
+A schedule is an hour, a minute and a day in UTC rather than a cron expression,
+and the panel's own loop decides when it is due — the same arrangement Phase 21
+uses for updates, and for the same two reasons: the privileged half belongs to
+the Agent, and a schedule written into a crontab is one the panel can no longer
+describe.
+
+`retention_days` and `keep_last` go together, and the second is what makes the
+first safe. The count floor is applied *before* the age filter, so a panel that
+was off for longer than the retention window comes back and keeps its most
+recent backups rather than finding everything expired and deleting all of it.
+Only verified backups count towards the floor: keeping three archives the panel
+could not read back is keeping nothing.
+
+Retention runs **only after a backup has completed and verified**, which is
+where CLAUDE.md section 18's rule lives. A week of failing backups leaves a week
+of old ones rather than pruning its way to an empty destination.
+
+`PATCH` cannot change a schedule's type or what it points at. A schedule that
+started backing up a different site would leave its own history attached to
+backups of something else, and retention would then prune one site's archives on
+another's rules.
+
+Deleting a schedule keeps the backups it took. They are the only reason it
+existed, and deleting a schedule is a decision about the future.
+
+`backup.create`, `.delete`, `.restore`, `.verify`, and the destination and
+schedule changes are all audited.
 
 ---
 

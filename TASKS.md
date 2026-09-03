@@ -50,20 +50,20 @@ Done, in the order they were built:
 13  DNS & Local Name Server
 21  System Updates
 19  Monitoring
+14  Backup
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  14   Backup                 — scheduling needs 10
- 2.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
- 3.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
- 4.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
- 5.  27   Git & Webhook Actions  — deployment logs need 11
- 6.  22   Multi-Tenant           — quota dimensions must exist first, mail included
- 7.  23   Production Installer   — installs everything, so everything must exist
- 8.  24   Production Hardening   — tests the finished system
- 9.  25   Release                — last by definition
+ 1.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+ 2.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+ 3.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+ 4.  27   Git & Webhook Actions  — deployment logs need 11
+ 5.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+ 6.  23   Production Installer   — installs everything, so everything must exist
+ 7.  24   Production Hardening   — tests the finished system
+ 8.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -844,29 +844,68 @@ Additionally required by the above:
 
 # PHASE 14 — Backup
 
+**Status: COMPLETE** — see [docs/PHASE14.md](docs/PHASE14.md) for scope,
+decisions, the divergence from DATABASE.md, and known limitations.
+
 **Build order: 11 of 17.** Depends on 10 (a schedule is a cron job), 12, and the
 website and database phases already built.
 **Blocks** 20 (backup alerts) and 24 (the restore and disaster-recovery tests).
 
-- [ ] Website backup
-- [ ] Database backup
-- [ ] Full server backup
-- [ ] Backup jobs
-- [ ] Schedule
-- [ ] Retention
-- [ ] Restore
-- [ ] Verify backup
-- [ ] Local storage
-- [ ] S3
-- [ ] SFTP
+- [x] Website backup — its files *and* the databases attached to it, in one
+  archive by default. A site restored without the schema its application expects
+  is broken in a more confusing way than one that is simply gone
+- [x] Database backup — dumped by the providers that already hold the
+  credentials, straight to a file rather than through the Agent's memory
+- [x] Full server backup — every website and every database, subdomains
+  included: a page that hides them is making a listing readable, and a backup
+  that hides them is losing data
+- [x] Backup jobs — through the queue, because both taking and restoring move an
+  unbounded amount of data
+- [x] Schedule — an hour, a minute and a day the panel owns, not a crontab entry
+  it could no longer describe
+- [x] Retention — an age **and** a count floor, because retention by age alone
+  deletes everything you have the day after a panel is off for a fortnight
+- [x] Restore — verified in full before anything on the host changes, with the
+  previous files moved aside and put back if it fails partway
+- [x] Verify backup — the archive read back from where it was stored and matched
+  against the checksum recorded when it was written
+- [x] Local storage — bounded by configured roots, so "back up to /etc/nginx"
+  is not a way to write a file anywhere as root
+- [x] S3 — SigV4 written against the standard library, because the Agent has no
+  third-party dependencies and the only hard part is a page of HMAC
+- [x] SFTP — the OpenSSH client with `StrictHostKeyChecking` on and no way to
+  turn it off: a backup sent to whatever answered on port 22 is every site on
+  the host handed to a stranger
+
+Additionally required by the above:
+
+- [x] **A backup that has not been read back is not a backup.** `verified_at` is
+  its own column, and a backup that completed and could not be confirmed is
+  recorded as failed with the reason
+- [x] Retention that runs only after a new backup has verified, which is
+  CLAUDE.md section 18 with no special case needed
+- [x] A destination as a row of its own rather than fields on a schedule, so a
+  manual backup has somewhere to go and a rotated key is edited once
+- [x] A destination check that writes and reads back, because a destination
+  nobody has reached looks like protection and is not
+- [x] Credentials that never reach the jobs table, an audit record, or anything
+  a handler returns
+- [x] A restore confirmed with the backup's own id, not a boolean somebody sets
+  once and forgets
 
 Critical tests:
 
-- [ ] Backup integrity
-- [ ] Restore integrity
-- [ ] Interrupted backup
-- [ ] Disk full
-- [ ] Permission failure
+- [x] Backup integrity — a byte changed in the middle of a stored archive, with
+  its size unchanged, is caught
+- [x] Restore integrity — a real site's deleted files and a real database's
+  dropped row both come back
+- [x] Interrupted backup — a corrupt archive is refused before anything on the
+  host is touched, and a restore that fails partway puts the original back
+- [x] Disk full — bounded members and archives, and a restore that rolls back
+  rather than leaving a site half-replaced
+- [x] Permission failure — a destination outside the allowed roots, a document
+  root outside the site root, and an unreachable destination are all reported
+  rather than half-attempted
 
 ---
 

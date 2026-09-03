@@ -138,6 +138,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-dns
 	$(MAKE) docker-test-updates
 	$(MAKE) docker-test-monitoring
+	$(MAKE) docker-test-backup
 	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
@@ -248,6 +249,15 @@ docker-test-updates: create-integration-admin ## Run the Phase 21 system update 
 .PHONY: docker-test-monitoring
 docker-test-monitoring: create-integration-admin ## Run the Phase 19 monitoring checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase19_monitoring.sh
+
+.PHONY: docker-test-backup
+docker-test-backup: create-integration-admin ## Run the Phase 14 backup checks
+	# An S3 service is started for the duration, so the S3 destination is
+	# exercised against a real implementation rather than a stub.
+	docker compose -f docker-compose.test.yml up -d minio
+	docker compose -f docker-compose.test.yml run --rm minio-init
+	$(COMPOSE) exec -T agent sh /tests/integration/phase14_backup.sh
+	docker compose -f docker-compose.test.yml stop minio
 
 .PHONY: docker-test-hybrid
 docker-test-hybrid: create-integration-admin ## Run the Phase 4.5 Apache hybrid integration checks

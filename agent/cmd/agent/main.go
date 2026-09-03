@@ -22,6 +22,7 @@ import (
 	"github.com/jothost/panel/agent/internal/config"
 	"github.com/jothost/panel/agent/internal/cron"
 	"github.com/jothost/panel/agent/internal/database"
+	dnspkg "github.com/jothost/panel/agent/internal/dns"
 	f2bpkg "github.com/jothost/panel/agent/internal/fail2ban"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
@@ -203,6 +204,20 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		// validate a candidate one (-t). The panel never starts the server with
 		// it: that goes through the service manager, so there is one thing on
 		// this host that owns the daemon's lifecycle.
+		// BIND and its checkers. named is here only to read a version — the
+		// daemon is started through the service manager, so one thing on this
+		// host owns its lifecycle — and named-checkconf and named-checkzone are
+		// what stop the panel installing a zone that would keep the server from
+		// starting at all.
+		//
+		// rndc is how a running server is told to re-read what the panel wrote.
+		// Every argument it is given is a zone name that has been checked to be
+		// a domain name.
+		{Name: dnspkg.CommandNamed, Path: cfg.NamedPath, Timeout: 15 * time.Second},
+		{Name: dnspkg.CommandNamedCheckconf, Path: cfg.NamedCheckconfPath, Timeout: 30 * time.Second},
+		{Name: dnspkg.CommandNamedCheckzone, Path: cfg.NamedCheckzonePath, Timeout: 30 * time.Second},
+		{Name: dnspkg.CommandRndc, Path: cfg.RndcPath, Timeout: 60 * time.Second},
+		{Name: dnspkg.CommandDNSSECFromKey, Path: cfg.DNSSECFromKeyPath, Timeout: 15 * time.Second},
 		{Name: sshpkg.CommandName, Path: cfg.SSHDPath, Timeout: 15 * time.Second},
 		// The shell a scheduled job's "run now" uses, and the only entry here
 		// whose argument is a command line rather than a parameter.
@@ -441,6 +456,21 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("an FTP server is not installed; the panel will offer to install it")
 	}
 
+	// The authoritative name server. The panel owns the zone files and one
+	// include of zone statements; it does not own named.conf, which it writes
+	// only when the host has none and otherwise extends by a single line.
+	dnsProvider := dnspkg.NewProvider(dnspkg.Options{
+		Runner: runner,
+		Log:    log,
+		Paths: dnspkg.Paths{
+			ConfigDir: cfg.DNSConfigDir,
+			StateDir:  cfg.DNSStateDir,
+		},
+	})
+	if !dnsProvider.Available() {
+		log.Info("a DNS server is not installed; the panel will offer to install it")
+	}
+
 	// The SSH server's configuration. The provider reads it through sshd itself
 	// rather than by parsing the file, because a directive that is commented out
 	// is still in force at its default — and the defaults differ between
@@ -586,11 +616,13 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		SSH:          sshProvider,
 		Fail2Ban:     fail2banProvider,
 		FTP:          ftpProvider,
+		DNS:          dnsProvider,
 	})
 
 	// Wired after the registry, because restarting the FTP daemon goes through
 	// the service manager the registry owns. See ftp.Provider.SetReloader.
 	ftpProvider.SetReloader(operations.FTPReloaderFor(registry))
+	dnsProvider.SetService(operations.DNSServiceFor(registry))
 
 	return registry, jobRunner, nil
 }

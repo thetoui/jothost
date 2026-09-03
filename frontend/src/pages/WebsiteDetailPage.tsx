@@ -22,6 +22,7 @@ import { TextField } from '@/components/ui/Field';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { WebsitePHPPanel } from '@/features/php/components/WebsitePHPPanel';
+import { WebsiteDNSPanel } from '@/features/dns/components/WebsiteDNSPanel';
 import { WebsiteFTPPanel } from '@/features/ftp/components/WebsiteFTPPanel';
 import { WebsiteSSLPanel } from '@/features/ssl/components/WebsiteSSLPanel';
 import { SubdomainPanel } from '@/features/websites/components/SubdomainPanel';
@@ -168,6 +169,7 @@ export function WebsiteDetailPage() {
           <WebsiteSSLPanel websiteId={site.id} domain={site.primary_domain} />
           <WebsitePHPPanel websiteId={site.id} />
           <WebsiteFTPPanel websiteId={site.id} domain={site.primary_domain} />
+          <WebsiteDNSPanel websiteId={site.id} domain={site.primary_domain} />
           {/* A subdomain is a site of its own, so it belongs on the parent's
               page as a list of sites rather than as another kind of name. A
               subdomain has none of its own: one level is the whole model. */}

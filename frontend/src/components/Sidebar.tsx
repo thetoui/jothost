@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   Lock,
   Layers,
+  Network,
   Server,
   ScrollText,
   ServerCog,
@@ -57,6 +58,7 @@ const navGroups: NavGroup[] = [
       { label: 'Node.js', to: '/node', icon: Hexagon, enabled: true },
       { label: 'Databases', to: '/databases', icon: Database, enabled: true },
       { label: 'SSL', to: '/ssl', icon: Lock, enabled: true },
+      { label: 'DNS', to: '/dns', icon: Network, enabled: true },
     ],
   },
   {

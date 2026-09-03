@@ -101,6 +101,20 @@ type Config struct {
 	FTPConfigDir string
 	FTPRunDir    string
 	FTPLogDir    string
+	// The name server and its checkers. NamedPath is used to read a version,
+	// never to start the daemon. DNSConfigDir is where BIND's configuration
+	// lives, and DNSStateDir is where the panel's zone files, the journals
+	// named keeps beside them, and the DNSSEC keys it generates go — it is a
+	// directory of the panel's own rather than BIND's, because named writes
+	// into it and a directory named can write to should not be the one holding
+	// the configuration it reads.
+	NamedPath          string
+	NamedCheckconfPath string
+	NamedCheckzonePath string
+	RndcPath           string
+	DNSSECFromKeyPath  string
+	DNSConfigDir       string
+	DNSStateDir        string
 	// SSHDPath is the SSH server binary, used to read and validate the
 	// configuration — never to start it. SSHConfigDir is where its
 	// configuration lives.
@@ -181,31 +195,38 @@ func Load() (Config, error) {
 		FirewallStateDir:     getString("AGENT_FIREWALL_STATE_DIR", "/var/lib/jothost/firewall"),
 		FirewallGuardedPorts: getString("AGENT_FIREWALL_GUARDED_PORTS", ""),
 
-		ApachePath:        getString("AGENT_APACHE_PATH", "/usr/sbin/httpd"),
-		Apache2Path:       getString("AGENT_APACHE2_PATH", "/usr/sbin/apache2"),
-		ApacheConfigDir:   getString("AGENT_APACHE_CONF_DIR", "/etc/apache2/conf.d"),
-		ApacheMainConf:    getString("AGENT_APACHE_MAIN_CONF", "/etc/apache2/httpd.conf"),
-		SiteRoot:          getString("AGENT_SITE_ROOT", "/var/www"),
-		LogRoot:           getString("AGENT_LOG_ROOT", "/var/log"),
-		Fail2BanPath:      getString("AGENT_FAIL2BAN_PATH", "/usr/bin/fail2ban-client"),
-		ProftpdPath:       getString("AGENT_PROFTPD_PATH", "/usr/sbin/proftpd"),
-		FtpasswdPath:      getString("AGENT_FTPASSWD_PATH", "/usr/bin/ftpasswd"),
-		FtpwhoPath:        getString("AGENT_FTPWHO_PATH", "/usr/bin/ftpwho"),
-		FtpquotaPath:      getString("AGENT_FTPQUOTA_PATH", "/usr/bin/ftpquota"),
-		FTPConfigDir:      getString("AGENT_FTP_CONFIG_DIR", "/etc/proftpd"),
-		FTPRunDir:         getString("AGENT_FTP_RUN_DIR", "/run/proftpd"),
-		FTPLogDir:         getString("AGENT_FTP_LOG_DIR", "/var/log/proftpd"),
-		Fail2BanConfigDir: getString("AGENT_FAIL2BAN_CONFIG_DIR", "/etc/fail2ban"),
-		SSHDPath:          getString("AGENT_SSHD_PATH", "/usr/sbin/sshd"),
-		SSHConfigDir:      getString("AGENT_SSH_CONFIG_DIR", "/etc/ssh"),
-		ShellPath:         getString("AGENT_SHELL_PATH", "/bin/sh"),
-		CronSpoolDir:      getString("AGENT_CRON_SPOOL_DIR", "/var/spool/cron/crontabs"),
-		CronLogDir:        getString("AGENT_CRON_LOG_DIR", "/var/log/jothost/cron"),
-		UseraddPath:       getString("AGENT_USERADD_PATH", "/usr/sbin/useradd"),
-		AdduserPath:       getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
-		UserdelPath:       getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
-		DeluserPath:       getString("AGENT_DELUSER_PATH", "/usr/sbin/deluser"),
-		WebGroup:          getString("AGENT_WEB_GROUP", ""),
+		ApachePath:         getString("AGENT_APACHE_PATH", "/usr/sbin/httpd"),
+		Apache2Path:        getString("AGENT_APACHE2_PATH", "/usr/sbin/apache2"),
+		ApacheConfigDir:    getString("AGENT_APACHE_CONF_DIR", "/etc/apache2/conf.d"),
+		ApacheMainConf:     getString("AGENT_APACHE_MAIN_CONF", "/etc/apache2/httpd.conf"),
+		SiteRoot:           getString("AGENT_SITE_ROOT", "/var/www"),
+		LogRoot:            getString("AGENT_LOG_ROOT", "/var/log"),
+		Fail2BanPath:       getString("AGENT_FAIL2BAN_PATH", "/usr/bin/fail2ban-client"),
+		ProftpdPath:        getString("AGENT_PROFTPD_PATH", "/usr/sbin/proftpd"),
+		FtpasswdPath:       getString("AGENT_FTPASSWD_PATH", "/usr/bin/ftpasswd"),
+		FtpwhoPath:         getString("AGENT_FTPWHO_PATH", "/usr/bin/ftpwho"),
+		FtpquotaPath:       getString("AGENT_FTPQUOTA_PATH", "/usr/bin/ftpquota"),
+		FTPConfigDir:       getString("AGENT_FTP_CONFIG_DIR", "/etc/proftpd"),
+		FTPRunDir:          getString("AGENT_FTP_RUN_DIR", "/run/proftpd"),
+		FTPLogDir:          getString("AGENT_FTP_LOG_DIR", "/var/log/proftpd"),
+		Fail2BanConfigDir:  getString("AGENT_FAIL2BAN_CONFIG_DIR", "/etc/fail2ban"),
+		NamedPath:          getString("AGENT_NAMED_PATH", "/usr/sbin/named"),
+		NamedCheckconfPath: getString("AGENT_NAMED_CHECKCONF_PATH", "/usr/bin/named-checkconf"),
+		NamedCheckzonePath: getString("AGENT_NAMED_CHECKZONE_PATH", "/usr/bin/named-checkzone"),
+		RndcPath:           getString("AGENT_RNDC_PATH", "/usr/sbin/rndc"),
+		DNSSECFromKeyPath:  getString("AGENT_DNSSEC_DSFROMKEY_PATH", "/usr/bin/dnssec-dsfromkey"),
+		DNSConfigDir:       getString("AGENT_DNS_CONFIG_DIR", "/etc/bind"),
+		DNSStateDir:        getString("AGENT_DNS_STATE_DIR", "/var/bind/jothost"),
+		SSHDPath:           getString("AGENT_SSHD_PATH", "/usr/sbin/sshd"),
+		SSHConfigDir:       getString("AGENT_SSH_CONFIG_DIR", "/etc/ssh"),
+		ShellPath:          getString("AGENT_SHELL_PATH", "/bin/sh"),
+		CronSpoolDir:       getString("AGENT_CRON_SPOOL_DIR", "/var/spool/cron/crontabs"),
+		CronLogDir:         getString("AGENT_CRON_LOG_DIR", "/var/log/jothost/cron"),
+		UseraddPath:        getString("AGENT_USERADD_PATH", "/usr/sbin/useradd"),
+		AdduserPath:        getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
+		UserdelPath:        getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
+		DeluserPath:        getString("AGENT_DELUSER_PATH", "/usr/sbin/deluser"),
+		WebGroup:           getString("AGENT_WEB_GROUP", ""),
 
 		// The MariaDB client is preferred because a MariaDB host ships it
 		// under this name and a MySQL host symlinks the same name to its own.

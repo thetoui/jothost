@@ -54,6 +54,8 @@ func registerLocalServer(ctx context.Context, cfg config.Config, pool *pgxpool.P
 		params.OSVersion = info.OSVersion
 		params.Kernel = info.KernelVersion
 		params.Architecture = info.Architecture
+		params.IPv4 = info.IPv4
+		params.IPv6 = info.IPv6
 		params.Status = servers.StatusOnline
 	}
 

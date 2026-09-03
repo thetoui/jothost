@@ -19,6 +19,7 @@ import (
 	cronpkg "github.com/jothost/panel/api/internal/cron"
 	"github.com/jothost/panel/api/internal/dashboard"
 	databasespkg "github.com/jothost/panel/api/internal/databases"
+	dnspkg "github.com/jothost/panel/api/internal/dns"
 	f2bpkg "github.com/jothost/panel/api/internal/fail2ban"
 	filespkg "github.com/jothost/panel/api/internal/files"
 	firewallpkg "github.com/jothost/panel/api/internal/firewall"
@@ -68,6 +69,7 @@ type Server struct {
 	ssh       *sshpkg.Handler
 	fail2ban  *f2bpkg.Handler
 	ftp       *ftppkg.Handler
+	dns       *dnspkg.Handler
 	firewall  *firewallpkg.Handler
 	jobs      *jobs.Handler
 	php       *phppkg.Handler
@@ -189,10 +191,29 @@ func New(opts Options) (*Server, error) {
 	jobRepo := jobs.NewRepository(opts.Pool)
 	websiteRepo := websites.NewRepository(opts.Pool)
 
+	// DNS is built before websites because a subdomain publishes itself in its
+	// parent's zone as it is created — the item Phase 4.1 deferred until there
+	// was a zone to put a record in.
+	//
+	// The zones are the panel's record; the zone files named reads are what
+	// answer queries, and the Agent makes the second match the first on every
+	// change.
+	dnsService := dnspkg.NewService(dnspkg.ServiceOptions{
+		Repo:     dnspkg.NewRepository(opts.Pool, encrypter),
+		Websites: dnsWebsites{repo: websiteRepo},
+		Agent:    agent,
+		Audit:    auditRecorder,
+		Remote:   dnspkg.DefaultRemoteFactory,
+		Host:     dnsHost{repo: serverRepo, serverID: opts.LocalServerID},
+		Log:      log,
+		ServerID: opts.LocalServerID,
+	})
+
 	websiteService := websites.NewService(websites.ServiceOptions{
 		Repository: websiteRepo,
 		Jobs:       jobRepo,
 		Audit:      auditRecorder,
+		DNS:        dnsService,
 		Log:        log,
 		ServerID:   opts.LocalServerID,
 	})
@@ -349,6 +370,8 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	s.dns = dnspkg.NewHandler(dnspkg.HandlerOptions{Service: dnsService, Auth: authService})
+
 	// The SSH server's settings. No state of the panel's own: the configuration
 	// is files on the host, and every change is validated by sshd before it is
 	// installed and refused outright where it would leave nobody able to log in.
@@ -503,6 +526,7 @@ func (s *Server) routes() http.Handler {
 	s.ssh.Routes(mux)
 	s.fail2ban.Routes(mux)
 	s.ftp.Routes(mux)
+	s.dns.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)

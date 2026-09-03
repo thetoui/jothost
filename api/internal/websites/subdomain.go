@@ -178,6 +178,12 @@ func (s *Service) CreateSubdomain(ctx context.Context, req CreateSubdomainReques
 		return CreateResult{}, err
 	}
 
+	// The record in the parent's zone, if the panel serves that zone. It is
+	// after the job is queued rather than before because DNS is not what makes
+	// a subdomain work — nginx is — and a name published for a vhost that was
+	// never created would point at a 404 rather than at nothing.
+	s.publishSubdomainDNS(ctx, parent.PrimaryDomain, domain)
+
 	s.record(ctx, req.Actor, ActionSubdomainCreate, site.ID, audit.StatusSuccess,
 		map[string]any{
 			"domain":             domain,
@@ -266,6 +272,10 @@ func (s *Service) DeleteSubdomain(ctx context.Context, req DeleteRequest) (jobs.
 		return jobs.Job{}, err
 	}
 
+	// The record goes with it, if the panel put one there. Only the panel's
+	// own: a TXT an operator added at the same name is theirs.
+	s.withdrawSubdomainDNS(ctx, site)
+
 	s.record(ctx, req.Actor, ActionSubdomainDelete, site.ID, audit.StatusSuccess,
 		map[string]any{"domain": site.PrimaryDomain, "job_id": job.ID},
 		req.IPAddress, req.UserAgent)
@@ -285,4 +295,38 @@ func (s *Service) ListSubdomains(ctx context.Context, parentID string) ([]Websit
 		return []Website{}, nil
 	}
 	return s.repo.ListSubdomains(ctx, parent.ID)
+}
+
+// publishSubdomainDNS puts a subdomain's address record in its parent's zone.
+//
+// Failures are logged and not returned. The subdomain exists, is being created,
+// and works through whatever already resolves the parent; failing the whole
+// operation because a record could not be written would undo something that
+// succeeded for the sake of something that is optional.
+func (s *Service) publishSubdomainDNS(ctx context.Context, parentDomain, domain string) {
+	if s.dns == nil {
+		return
+	}
+	if err := s.dns.EnsureSubdomainRecords(ctx, "", parentDomain, domain, ""); err != nil {
+		s.log.Warn("could not publish the subdomain in its parent's DNS zone",
+			"domain", domain, "parent", parentDomain, logger.KeyError, err.Error())
+	}
+}
+
+// withdrawSubdomainDNS removes what publishSubdomainDNS wrote.
+func (s *Service) withdrawSubdomainDNS(ctx context.Context, site Website) {
+	if s.dns == nil || site.ParentWebsiteID == nil {
+		return
+	}
+	parent, err := s.repo.Get(ctx, *site.ParentWebsiteID)
+	if err != nil {
+		s.log.Warn("could not read a subdomain's parent to withdraw its DNS record",
+			"website_id", site.ID, logger.KeyError, err.Error())
+		return
+	}
+	if err := s.dns.RemoveSubdomainRecords(ctx, "", parent.PrimaryDomain,
+		site.PrimaryDomain); err != nil {
+		s.log.Warn("could not withdraw the subdomain's DNS record",
+			"domain", site.PrimaryDomain, logger.KeyError, err.Error())
+	}
 }

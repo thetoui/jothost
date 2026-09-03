@@ -628,19 +628,128 @@ after it stopped.
 
 # 20. dns_records
 
+Implemented by Phase 13 (migration 0014), with three additions and one
+substitution, all deliberate.
+
 ```sql
 id UUID PRIMARY KEY
-domain VARCHAR(255) NOT NULL
-type VARCHAR(20) NOT NULL
-name VARCHAR(255) NOT NULL
+zone_id UUID REFERENCES dns_zones(id)
+name VARCHAR(253) NOT NULL DEFAULT '@'
+type VARCHAR(10) NOT NULL
+ttl INTEGER NOT NULL DEFAULT 0
 value TEXT NOT NULL
-ttl INTEGER
-priority INTEGER
-provider VARCHAR(50)
-external_id VARCHAR(255)
+priority INTEGER NOT NULL DEFAULT 0
+weight INTEGER NOT NULL DEFAULT 0
+port INTEGER NOT NULL DEFAULT 0
+flags INTEGER NOT NULL DEFAULT 0
+tag VARCHAR(20) NOT NULL DEFAULT ''
+provider VARCHAR(50) NOT NULL DEFAULT 'local'
+external_id VARCHAR(255) NOT NULL DEFAULT ''
+managed BOOLEAN NOT NULL DEFAULT FALSE
 created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
 ```
+
+`zone_id` replaces `domain`. A record belongs to a zone rather than to a name: a
+reverse zone is not a domain anybody owns, and a record whose zone was
+identified by a string could be written into a zone that does not exist.
+
+`weight`, `port`, `flags` and `tag` are the addition. An SRV record's weight,
+port and target in a single text column can only be written to a zone file by
+parsing operator text at the moment of writing — which is the one thing this
+panel avoids everywhere else. As columns they are checked as numbers, by the
+database as well as by Go.
+
+`managed` marks a record the panel maintains for itself: the address record a
+subdomain needs in its parent's zone. It is shown and not editable, because
+editing one by hand would leave the panel and the zone disagreeing about a name
+the panel is responsible for.
+
+`name` is stored **relative** to its zone, with `@` for the apex. That is what a
+zone file holds, and an absolute name in the owner column is how a record ends
+up in a zone it was not meant for.
+
+A unique index covers (zone, name, type, value, priority, weight, port, tag).
+named loads a duplicate and serves it once, so a second row would be invisible
+except as a row nobody can account for.
+
+---
+
+# 20.1 dns_zones
+
+Added by Phase 13 (migration 0014).
+
+```sql
+id UUID PRIMARY KEY
+server_id UUID REFERENCES servers(id)
+website_id UUID REFERENCES websites(id) ON DELETE SET NULL
+name VARCHAR(253) NOT NULL
+kind VARCHAR(10) NOT NULL DEFAULT 'master'
+reverse_network CIDR
+primary_ns VARCHAR(253) NOT NULL
+hostmaster VARCHAR(253) NOT NULL
+serial BIGINT NOT NULL
+refresh, retry, expire, minimum, ttl INTEGER NOT NULL
+nameservers TEXT[] NOT NULL
+dnssec BOOLEAN NOT NULL DEFAULT FALSE
+allow_transfer, also_notify, masters TEXT[] NOT NULL
+created_at TIMESTAMPTZ NOT NULL
+updated_at TIMESTAMPTZ NOT NULL
+```
+
+`website_id` is `ON DELETE SET NULL`, not cascade. Deleting a website must not
+delete its zone: the names in it may point at other hosts, mail included, and a
+panel that silently unpublished a customer's MX records because a vhost was
+removed would take their mail down with the site.
+
+`serial` is BIGINT because the wire format's field is unsigned 32-bit and
+PostgreSQL's INTEGER is signed. It advances to the greater of "one more than
+this" and the current unix time — monotonic, meaningful to a human reading a
+`dig` output, and it cannot run out within a day the way YYYYMMDDnn does at the
+hundredth edit.
+
+It is **not** the serial the server is answering with. With inline signing named
+keeps a second serial on the signed copy and it runs ahead; that one is read
+from the host and never stored, because storing it would invite a comparison
+that reports every signed zone as drifting.
+
+There are no DNSSEC keys here, and there will not be. They are named's, in a
+directory on the host; a private key in this table would be a private key in
+every backup of it.
+
+The CHECK constraints mirror the rules enforced in Go: a zone name is a domain
+name, a secondary names at least one primary, and the SOA timers are in range
+*and* coherent with each other — a retry longer than the refresh is a zone that
+heals more slowly the more it breaks, and each value is in range on its own.
+
+---
+
+# 20.2 dns_settings
+
+One row per host: the addresses named answers on, the default transfer list, the
+`dnssec-policy` name, and the defaults a new zone starts from — name servers,
+TTL and hostmaster. The name servers are here rather than on each zone because
+they are the same for every zone a host serves, and asking once is the
+difference between setting up DNS and setting it up repeatedly.
+
+`dnssec_policy` is a policy *name*, not a set of key knobs. Inventing a key
+policy is how a zone becomes unresolvable for the length of its longest TTL, and
+BIND's own default is a single ECDSA key it rolls on its own schedule.
+
+---
+
+# 20.3 dns_providers and dns_zone_providers
+
+Credentials for a DNS service somewhere else, and which zones are pushed to it.
+
+The API token is encrypted with the panel's `ENCRYPTION_KEY` against the
+provider row's own id — section 30's arrangement, for exactly this case. It
+cannot be hashed the way a password is, because it has to be sent to the
+provider on every call, and it is a credential that can rewrite every DNS record
+in somebody's account. No endpoint returns it.
+
+`last_sync_at`, `last_sync_status` and `last_sync_error` are stored so that a
+provider which has been failing quietly for a month is visible.
 
 ---
 

@@ -5,9 +5,11 @@ import (
 	"errors"
 
 	cronpkg "github.com/jothost/panel/api/internal/cron"
+	dnspkg "github.com/jothost/panel/api/internal/dns"
 	ftppkg "github.com/jothost/panel/api/internal/ftp"
 	nodepkg "github.com/jothost/panel/api/internal/node"
 	phppkg "github.com/jothost/panel/api/internal/php"
+	"github.com/jothost/panel/api/internal/servers"
 	sslpkg "github.com/jothost/panel/api/internal/ssl"
 	"github.com/jothost/panel/api/internal/websites"
 )
@@ -166,4 +168,52 @@ func (f ftpWebsites) LookupForFTP(ctx context.Context, id string) (ftppkg.Websit
 	ref.CertificatePath = *certificate.CertificatePath
 	ref.KeyPath = *certificate.PrivateKeyPath
 	return ref, nil
+}
+
+// dnsWebsites answers what the dns package needs to know about a site a zone
+// belongs to: which server it is on, and what it is called.
+type dnsWebsites struct {
+	repo *websites.Repository
+}
+
+func (d dnsWebsites) LookupForDNS(ctx context.Context, id string) (dnspkg.WebsiteRef, error) {
+	site, err := d.repo.Get(ctx, id)
+	if err != nil {
+		return dnspkg.WebsiteRef{}, err
+	}
+	return dnspkg.WebsiteRef{
+		ID:       site.ID,
+		ServerID: site.ServerID,
+		Domain:   site.PrimaryDomain,
+	}, nil
+}
+
+// dnsHost answers what this machine's address is.
+//
+// Read from the servers table at the moment it is needed rather than captured
+// at startup: the Agent refreshes that row, so a host that has been given a new
+// address seeds its next zone with the new one rather than with whatever was
+// true when the API last booted.
+type dnsHost struct {
+	repo     *servers.Repository
+	serverID string
+}
+
+func (d dnsHost) Address(ctx context.Context) (string, error) {
+	if d.serverID == "" {
+		return "", nil
+	}
+	server, err := d.repo.Get(ctx, d.serverID)
+	if err != nil {
+		return "", err
+	}
+	// IPv4 first, because that is what a hosting customer's A record needs and
+	// what almost every resolver on the far side will ask for.
+	if server.IPv4 != nil && *server.IPv4 != "" {
+		return *server.IPv4, nil
+	}
+	if server.IPv6 != nil && *server.IPv6 != "" {
+		return *server.IPv6, nil
+	}
+	return "", nil
 }

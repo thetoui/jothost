@@ -151,6 +151,16 @@ const (
 	OperationFTPSessions   OperationType = "ftp.sessions"
 	OperationFTPDisconnect OperationType = "ftp.disconnect"
 
+	// DNS. A request names zones and records the panel has validated, never a
+	// configuration directive and never a file path: the Agent resolves every
+	// path from the zone's own name, which has been checked to be a domain
+	// name and so contains no separator.
+	OperationDNSStatus     OperationType = "dns.status"
+	OperationDNSInstall    OperationType = "dns.install"
+	OperationDNSReconcile  OperationType = "dns.reconcile"
+	OperationDNSZoneStatus OperationType = "dns.zone.status"
+	OperationDNSSigning    OperationType = "dns.signing"
+
 	// SSH. Two of these can lock an operator out of the machine, so the Agent
 	// validates every configuration with sshd before installing it and refuses
 	// the changes that would leave nobody able to log in: see
@@ -276,6 +286,11 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationFTPReconcile:         {},
 	OperationFTPSessions:          {},
 	OperationFTPDisconnect:        {},
+	OperationDNSStatus:            {},
+	OperationDNSInstall:           {},
+	OperationDNSReconcile:         {},
+	OperationDNSZoneStatus:        {},
+	OperationDNSSigning:           {},
 	OperationSSHStatus:            {},
 	OperationSSHConfigure:         {},
 	OperationSSHKeyList:           {},

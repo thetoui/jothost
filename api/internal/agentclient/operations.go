@@ -108,6 +108,11 @@ type SystemInfo struct {
 	UptimeSeconds uint64 `json:"uptime_seconds"`
 	BootTime      string `json:"boot_time"`
 	Cores         int    `json:"cores"`
+	// IPv4 and IPv6 are the addresses the host answers on, used to fill the
+	// servers table's columns and, from Phase 13, as the address a DNS zone's
+	// own records point at.
+	IPv4 string `json:"ipv4"`
+	IPv6 string `json:"ipv6"`
 }
 
 // System reports the host's identity and uptime.

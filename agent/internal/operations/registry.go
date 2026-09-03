@@ -14,6 +14,7 @@ import (
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/cron"
 	"github.com/jothost/panel/agent/internal/database"
+	"github.com/jothost/panel/agent/internal/dns"
 	"github.com/jothost/panel/agent/internal/fail2ban"
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
@@ -116,6 +117,11 @@ type Dependencies struct {
 	// settings are there.
 	Fail2Ban *fail2ban.Provider
 	FTP      *ftp.Provider
+
+	// DNS runs the host's authoritative name server. Nil, or a host without
+	// BIND, means the panel offers to install one rather than accepting zones
+	// nothing would answer for.
+	DNS *dns.Provider
 
 	// SSH reads and changes the host's SSH server configuration. Nil, or a host
 	// with no sshd, means the panel reports that rather than offering settings
@@ -248,6 +254,12 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationFTPReconcile, r.handleFTPReconcile)
 	r.mustRegister(protocol.OperationFTPSessions, r.handleFTPSessions)
 	r.mustRegister(protocol.OperationFTPDisconnect, r.handleFTPDisconnect)
+
+	r.mustRegister(protocol.OperationDNSStatus, r.handleDNSStatus)
+	r.mustRegister(protocol.OperationDNSInstall, r.handleDNSInstall)
+	r.mustRegister(protocol.OperationDNSReconcile, r.handleDNSReconcile)
+	r.mustRegister(protocol.OperationDNSZoneStatus, r.handleDNSZoneStatus)
+	r.mustRegister(protocol.OperationDNSSigning, r.handleDNSSigning)
 
 	r.mustRegister(protocol.OperationSSHStatus, r.handleSSHStatus)
 	r.mustRegister(protocol.OperationSSHConfigure, r.handleSSHConfigure)

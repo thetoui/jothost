@@ -229,11 +229,12 @@ be measured against.
 Two items in the Phase 4.1 task list belong to phases that do not exist yet.
 Building them here would mean building those phases:
 
-- **Automatic DNS record injection into the parent's zone.** There is no zone.
-  A name server is Phase 13, and a subdomain needs no DNS from this panel to
-  work — it is reached through whatever already resolves the parent. When
-  Phase 13 lands, injecting the record is a small addition to subdomain
-  creation.
+- **Automatic DNS record injection into the parent's zone.** ~~There is no
+  zone.~~ **Done in Phase 13**, and it was what this note predicted: a small
+  addition to subdomain creation. It still does nothing when the panel does not
+  serve the parent's zone, for the reason given here — a subdomain is reached
+  through whatever already resolves the parent, so DNS from this panel is a
+  convenience and never a requirement. See docs/PHASE13.md section 11.
 - **Apache VirtualHost generation.** There is no Apache provider. The hybrid
   nginx + Apache engine is Phase 4.5; this phase writes the nginx vhost, which
   is what the host actually runs today.

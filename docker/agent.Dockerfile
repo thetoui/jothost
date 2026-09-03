@@ -102,6 +102,13 @@ FROM alpine:3.21 AS runtime
 # server needs only FPM, which is why the CLI is a separate package on every
 # distribution; a scheduled PHP job runs the CLI, so this host needs both.
 #
+# bind is the authoritative name server Phase 13 drives, with bind-tools for
+# named-checkzone and dig and bind-dnssec-tools for the DS records a registrar
+# asks for. It is baked in for the same reason as everything else in this
+# paragraph: the zones the panel records live in Postgres and survive a rebuild,
+# and a host with the records and no server to answer them is a domain that has
+# quietly stopped resolving.
+#
 # nodejs and npm are here for the reason Apache is, further up. Phase 9 can
 # install them through the host's package manager, and on a real host that is
 # the right moment to do it. In this image it left the panel's record and the
@@ -123,6 +130,7 @@ RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       apache2 apache2-proxy \
       proftpd proftpd-utils proftpd-openrc \
       proftpd-mod_tls proftpd-mod_quotatab proftpd-mod_quotatab_file \
+      bind bind-tools bind-openrc bind-dnssec-tools \
       nodejs npm \
       php82-fpm php83-fpm php84-fpm \
       php84 \

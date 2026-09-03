@@ -47,23 +47,23 @@ Done, in the order they were built:
 17  SSH Security
 18  Fail2Ban
 7.1 FTP Manager
+13  DNS & Local Name Server
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  13   DNS & Local Name Server— needs 12 (BIND) and 16 (port 53)
- 2.  21   System Updates         — scheduled updates need 10
- 3.  19   Monitoring             — service monitoring needs 12
- 4.  14   Backup                 — scheduling needs 10
- 5.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
- 6.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
- 7.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
- 8.  27   Git & Webhook Actions  — deployment logs need 11
- 9.  22   Multi-Tenant           — quota dimensions must exist first, mail included
-10.  23   Production Installer   — installs everything, so everything must exist
-11.  24   Production Hardening   — tests the finished system
-12.  25   Release                — last by definition
+ 1.  21   System Updates         — scheduled updates need 10
+ 2.  19   Monitoring             — service monitoring needs 12
+ 3.  14   Backup                 — scheduling needs 10
+ 4.  15   Security Center        — scans 16, 17, 21, 6, 7: follows all of them
+ 5.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
+ 6.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+ 7.  27   Git & Webhook Actions  — deployment logs need 11
+ 8.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+ 9.  23   Production Installer   — installs everything, so everything must exist
+10.  24   Production Hardening   — tests the finished system
+11.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -797,6 +797,9 @@ Additionally required by the above:
 
 # PHASE 13 — DNS & Local Name Server
 
+**Status: COMPLETE** — see [docs/PHASE13.md](docs/PHASE13.md) for scope,
+decisions, and known limitations.
+
 **Build order: 8 of 17.** Depends on 12 (BIND or PowerDNS is a service) and 16
 (port 53 has to be open).
 **Blocks** 26 (DKIM, SPF and DMARC are published as records).
@@ -805,14 +808,37 @@ This phase also pays off Phase 4.1's deferred item: automatic DNS record
 injection into the parent domain's zone, which was left until a zone existed at
 all. See docs/PHASE4.1.md section 7.
 
-- [ ] BIND9 / PowerDNS provider
-- [ ] Zone file generator (Forward & Reverse zones)
-- [ ] Default DNS SOA and Name Server templates
-- [ ] DNS Master / Slave zone replication setup
-- [ ] DNSSEC automatic signing & key rollover
-- [ ] Local DNS zone editor UI
-- [ ] Cloudflare provider (Remote sync option)
-- [ ] A, AAAA, CNAME, MX, TXT, CAA, SRV record management
+- [x] BIND9 provider — PowerDNS was rejected on the grounds in
+  docs/PHASE13.md section 2: it keeps zones in a database of its own, which
+  would mean a second schema beside the panel's and no file an operator can read
+  to see what is actually being served
+- [x] Zone file generator, forward and reverse
+- [x] Default SOA and name server templates, including the **glue** a zone whose
+  name servers are inside it cannot load without
+- [x] Master / slave replication — proved by a real transfer between two name
+  servers, not by reading a configuration file back
+- [x] DNSSEC signing and key rollover, done by named through `dnssec-policy`,
+  with the DS record surfaced for the registrar: the one step nothing can
+  automate
+- [x] Zone editor UI, with the records, the signing state and the transfer
+  settings
+- [x] Cloudflare provider, one-way and with deletion opt-in
+- [x] A, AAAA, CNAME, MX, TXT, NS, CAA, SRV and PTR record management — PTR
+  because a reverse zone with no PTR records is an empty zone
+
+Additionally required by the above:
+
+- [x] The host's own address, reported by the Agent and stored by registration.
+  The `servers` table has had `ipv4` and `ipv6` since Phase 3 and nothing ever
+  filled them; the glue records above cannot be written without one. See
+  docs/PHASE13.md section 8
+- [x] A declarative reconcile: the panel hands the Agent the complete set of
+  zones and the Agent makes the host match, so nothing can drift
+- [x] Verification that the server really took a reload. `rndc` reports that a
+  command was *accepted*, not that the reload worked — a named that cannot read
+  its own configuration goes on serving the old one while everything reports
+  success
+- [x] The subdomain record injection Phase 4.1 deferred
 
 ---
 

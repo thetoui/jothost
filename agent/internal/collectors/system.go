@@ -2,6 +2,7 @@ package collectors
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"runtime"
 	"strings"
@@ -18,6 +19,15 @@ type SystemInfo struct {
 	UptimeSeconds uint64 `json:"uptime_seconds"`
 	BootTime      string `json:"boot_time"`
 	Cores         int    `json:"cores"`
+	// IPv4 and IPv6 are the addresses this host answers on.
+	//
+	// Added for Phase 13, which needs them for a reason nothing before it did:
+	// a DNS zone whose name servers are inside it needs an address record for
+	// them, and named refuses to load a zone that has none. The columns for
+	// these have existed in the servers table since Phase 3 and nothing ever
+	// filled them.
+	IPv4 string `json:"ipv4"`
+	IPv6 string `json:"ipv6"`
 }
 
 // System reads the host's identity and uptime.
@@ -44,8 +54,55 @@ func (c *Collector) System() (SystemInfo, error) {
 
 	info.KernelVersion = c.kernelVersion()
 	info.OSName, info.OSVersion = c.osRelease()
+	info.IPv4, info.IPv6 = c.addresses()
 
 	return info, nil
+}
+
+// addresses reports the host's first global unicast address of each family.
+//
+// Through the kernel's own interface list rather than by running `ip addr`,
+// which is this file's rule: there is no program to execute and no output
+// format to break.
+//
+// "First" is a real limitation and is the honest one. A host with several
+// public addresses has no way to say which is canonical — that is a policy
+// question, not a fact about the machine — so what is reported is the first the
+// kernel lists, and an operator whose zone should name a different one edits
+// the record. Loopback and link-local addresses are skipped: a name server
+// whose A record is 127.0.0.1 is one nobody outside the machine can use.
+func (c *Collector) addresses() (string, string) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", ""
+	}
+
+	v4, v6 := "", ""
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			network, ok := addr.(*net.IPNet)
+			if !ok || !network.IP.IsGlobalUnicast() {
+				continue
+			}
+			if network.IP.To4() != nil {
+				if v4 == "" {
+					v4 = network.IP.String()
+				}
+				continue
+			}
+			if v6 == "" {
+				v6 = network.IP.String()
+			}
+		}
+	}
+	return v4, v6
 }
 
 // uptime reads /proc/uptime and derives the boot time.

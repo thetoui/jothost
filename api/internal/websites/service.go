@@ -59,8 +59,27 @@ type Service struct {
 	repo     *Repository
 	jobs     *jobs.Repository
 	audit    *audit.Recorder
+	dns      DNSPublisher
 	log      *slog.Logger
 	serverID string
+}
+
+// DNSPublisher puts a subdomain's record into its parent's zone, and takes it
+// out again.
+//
+// This is the item Phase 4.1 deferred: there was no zone to put a record in
+// then, and docs/PHASE4.1.md section 7 said it would be a small addition once
+// Phase 13 existed.
+//
+// An interface, and nil-able, for two reasons. It keeps this package from
+// importing the dns package, which is the arrangement every other cross-feature
+// dependency here uses. And a panel that does not serve DNS for the parent must
+// still be able to create a subdomain: a subdomain is reached through whatever
+// already resolves the parent, so DNS here is a convenience and never a
+// requirement.
+type DNSPublisher interface {
+	EnsureSubdomainRecords(ctx context.Context, requestID, parent, name, address string) error
+	RemoveSubdomainRecords(ctx context.Context, requestID, parent, name string) error
 }
 
 // ServiceOptions configure a Service.
@@ -68,7 +87,10 @@ type ServiceOptions struct {
 	Repository *Repository
 	Jobs       *jobs.Repository
 	Audit      *audit.Recorder
-	Log        *slog.Logger
+	// DNS publishes a subdomain in its parent's zone. Nil on a panel that does
+	// not serve DNS, which is not an error: see DNSPublisher.
+	DNS DNSPublisher
+	Log *slog.Logger
 	// ServerID is the host these websites live on. Phase 4 manages a single
 	// server; the column exists so multi-server does not need a migration.
 	ServerID string
@@ -84,6 +106,7 @@ func NewService(opts ServiceOptions) *Service {
 		repo:     opts.Repository,
 		jobs:     opts.Jobs,
 		audit:    opts.Audit,
+		dns:      opts.DNS,
 		log:      log,
 		serverID: opts.ServerID,
 	}

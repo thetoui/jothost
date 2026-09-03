@@ -193,6 +193,19 @@ var catalogue = []Definition{
 		Binaries:  []string{"/usr/sbin/proftpd", "/usr/bin/proftpd"},
 	},
 	{
+		Key:     "named",
+		Label:   "DNS Server",
+		Role:    RoleSystem,
+		Summary: "Answers DNS queries for the zones this host serves.",
+		// Alpine and RHEL call the unit named; Debian calls it bind9.
+		Units:     []string{"named.service", "bind9.service"},
+		Processes: []string{"named"},
+		Binaries:  []string{"/usr/sbin/named"},
+		// The DNS page writes zones and asks for a reload; the Services page
+		// starts and stops the daemon, so one thing on this host owns its
+		// lifecycle.
+	},
+	{
 		Key:       "cron",
 		Label:     "Cron",
 		Role:      RoleSystem,

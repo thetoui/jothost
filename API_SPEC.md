@@ -920,11 +920,102 @@ Issuing and revoking need `ssl.manage`; listing needs only `website.view`.
 # 17. DNS
 
 ```http
-GET /dns/:domain
-POST /dns/:domain/records
-PATCH /dns/records/:id
+GET    /dns
+POST   /dns/install
+PUT    /dns/settings
+
+GET    /dns/zones
+POST   /dns/zones
+GET    /dns/zones/:id
+PATCH  /dns/zones/:id
+DELETE /dns/zones/:id
+
+POST   /dns/zones/:id/records
+PATCH  /dns/records/:id
 DELETE /dns/records/:id
+
+POST   /dns/providers
+DELETE /dns/providers/:id
+POST   /dns/zones/:id/sync
+
+GET    /websites/:id/dns
 ```
+
+**As implemented in Phase 13.** Reading needs `server.view`; every change needs
+`dns.manage`, which migration 0002 seeded with the rest of the permission set.
+
+The routes are addressed by zone id rather than by domain, which is the one
+deviation from the shape sketched above. A zone is not a domain: a reverse zone
+is not a name anybody owns, a zone's name cannot change without it becoming a
+different zone, and two hosts can serve zones of the same name. An id says
+exactly which row is meant.
+
+`GET /dns` reports what the *host* has joined with what the panel recorded: the
+server's version, whether it is running, whether this BIND can sign zones,
+whether `named.conf` actually includes the panel's zones, the addresses it
+answers on, whether the firewall admits port 53, and the panel's zones. Its
+`host_zones` is a separate list — the zones the host is configured for — because
+a name there and not in `zones` is a zone the next reconcile removes.
+
+`POST /dns/zones` takes:
+
+```text
+name            the apex, for a forward zone
+reverse_network given instead of a name, and the zone is named after it
+kind            "master" (default) or "slave"
+masters         required for a secondary: where it transfers from
+nameservers     defaults to the host's configured name servers
+primary_ns      defaults to the first of those
+hostmaster      an email address; the zone file's dotted form is produced
+dnssec          asks named to sign it
+seed_records    defaults true: the apex and www pointing at this host
+```
+
+A zone whose name servers are *inside it* also gets the address records those
+name servers need. That is not decoration: without them `named-checkzone`
+refuses the zone, so the server would not load it at all. When the panel does
+not know this host's address it refuses the zone and says why, rather than
+writing one that cannot be served.
+
+Every change hands the Agent the **complete** set of zones and the Agent makes
+the host match, so a delete is performed by the zone's absence from that set.
+A record change also advances the zone's serial: the file is being rewritten,
+and a secondary compares serials to decide whether to transfer, so a rewritten
+zone at an unchanged serial is a change every secondary in the world ignores.
+
+`GET /dns/zones/:id` carries the zone, its records, and what the running server
+says about it — including **two serials**. With inline signing named keeps its
+own serial on the signed copy and it runs ahead of the file's; they are reported
+separately, and a difference between them is not drift. A signed zone also
+carries the **DS record** its parent's registrar needs: until that is published,
+no resolver knows to check the signatures.
+
+Refused with a **422**: a record type outside the supported nine, an AAAA record
+holding an IPv4 address (or the reverse — both parse and neither resolves), a
+CNAME sharing a name with another record or sitting at the apex, a misspelt CAA
+tag, an SRV record with no port, a TTL under a minute or over a week, SOA timers
+that heal more slowly the more the zone breaks, a reverse zone for a network
+that cannot have one (a /25 needs an RFC 2317 delegation the address's owner has
+to make), a PTR for an address outside its zone, an edit to a secondary zone's
+records, and signing on a server with no `dnssec-policy`.
+
+A duplicate zone is a **409**: two zones of one name is a configuration named
+refuses to load.
+
+Port 53 is **reported against the firewall, not opened** — the boundary Phases
+17 and 7.1 drew, for the reason CLAUDE.md section 19 gives. It is worth
+reporting because of how it fails: the panel's checks pass, `dig` on the server
+answers, and the zone is invisible from the internet with no error anywhere.
+
+`POST /dns/providers` stores a remote provider's API token, encrypted against
+its own row and never returned by any endpoint. `POST /dns/zones/:id/sync`
+pushes a zone there. Deleting records the panel does not have is opt-in
+(`prune`): a provider's zone usually holds records added in their dashboard, and
+removing what the panel does not recognise would break them with no warning.
+
+`dns.zone.create`, `.update`, `.delete`, `dns.record.create`, `.update`,
+`.delete`, `dns.configure`, `dns.install`, `dns.provider.add`, `.remove` and
+`dns.sync` are audited. A provider token never appears in an audit record.
 
 ---
 

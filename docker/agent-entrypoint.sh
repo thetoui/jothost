@@ -306,4 +306,22 @@ if command -v fail2ban-client >/dev/null 2>&1; then
   fi
 fi
 
+# ---------------------------------------------------------------------- DNS
+#
+# The name server is *not* started here, and that is deliberate: named with no
+# zones is a daemon answering for nothing, and on a host where the panel has
+# never been given a zone there is nothing for it to serve. The panel starts it
+# through the service manager when it writes its first zone.
+#
+# What is done here is the part that has to exist before named can run at all:
+# the directory it writes its pid into, which the package does not create, and
+# the zone directory the panel writes into, which has to belong to named because
+# inline signing makes named itself write the signed zone and its journal beside
+# the file the panel wrote.
+if command -v named >/dev/null 2>&1; then
+  mkdir -p /run/named /var/bind/jothost/keys
+  chown -R named:named /run/named /var/bind/jothost
+  chmod 0770 /var/bind/jothost /var/bind/jothost/keys
+fi
+
 exec /usr/local/bin/jothost-agent "$@"

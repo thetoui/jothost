@@ -1260,3 +1260,223 @@ export interface FTPSettingsChange {
   masquerade_address?: string;
   max_clients?: number;
 }
+
+/* -------------------------------------------------------------------- DNS */
+
+/** The record types the panel writes. */
+export type DNSRecordType =
+  | 'A'
+  | 'AAAA'
+  | 'CNAME'
+  | 'MX'
+  | 'TXT'
+  | 'NS'
+  | 'CAA'
+  | 'SRV'
+  | 'PTR';
+
+/** One resource record. */
+export interface DNSRecord {
+  id: string;
+  zone_id: string;
+  /** Relative to the zone, or "@" for the zone itself. */
+  name: string;
+  type: DNSRecordType;
+  /** Zero means the zone's default. */
+  ttl: number;
+  value: string;
+  priority: number;
+  weight: number;
+  port: number;
+  flags: number;
+  tag: string;
+  provider: string;
+  external_id?: string;
+  /**
+   * A record the panel maintains for itself — a subdomain's address record in
+   * its parent's zone. Shown, and not editable by hand.
+   */
+  managed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One zone the panel serves. */
+export interface DNSZone {
+  id: string;
+  server_id: string;
+  website_id?: string;
+  name: string;
+  kind: 'master' | 'slave';
+  reverse_network?: string;
+  primary_ns: string;
+  hostmaster: string;
+  /**
+   * The panel's own serial, written into the zone file.
+   *
+   * Not the one the server is answering with: on a signed zone named keeps a
+   * second serial on the signed copy and it runs ahead. The served one is in
+   * DNSZoneState.
+   */
+  serial: number;
+  refresh: number;
+  retry: number;
+  expire: number;
+  minimum: number;
+  ttl: number;
+  nameservers: string[];
+  dnssec: boolean;
+  allow_transfer: string[];
+  also_notify: string[];
+  masters: string[];
+  created_at: string;
+  updated_at: string;
+  website_domain?: string;
+  record_count: number;
+  records?: DNSRecord[];
+}
+
+/** What the running server says about one zone. */
+export interface DNSZoneState {
+  zone: string;
+  type: string;
+  serial: number;
+  signed_serial: number;
+  secure: boolean;
+  last_loaded: string;
+  last_transfer: string;
+  loaded: boolean;
+  reason: string;
+}
+
+/** One DNSSEC key. */
+export interface DNSKey {
+  id: number;
+  algorithm: string;
+  role: string;
+  published: boolean;
+  key_signing: boolean;
+  zone_signing: boolean;
+  rollover: string;
+}
+
+/** The record a parent zone's registrar needs. */
+export interface DNSDelegationSigner {
+  key_tag: number;
+  algorithm: number;
+  digest_type: number;
+  digest: string;
+  record: string;
+}
+
+/** A zone's signing state. */
+export interface DNSSigningStatus {
+  zone: string;
+  policy: string;
+  keys: DNSKey[] | null;
+  ds: DNSDelegationSigner[] | null;
+  reason: string;
+}
+
+/** A zone with everything the editor shows. */
+export interface DNSZoneDetail {
+  zone: DNSZone;
+  state: DNSZoneState;
+  signing: DNSSigningStatus;
+}
+
+/** The name server's settings. */
+export interface DNSSettings {
+  server_id: string;
+  listen_on: string[];
+  allow_transfer: string[];
+  dnssec_policy: string;
+  default_ns: string[];
+  default_ttl: number;
+  hostmaster: string;
+}
+
+/** A remote DNS provider the panel can publish to. */
+export interface DNSProvider {
+  id: string;
+  server_id: string;
+  kind: string;
+  label: string;
+  account_id?: string;
+  last_sync_at?: string;
+  last_sync_status?: string;
+  last_sync_error?: string;
+  created_at: string;
+}
+
+/** What a push to a provider did. */
+export interface DNSSyncResult {
+  remote_zone_id: string;
+  created: number;
+  updated: number;
+  deleted: number;
+  unchanged: number;
+  skipped?: string[];
+}
+
+/** Everything the DNS page shows. */
+export interface DNSOverview {
+  available: boolean;
+  running: boolean;
+  can_install: boolean;
+  supports_dnssec: boolean;
+  version: string;
+  reason: string;
+  config_path: string;
+  include_path: string;
+  zone_dir: string;
+  /** Whether named.conf is the panel's own, and whether it reads the panel's zones at all. */
+  managed_config: boolean;
+  config_included: boolean;
+  recursion: boolean;
+  listen_on: string[] | null;
+  /** The zones the panel has recorded. */
+  zones: DNSZone[] | null;
+  /**
+   * The zones the *host* is configured to serve.
+   *
+   * Not the same list: a name here and not in `zones` is a zone the next
+   * reconcile removes.
+   */
+  host_zones: string[] | null;
+  firewall_open: boolean;
+  firewall_reason: string;
+  warnings: string[] | null;
+  settings: DNSSettings;
+  providers: DNSProvider[] | null;
+}
+
+/** A record to create or replace. */
+export interface DNSRecordInput {
+  name: string;
+  type: DNSRecordType;
+  ttl?: number;
+  value: string;
+  priority?: number;
+  weight?: number;
+  port?: number;
+  flags?: number;
+  tag?: string;
+}
+
+/** A change to a zone. Omitted fields are left alone. */
+export interface DNSZoneChange {
+  primary_ns?: string;
+  hostmaster?: string;
+  refresh?: number;
+  retry?: number;
+  expire?: number;
+  minimum?: number;
+  ttl?: number;
+  nameservers?: string[];
+  dnssec?: boolean;
+  allow_transfer?: string[];
+  also_notify?: string[];
+  masters?: string[];
+  website_id?: string;
+}

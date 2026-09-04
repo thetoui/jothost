@@ -61,8 +61,16 @@ const (
 	// mean the people who can see "we still allow password logins" are not the
 	// people who can record that it is deliberate.
 	PermSecurityView = "security.view"
-	PermAuditView    = "audit.view"
-	PermUserManage   = "user.manage"
+	// PermNotificationManage is its own, and is granted to admin only.
+	//
+	// A channel holds an SMTP password or a bot token, and changing where the
+	// panel sends its alerts is how somebody quietly stops them arriving.
+	// Unlike monitor.manage, operators do not get it: silencing a false alarm
+	// at three in the morning is their job, and silencing every alert on the
+	// machine is not.
+	PermNotificationManage = "notification.manage"
+	PermAuditView          = "audit.view"
+	PermUserManage         = "user.manage"
 )
 
 // ErrRoleNotFound is returned when a named role does not exist.

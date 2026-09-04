@@ -125,6 +125,7 @@ type Service struct {
 	sites     Sites
 	databases Databases
 	log       *slog.Logger
+	notifier  Notifier
 	serverID  string
 	now       func() time.Time
 }
@@ -139,8 +140,10 @@ type ServiceOptions struct {
 	Sites      Sites
 	Databases  Databases
 	Log        *slog.Logger
-	ServerID   string
-	Now        func() time.Time
+	// Notifier is told when a backup fails. Nil is normal.
+	Notifier Notifier
+	ServerID string
+	Now      func() time.Time
 }
 
 // NewService builds a Service.
@@ -162,6 +165,7 @@ func NewService(opts ServiceOptions) *Service {
 		sites:     opts.Sites,
 		databases: opts.Databases,
 		log:       log,
+		notifier:  opts.Notifier,
 		serverID:  opts.ServerID,
 		now:       now,
 	}

@@ -140,6 +140,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-monitoring
 	$(MAKE) docker-test-backup
 	$(MAKE) docker-test-security
+	$(MAKE) docker-test-notifications
 	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
@@ -250,6 +251,15 @@ docker-test-updates: create-integration-admin ## Run the Phase 21 system update 
 .PHONY: docker-test-monitoring
 docker-test-monitoring: create-integration-admin ## Run the Phase 19 monitoring checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase19_monitoring.sh
+
+.PHONY: docker-test-notifications
+docker-test-notifications: create-integration-admin ## Run the Phase 20 notification checks
+	# A real SMTP server is started for the duration, so email delivery is
+	# proved against something that actually receives a message rather than
+	# against a stub.
+	docker compose -f docker-compose.test.yml up -d mailpit
+	$(COMPOSE) exec -T agent sh /tests/integration/phase20_notifications.sh
+	docker compose -f docker-compose.test.yml stop mailpit
 
 .PHONY: docker-test-security
 docker-test-security: create-integration-admin ## Run the Phase 15 Security Center checks

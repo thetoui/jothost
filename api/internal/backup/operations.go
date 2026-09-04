@@ -17,6 +17,15 @@ import (
 // Restoring, verifying, deleting, and the destinations and schedules that go
 // with them.
 
+// Notifier is told when a backup fails.
+//
+// Only failures. A backup that succeeded is not news, and a channel that
+// reported every nightly success is one whose messages nobody opens — including
+// the night one of them says the opposite.
+type Notifier interface {
+	BackupFailed(ctx context.Context, backupID, subject, reason string)
+}
+
 // RestoreRequest asks for a backup to be put back.
 type RestoreRequest struct {
 	// Confirm must be the backup's own id.
@@ -822,6 +831,7 @@ func (s *Service) backupFinished(ctx context.Context, id string, state jobs.Stat
 			s.log.Error("failed to record a failed backup", logger.KeyError, err.Error())
 		}
 		s.markScheduleOutcome(ctx, id, "failed")
+		s.notifyFailure(ctx, id, reason)
 		return
 	}
 
@@ -862,6 +872,14 @@ func (s *Service) backupFinished(ctx context.Context, id string, state jobs.Stat
 	status := "completed"
 	if !outcome.Verified {
 		status = "failed"
+		// A backup that was written and could not be read back is the failure
+		// this phase exists to catch, so it is notified like any other — the
+		// bytes may be there and the panel has no basis for saying so.
+		detail := outcome.VerifyDetail
+		if detail == "" {
+			detail = "the archive could not be read back from its destination"
+		}
+		s.notifyFailure(ctx, id, detail)
 	}
 	s.markScheduleOutcome(ctx, id, status)
 
@@ -908,4 +926,25 @@ func (s *Service) pruneFor(ctx context.Context, backupID string) {
 			"schedule", schedule.Name, "removed", removed,
 			"retention_days", schedule.RetentionDays, "keep_last", schedule.KeepLast)
 	}
+}
+
+// notifyFailure tells the notifier about a backup that did not work.
+//
+// The backup is read back rather than passed in, because the subject — which
+// site or database this was a copy of — is what somebody reads in the message,
+// and only the row has it after a website has been deleted.
+func (s *Service) notifyFailure(ctx context.Context, id, reason string) {
+	if s.notifier == nil {
+		return
+	}
+	item, err := s.repo.GetBackup(ctx, id)
+	if err != nil {
+		// Notifying with no subject would be worse than not notifying: "a
+		// backup failed" with nothing naming which one is a message that costs
+		// the reader more than it gives them.
+		s.log.Error("could not read a failed backup to notify about it",
+			logger.KeyError, err.Error())
+		return
+	}
+	s.notifier.BackupFailed(ctx, item.ID, item.Subject, reason)
 }

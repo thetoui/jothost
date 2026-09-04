@@ -32,6 +32,7 @@ import (
 	"github.com/jothost/panel/api/internal/middleware"
 	monitoringpkg "github.com/jothost/panel/api/internal/monitoring"
 	nodepkg "github.com/jothost/panel/api/internal/node"
+	notificationspkg "github.com/jothost/panel/api/internal/notifications"
 	phppkg "github.com/jothost/panel/api/internal/php"
 	"github.com/jothost/panel/api/internal/ratelimit"
 	"github.com/jothost/panel/api/internal/rbac"
@@ -65,18 +66,23 @@ type Server struct {
 	dashboard *dashboard.Handler
 	sampler   *metrics.Sampler
 
-	websites  *websites.Handler
-	webserver *webserverpkg.Handler
-	services  *servicespkg.Handler
-	logs      *logspkg.Handler
-	cron      *cronpkg.Handler
-	ssh       *sshpkg.Handler
-	fail2ban  *f2bpkg.Handler
-	ftp       *ftppkg.Handler
-	dns       *dnspkg.Handler
-	updates   *updatespkg.Handler
-	backup    *backuppkg.Handler
-	security  *securitypkg.Handler
+	websites      *websites.Handler
+	webserver     *webserverpkg.Handler
+	services      *servicespkg.Handler
+	logs          *logspkg.Handler
+	cron          *cronpkg.Handler
+	ssh           *sshpkg.Handler
+	fail2ban      *f2bpkg.Handler
+	ftp           *ftppkg.Handler
+	dns           *dnspkg.Handler
+	updates       *updatespkg.Handler
+	backup        *backuppkg.Handler
+	security      *securitypkg.Handler
+	notifications *notificationspkg.Handler
+	// dispatcher delivers what the other phases raised. It is a loop of its
+	// own because the alternative is the monitor waiting on somebody's SMTP
+	// server while alerts queue behind it.
+	dispatcher *notificationspkg.Dispatcher
 	// backupScheduler takes the backups that are due. Like the update
 	// scheduler, it is the panel's own loop rather than a crontab entry:
 	// reading every file of every site needs root, which only the Agent has.
@@ -492,6 +498,31 @@ func New(opts Options) (*Server, error) {
 		Auth: authService,
 	})
 
+	// Notifications. Built before the phases that raise events, so each can be
+	// given the notifier rather than reaching for it later — and every one of
+	// them takes it as an interface it declares itself, so a panel with no
+	// channels configured behaves exactly as it did before this phase.
+	notificationRepo := notificationspkg.NewRepository(opts.Pool)
+	notificationService := notificationspkg.NewService(notificationspkg.ServiceOptions{
+		Repository: notificationRepo,
+		Audit:      auditRecorder,
+		Crypto:     encrypter,
+		Log:        log,
+		ServerID:   opts.LocalServerID,
+		PanelURL:   cfg.PanelURL,
+	})
+	s.notifications = notificationspkg.NewHandler(notificationspkg.HandlerOptions{
+		Service: notificationService,
+		Auth:    authService,
+	})
+
+	// The renewer is built earlier than this, so it is told afterwards. It is
+	// the one source that cannot take the notifier as a constructor argument
+	// without reordering half the wiring.
+	if s.renewer != nil {
+		s.renewer.SetNotifier(notificationService)
+	}
+
 	// The Security Center. It is built after the phases it scans, because it
 	// asks them rather than probing what they manage a second time — a security
 	// page that disagreed with the SSH page would be worse than no security
@@ -504,6 +535,7 @@ func New(opts Options) (*Server, error) {
 		Websites:     securitypkg.NewWebsiteAdapter(websiteRepo),
 		Updates:      securitypkg.NewUpdateAdapter(updateRepo, opts.LocalServerID),
 		Log:          log,
+		Notifier:     notificationService,
 		ServerID:     opts.LocalServerID,
 	})
 	s.security = securitypkg.NewHandler(securitypkg.HandlerOptions{
@@ -525,6 +557,7 @@ func New(opts Options) (*Server, error) {
 		Sites:      backuppkg.NewSiteAdapter(websiteRepo),
 		Databases:  backuppkg.NewDatabaseAdapter(databaseRepo),
 		Log:        log,
+		Notifier:   notificationService,
 		ServerID:   opts.LocalServerID,
 	})
 	s.backup = backuppkg.NewHandler(backuppkg.HandlerOptions{
@@ -553,6 +586,14 @@ func New(opts Options) (*Server, error) {
 	}
 
 	if opts.LocalServerID != "" {
+		s.dispatcher = notificationspkg.NewDispatcher(notificationspkg.DispatcherOptions{
+			Service: notificationService,
+			Repo:    notificationRepo,
+			Log:     log,
+		})
+	}
+
+	if opts.LocalServerID != "" {
 		s.backupScheduler = backuppkg.NewScheduler(backuppkg.SchedulerOptions{
 			Service:  backupService,
 			Repo:     backupRepo,
@@ -567,6 +608,7 @@ func New(opts Options) (*Server, error) {
 			Agent:    agent,
 			Metrics:  metricRepo,
 			Log:      log,
+			Notifier: notificationService,
 			ServerID: opts.LocalServerID,
 			// No finer than the sampler: evaluating the same sample twice can
 			// only reach the same conclusion.
@@ -660,6 +702,7 @@ func (s *Server) routes() http.Handler {
 	s.monitoring.Routes(mux)
 	s.backup.Routes(mux)
 	s.security.Routes(mux)
+	s.notifications.Routes(mux)
 	s.firewall.Routes(mux)
 	s.jobs.Routes(mux)
 	s.php.Routes(mux)
@@ -813,6 +856,15 @@ func (s *Server) Run(ctx context.Context) error {
 	// it starts.
 	if s.monitor != nil {
 		go s.monitor.Run(ctx)
+	}
+
+	// A notification nobody delivers is a row in a table. This is the loop that
+	// turns what the rest of the panel found out into something somebody hears
+	// about, and it logs when it starts for the same reason the monitor does:
+	// a dispatcher that has stopped looks exactly like a machine with nothing
+	// wrong.
+	if s.dispatcher != nil {
+		go s.dispatcher.Run(ctx)
 	}
 
 	// A schedule nobody runs is a backup page that lists intentions. This loop

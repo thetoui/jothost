@@ -187,6 +187,28 @@ services:
     networks:
       - jothost_default
 
+  # A real SMTP server that keeps what it receives, for the Phase 20 checks.
+  #
+  # It lives here rather than in the dev stack for the same reason MinIO does:
+  # it stands in for somebody's mail relay, and a dev stack that ran one
+  # permanently would be a container nobody asked for. `make
+  # docker-test-notifications` starts it, the checks drive it, and it goes away.
+  #
+  # It is on the dev stack's network because the API is what sends mail, and the
+  # API runs there.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    networks:
+      - jothost_default
+
 volumes:
   go-build-cache:
   go-mod-cache:

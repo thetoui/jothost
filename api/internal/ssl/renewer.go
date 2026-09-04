@@ -35,6 +35,15 @@ const (
 	SweepInterval = 12 * time.Hour
 )
 
+// Notifier is told about a certificate running out of time.
+//
+// The renewer is where this belongs rather than a loop of its own: it already
+// sweeps every certificate on a cadence and already knows which ones it could
+// not renew, which is exactly the set worth telling somebody about.
+type Notifier interface {
+	SSLExpiring(ctx context.Context, domain string, daysRemaining int)
+}
+
 // Renewer keeps certificates from expiring.
 //
 // It is the difference between a panel that issues certificates and one that
@@ -45,6 +54,8 @@ type Renewer struct {
 	websites *websites.Repository
 	service  *Service
 	log      *slog.Logger
+	notifier Notifier
+	now      func() time.Time
 }
 
 // NewRenewer builds a Renewer.
@@ -52,7 +63,10 @@ func NewRenewer(repo *Repository, sites *websites.Repository, service *Service, 
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Renewer{repo: repo, websites: sites, service: service, log: log}
+	return &Renewer{
+		repo: repo, websites: sites, service: service, log: log,
+		now: time.Now,
+	}
 }
 
 // Run sweeps at startup and then on an interval.
@@ -86,6 +100,13 @@ func (r *Renewer) Sweep(ctx context.Context) int {
 	} else if moved > 0 {
 		r.log.Info("certificate statuses updated", "count", moved)
 	}
+
+	// Whoever is going to be told about a certificate running out of time is
+	// told here, before anything is renewed. A renewal that is about to succeed
+	// costs one notification that says thirty days remain; a renewal that keeps
+	// failing is the case this exists for, and it would otherwise be silent
+	// right up to the morning every visitor sees a warning.
+	r.warnAboutExpiry(ctx)
 
 	due, err := r.repo.DueForRenewal(ctx, RenewWithin, RetryAfter)
 	if err != nil {
@@ -263,4 +284,47 @@ func issuedFrom(result map[string]any) (IssuedParams, bool) {
 func stringField(result map[string]any, key string) string {
 	value, _ := result[key].(string)
 	return value
+}
+
+// SetNotifier attaches a notifier after construction.
+//
+// After, rather than as a constructor argument, because the renewer is built
+// before the notification service in the server's wiring and reordering them
+// would mean the notification service could not depend on anything the renewer
+// needs. It is called once, at startup, before Run.
+func (r *Renewer) SetNotifier(notifier Notifier) { r.notifier = notifier }
+
+// warnAboutExpiry tells the notifier about certificates running out of time.
+//
+// Every certificate is offered, on every sweep, and the notifier's own dedupe
+// keys decide what is actually sent — one message per certificate per
+// threshold, rather than one a day for a month. Deciding that here instead
+// would mean two places knowing the thresholds.
+func (r *Renewer) warnAboutExpiry(ctx context.Context) {
+	if r.notifier == nil {
+		return
+	}
+
+	certificates, err := r.repo.List(ctx)
+	if err != nil {
+		r.log.Error("failed to read certificates to warn about expiry",
+			logger.KeyError, err.Error())
+		return
+	}
+
+	now := r.now()
+	for _, certificate := range certificates {
+		days := certificate.DaysRemaining(now)
+		if days == nil {
+			continue
+		}
+		domain := certificate.PrimaryDomain
+		if domain == "" && len(certificate.Domains) > 0 {
+			domain = certificate.Domains[0]
+		}
+		if domain == "" {
+			continue
+		}
+		r.notifier.SSLExpiring(ctx, domain, *days)
+	}
 }

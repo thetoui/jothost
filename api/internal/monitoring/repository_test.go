@@ -34,14 +34,37 @@ func setup(t *testing.T) (*Repository, string, context.Context) {
 
 func f64(v float64) *float64 { return &v }
 
+// makeRule creates the rule an alert belongs to.
+//
+// Every alert the monitor opens has a rule, and since migration 0020 an alert's
+// identity is that rule plus its target — so a test that opened an alert
+// belonging to nothing would be testing a shape the panel never produces.
+func makeRule(t *testing.T, repo *Repository, ctx context.Context,
+	serverID, metric, target, severity string,
+) Rule {
+	t.Helper()
+
+	rule, err := repo.CreateRule(ctx, Rule{
+		ServerID: serverID, Name: "test " + metric + " " + target + " " + severity,
+		Metric: metric, Target: target, Comparison: validate.ComparisonAbove,
+		Threshold: 80, ForSeconds: 0, Severity: severity, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create rule: %v", err)
+	}
+	return rule
+}
+
 func TestOpeningTheSameConditionTwiceRefreshesOneAlert(t *testing.T) {
 	// Without this a flapping disk would open a new alert every evaluation and
 	// somebody would wake to four hundred rows describing one filesystem.
 	repo, serverID, ctx := setup(t)
 	opened := time.Now().UTC().Truncate(time.Second)
+	rule := makeRule(t, repo, ctx, serverID, validate.MetricDisk, "/var",
+		validate.SeverityWarning)
 
 	first, err := repo.OpenAlert(ctx, Alert{
-		ServerID: serverID, Metric: validate.MetricDisk, Target: "/var",
+		ServerID: serverID, RuleID: &rule.ID, Metric: validate.MetricDisk, Target: "/var",
 		Severity: validate.SeverityWarning, Message: "Disk /var is 91% full",
 		Value: f64(91), Threshold: f64(80), OpenedAt: opened,
 	})
@@ -50,7 +73,7 @@ func TestOpeningTheSameConditionTwiceRefreshesOneAlert(t *testing.T) {
 	}
 
 	second, err := repo.OpenAlert(ctx, Alert{
-		ServerID: serverID, Metric: validate.MetricDisk, Target: "/var",
+		ServerID: serverID, RuleID: &rule.ID, Metric: validate.MetricDisk, Target: "/var",
 		Severity: validate.SeverityWarning, Message: "Disk /var is 96% full",
 		Value: f64(96), Threshold: f64(80), OpenedAt: opened.Add(time.Minute),
 	})
@@ -90,9 +113,11 @@ func TestTwoSeveritiesOfTheSameConditionAreTwoAlerts(t *testing.T) {
 	now := time.Now().UTC()
 
 	for _, severity := range []string{validate.SeverityWarning, validate.SeverityCritical} {
+		rule := makeRule(t, repo, ctx, serverID, validate.MetricDisk, "/var", severity)
 		if _, err := repo.OpenAlert(ctx, Alert{
-			ServerID: serverID, Metric: validate.MetricDisk, Target: "/var",
-			Severity: severity, Message: "Disk /var", Value: f64(95), OpenedAt: now,
+			ServerID: serverID, RuleID: &rule.ID, Metric: validate.MetricDisk,
+			Target: "/var", Severity: severity, Message: "Disk /var",
+			Value: f64(95), OpenedAt: now,
 		}); err != nil {
 			t.Fatalf("OpenAlert(%s): %v", severity, err)
 		}
@@ -110,17 +135,19 @@ func TestTwoSeveritiesOfTheSameConditionAreTwoAlerts(t *testing.T) {
 func TestResolvingClosesTheAlertAndLetsANewOneOpenLater(t *testing.T) {
 	repo, serverID, ctx := setup(t)
 	now := time.Now().UTC()
+	rule := makeRule(t, repo, ctx, serverID, validate.MetricMemory, "",
+		validate.SeverityWarning)
 
 	if _, err := repo.OpenAlert(ctx, Alert{
-		ServerID: serverID, Metric: validate.MetricMemory,
+		ServerID: serverID, RuleID: &rule.ID, Metric: validate.MetricMemory,
 		Severity: validate.SeverityWarning, Message: "Memory high",
 		Value: f64(91), OpenedAt: now,
 	}); err != nil {
 		t.Fatalf("OpenAlert: %v", err)
 	}
 
-	resolved, found, err := repo.ResolveAlert(ctx, serverID, validate.MetricMemory, "",
-		validate.SeverityWarning, now.Add(time.Hour))
+	resolved, found, err := repo.ResolveAlert(ctx, serverID, rule.ID, "",
+		now.Add(time.Hour))
 	if err != nil {
 		t.Fatalf("ResolveAlert: %v", err)
 	}
@@ -133,8 +160,8 @@ func TestResolvingClosesTheAlertAndLetsANewOneOpenLater(t *testing.T) {
 
 	// Resolving again finds nothing, which is what an already-clear condition
 	// looks like on every subsequent evaluation.
-	if _, found, err := repo.ResolveAlert(ctx, serverID, validate.MetricMemory, "",
-		validate.SeverityWarning, now.Add(2*time.Hour)); err != nil {
+	if _, found, err := repo.ResolveAlert(ctx, serverID, rule.ID, "",
+		now.Add(2*time.Hour)); err != nil {
 		t.Fatalf("second ResolveAlert: %v", err)
 	} else if found {
 		t.Fatal("a resolved alert was resolved twice")
@@ -143,7 +170,7 @@ func TestResolvingClosesTheAlertAndLetsANewOneOpenLater(t *testing.T) {
 	// And the condition returning opens a *new* incident rather than reviving
 	// the old one, because they are different incidents.
 	reopened, err := repo.OpenAlert(ctx, Alert{
-		ServerID: serverID, Metric: validate.MetricMemory,
+		ServerID: serverID, RuleID: &rule.ID, Metric: validate.MetricMemory,
 		Severity: validate.SeverityWarning, Message: "Memory high again",
 		Value: f64(92), OpenedAt: now.Add(3 * time.Hour),
 	})
@@ -160,9 +187,11 @@ func TestAcknowledgingDoesNotResolve(t *testing.T) {
 	// one day say a full disk is fine.
 	repo, serverID, ctx := setup(t)
 	now := time.Now().UTC()
+	rule := makeRule(t, repo, ctx, serverID, validate.MetricDisk, "/var",
+		validate.SeverityCritical)
 
 	opened, err := repo.OpenAlert(ctx, Alert{
-		ServerID: serverID, Metric: validate.MetricDisk, Target: "/",
+		ServerID: serverID, RuleID: &rule.ID, Metric: validate.MetricDisk, Target: "/",
 		Severity: validate.SeverityCritical, Message: "Disk / is 99% full",
 		Value: f64(99), OpenedAt: now,
 	})
@@ -361,9 +390,11 @@ func TestDefaultsAreWrittenOnceAndNotPutBack(t *testing.T) {
 func TestPruningKeepsOpenAlertsAndCurrentStates(t *testing.T) {
 	repo, serverID, ctx := setup(t)
 	old := time.Now().UTC().Add(-200 * 24 * time.Hour)
+	rule := makeRule(t, repo, ctx, serverID, validate.MetricCPU, "",
+		validate.SeverityWarning)
 
 	if _, err := repo.OpenAlert(ctx, Alert{
-		ServerID: serverID, Metric: validate.MetricCPU,
+		ServerID: serverID, RuleID: &rule.ID, Metric: validate.MetricCPU,
 		Severity: validate.SeverityWarning, Message: "CPU", Value: f64(99), OpenedAt: old,
 	}); err != nil {
 		t.Fatalf("OpenAlert: %v", err)
@@ -382,5 +413,109 @@ func TestPruningKeepsOpenAlertsAndCurrentStates(t *testing.T) {
 		t.Fatalf("PruneServiceStates: %v", err)
 	} else if removed != 0 {
 		t.Fatalf("the current service state was pruned")
+	}
+}
+
+func TestTwoRulesWatchingOneTargetDoNotFightOverItsAlert(t *testing.T) {
+	// The bug migration 0020 exists for, and it is worth a test of its own
+	// because it was invisible until Phase 20 turned each turn of the fight
+	// into an email.
+	//
+	// A general "any disk above 85%" and a specific "this one above 60%" may
+	// both watch /var at the same severity — the rules index permits it,
+	// because "" and "/var" are different targets. Under the older alert key
+	// they shared one row: the rule that was not breaching resolved the alert
+	// the other had just opened, and the next evaluation reversed it.
+	repo, serverID, ctx := setup(t)
+	now := time.Now().UTC()
+
+	general := makeRule(t, repo, ctx, serverID, validate.MetricDisk, "",
+		validate.SeverityCritical)
+	specific := makeRule(t, repo, ctx, serverID, validate.MetricDisk, "/var",
+		validate.SeverityCritical)
+
+	// The specific rule breaches and opens an alert about /var.
+	opened, err := repo.OpenAlert(ctx, Alert{
+		ServerID: serverID, RuleID: &specific.ID, Metric: validate.MetricDisk,
+		Target: "/var", Severity: validate.SeverityCritical,
+		Message: "Disk /var is 70% full", Value: f64(70), OpenedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("OpenAlert: %v", err)
+	}
+
+	// The general rule is not breaching, so the monitor resolves *its* alert
+	// for the same target. It must not touch the other rule's.
+	if _, found, err := repo.ResolveAlert(ctx, serverID, general.ID, "/var",
+		now.Add(time.Minute)); err != nil {
+		t.Fatalf("ResolveAlert: %v", err)
+	} else if found {
+		t.Fatal("a rule resolved an alert it did not raise")
+	}
+
+	still, err := repo.ListAlerts(ctx, serverID, StatusOpen, 10)
+	if err != nil {
+		t.Fatalf("ListAlerts: %v", err)
+	}
+	if len(still) != 1 || still[0].ID != opened.ID {
+		t.Fatalf("open alerts = %+v, want the one the specific rule raised", still)
+	}
+
+	// And both rules may hold an alert about the same target at once, which is
+	// what the new key permits and the old one could not represent.
+	if _, err := repo.OpenAlert(ctx, Alert{
+		ServerID: serverID, RuleID: &general.ID, Metric: validate.MetricDisk,
+		Target: "/var", Severity: validate.SeverityCritical,
+		Message: "Disk /var is 90% full", Value: f64(90), OpenedAt: now,
+	}); err != nil {
+		t.Fatalf("the second rule could not open its own alert: %v", err)
+	}
+
+	both, err := repo.ListAlerts(ctx, serverID, StatusOpen, 10)
+	if err != nil {
+		t.Fatalf("ListAlerts: %v", err)
+	}
+	if len(both) != 2 {
+		t.Fatalf("open alerts = %d, want one per rule", len(both))
+	}
+}
+
+func TestDeletingARuleResolvesItsOpenAlerts(t *testing.T) {
+	// Nothing else ever could: the monitor resolves an alert by evaluating the
+	// rule that raised it, and that rule is gone. An alert left open here would
+	// stay open forever about a condition nobody is watching.
+	repo, serverID, ctx := setup(t)
+	now := time.Now().UTC()
+	rule := makeRule(t, repo, ctx, serverID, validate.MetricDisk, "/var",
+		validate.SeverityCritical)
+
+	if _, err := repo.OpenAlert(ctx, Alert{
+		ServerID: serverID, RuleID: &rule.ID, Metric: validate.MetricDisk,
+		Target: "/var", Severity: validate.SeverityCritical,
+		Message: "Disk /var is 96% full", Value: f64(96), OpenedAt: now,
+	}); err != nil {
+		t.Fatalf("OpenAlert: %v", err)
+	}
+
+	if err := repo.DeleteRule(ctx, rule.ID); err != nil {
+		t.Fatalf("DeleteRule: %v", err)
+	}
+
+	open, err := repo.ListAlerts(ctx, serverID, StatusOpen, 10)
+	if err != nil {
+		t.Fatalf("ListAlerts: %v", err)
+	}
+	if len(open) != 0 {
+		t.Fatalf("open alerts = %d, want none after the rule was deleted", len(open))
+	}
+
+	// The alert itself survives: deleting a rule must not erase the record of
+	// what it caught.
+	all, err := repo.ListAlerts(ctx, serverID, "", 10)
+	if err != nil {
+		t.Fatalf("ListAlerts: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("alerts = %d, want the resolved one kept", len(all))
 	}
 }

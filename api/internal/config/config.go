@@ -38,6 +38,15 @@ type Config struct {
 	DBMaxConns     int32
 	ConnectTimeout time.Duration
 
+	// PanelURL is where this panel is reachable, used to turn a notification
+	// into something somebody can click.
+	//
+	// Empty leaves the link out rather than sending a relative path nobody can
+	// follow — a notification that says something is wrong without saying where
+	// to look costs the reader more than it gives them, and a broken link costs
+	// more still.
+	PanelURL string
+
 	// MigrationsDir holds the SQL migration files.
 	MigrationsDir string
 	// AutoMigrate applies pending migrations at startup.
@@ -105,6 +114,7 @@ func Load() (Config, error) {
 		Environment:     environment,
 		HTTPAddr:        getString("API_HTTP_ADDR", ":8080"),
 		LogLevel:        getString("LOG_LEVEL", "info"),
+		PanelURL:        strings.TrimRight(getString("PANEL_URL", ""), "/"),
 		ShutdownTimeout: getDuration("API_SHUTDOWN_TIMEOUT", 15*time.Second),
 		ReadTimeout:     getDuration("API_READ_TIMEOUT", 15*time.Second),
 		WriteTimeout:    getDuration("API_WRITE_TIMEOUT", 30*time.Second),

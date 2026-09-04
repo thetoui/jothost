@@ -1980,3 +1980,124 @@ export interface SecurityOverview {
   scanners: ScannerOutcome[] | null;
   severities: FindingSeverity[];
 }
+
+// --------------------------------------------------------- notifications
+
+/** Where notifications go. */
+export type ChannelKind = 'email' | 'telegram' | 'line';
+
+/** How bad something has to be before a channel hears about it. */
+export type NotifySeverity = 'critical' | 'high' | 'warning' | 'info';
+
+/** What the panel raises. */
+export type NotificationEventKind =
+  | 'alert.opened'
+  | 'alert.resolved'
+  | 'backup.failed'
+  | 'ssl.expiring'
+  | 'security.finding'
+  | 'test';
+
+/**
+ * A channel. It never carries the credential, only what the panel knows about
+ * whether it works.
+ */
+export interface NotificationChannel {
+  id: string;
+  server_id: string;
+  name: string;
+  kind: ChannelKind;
+  config: Record<string, unknown>;
+  enabled: boolean;
+  min_severity: NotifySeverity;
+  /** Empty means every kind. */
+  kinds: string[] | null;
+  /** Null means the panel has never got a message through this. */
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_error: string | null;
+  /** Consecutive failures since the last success. */
+  failure_streak: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Something that happened worth telling somebody about. */
+export interface NotificationEvent {
+  id: string;
+  server_id: string;
+  source: string;
+  kind: NotificationEventKind;
+  severity: NotifySeverity;
+  title: string;
+  body: string;
+  link?: string;
+  dedupe_key: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+/** One attempt to get one event to one channel. */
+export interface NotificationDelivery {
+  id: string;
+  event_id: string;
+  channel_id: string;
+  status: 'pending' | 'sent' | 'failed';
+  attempts: number;
+  next_attempt_at: string;
+  last_error: string | null;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+  channel_name?: string;
+  channel_kind?: ChannelKind;
+  event_title?: string;
+  event_kind?: NotificationEventKind;
+  severity?: NotifySeverity;
+}
+
+/** What has been getting through. */
+export interface DeliveryStats {
+  sent: number;
+  failed: number;
+  pending: number;
+  /**
+   * Channels currently failing. The number the page leads with, because it is
+   * the only way the panel can say that notifications are not arriving.
+   */
+  broken_channels: number;
+  /** Channels nobody has ever got a message through. */
+  untested_channels: number;
+}
+
+/** Everything the notifications page shows. */
+export interface NotificationOverview {
+  channels: NotificationChannel[] | null;
+  deliveries: NotificationDelivery[] | null;
+  events: NotificationEvent[] | null;
+  stats: DeliveryStats;
+  channel_kinds: ChannelKind[];
+  event_kinds: NotificationEventKind[];
+  severities: NotifySeverity[];
+}
+
+/** A channel to create or change. */
+export interface NotificationChannelInput {
+  name: string;
+  kind: ChannelKind;
+  host?: string;
+  port?: number;
+  security?: string;
+  username?: string;
+  password?: string;
+  from?: string;
+  to?: string[];
+  /** Accepts a plain-SMTP relay that is not on this machine. */
+  allow_insecure?: boolean;
+  token?: string;
+  chat_id?: string;
+  recipient?: string;
+  min_severity?: NotifySeverity;
+  kinds?: string[];
+  enabled?: boolean;
+}

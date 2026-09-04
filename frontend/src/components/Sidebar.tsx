@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   Activity,
+  BellRing,
   Clock,
   Code2,
   Database,
@@ -85,6 +86,7 @@ const navGroups: NavGroup[] = [
       { label: 'Server', to: '/server', icon: Server, enabled: false },
       { label: 'Monitoring', to: '/monitoring', icon: Activity, enabled: true },
       { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: true },
+      { label: 'Notifications', to: '/notifications', icon: BellRing, enabled: true },
       { label: 'Account security', to: '/security', icon: UserCog, enabled: true },
     ],
   },

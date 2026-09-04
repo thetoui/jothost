@@ -41,6 +41,15 @@ var (
 	ErrNotAccepted = errors.New("only an accepted finding can be reopened")
 )
 
+// Notifier is told about a finding worth interrupting somebody for.
+//
+// Declared here rather than imported, for the same reason the monitor declares
+// its own: a nil notifier leaves this phase behaving exactly as it did before
+// Phase 20.
+type Notifier interface {
+	SecurityFinding(ctx context.Context, findingID, severity, title, description string)
+}
+
 // Actor is who asked, for the audit trail.
 type Actor struct {
 	UserID    string
@@ -97,6 +106,7 @@ type Service struct {
 	websites     Websites
 	updates      Updates
 	log          *slog.Logger
+	notifier     Notifier
 	serverID     string
 	now          func() time.Time
 
@@ -115,8 +125,11 @@ type ServiceOptions struct {
 	Websites     Websites
 	Updates      Updates
 	Log          *slog.Logger
-	ServerID     string
-	Now          func() time.Time
+	// Notifier is told about findings worth interrupting somebody for. Nil is
+	// normal: a panel with no channels behaves exactly as it did before.
+	Notifier Notifier
+	ServerID string
+	Now      func() time.Time
 }
 
 // NewService builds a Service.
@@ -137,6 +150,7 @@ func NewService(opts ServiceOptions) *Service {
 		websites:     opts.Websites,
 		updates:      opts.Updates,
 		log:          log,
+		notifier:     opts.Notifier,
 		serverID:     opts.ServerID,
 		now:          now,
 	}
@@ -263,10 +277,21 @@ func (s *Service) Scan(ctx context.Context, requestID string, actor Actor) (Scan
 					"scanner", result.Scanner, logger.KeyError, err.Error())
 				continue
 			}
-			if _, err := s.repo.Record(ctx, s.serverID, observation, now); err != nil {
+			finding, err := s.repo.Record(ctx, s.serverID, observation, now)
+			if err != nil {
 				return Scan{}, err
 			}
 			seen = append(seen, observation.Fingerprint)
+
+			// Offered on every scan, and the notifier's dedupe key — the
+			// finding's id — is what makes that one message rather than one a
+			// scan. An accepted finding is skipped: somebody has already
+			// looked at it and written down why, and telling them again is how
+			// a channel gets muted.
+			if s.notifier != nil && finding.Status == StatusOpen {
+				s.notifier.SecurityFinding(ctx, finding.ID, finding.Severity,
+					finding.Title, finding.Description)
+			}
 		}
 
 		count, err := s.repo.ResolveMissing(ctx, s.serverID, result.Scanner, seen, now)

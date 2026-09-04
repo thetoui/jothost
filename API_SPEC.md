@@ -1890,6 +1890,100 @@ because a day's average of 40% hides an hour at 99%, and `sample_count`, because
 a bucket built from two readings is not the same evidence as one built from a
 hundred.
 
+# 29. Notifications
+
+```http
+GET    /notifications
+GET    /notifications/deliveries
+
+GET    /notification-channels
+POST   /notification-channels
+PATCH  /notification-channels/:id
+DELETE /notification-channels/:id
+POST   /notification-channels/:id/test
+```
+
+**As implemented in Phase 20.** Notifications are not in this specification or
+in DATABASE.md; they are in TASKS.md and in PRD.md's alert list, so everything
+here was designed rather than specified. docs/PHASE20.md records why.
+
+Everything needs `notification.manage`, which migration 0019 adds and grants to
+**admin only**. It is not `server.manage`: a channel holds an SMTP password or a
+bot token, and changing where the panel sends its alerts is how somebody quietly
+stops them arriving. Unlike `monitor.manage`, operators do not get it —
+silencing a false alarm at three in the morning is their job, and silencing
+every alert on the machine is not.
+
+## What this endpoint set is really for
+
+`GET /notifications/deliveries` is the most important read in the phase, because
+of the one failure a notification system cannot report on its own terms: **when
+delivery is broken, the message saying so does not arrive.** The operator's
+experience is silence, which is exactly what a healthy machine produces. So
+every attempt is a row, and this is the only place a failed notification is
+visible.
+
+`GET /notifications` carries the channels, the recent deliveries, the recent
+events and the counts — including `broken_channels` and `untested_channels`,
+which the page leads with. A channel that has **never** succeeded is reported as
+untested rather than as working: "we have never got a message through this" and
+"this is fine" are different facts.
+
+## Channels
+
+Three kinds: `email`, `telegram`, `line`. **There is deliberately no webhook
+kind and no free-form URL anywhere in this phase.** A notification channel that
+accepts a URL is a request forger sitting inside the panel, pointed at whatever
+an admin account can be talked into typing — from a machine that sits on the
+private network beside every site it hosts. Telegram and LINE each publish one
+API host and those are compiled in. Email is the exception that proves the rule:
+its host is the operator's own mail server.
+
+A channel takes a **severity floor** (`critical`, `high`, `warning`, `info`)
+rather than a set of checkboxes, because the question an operator has is "how
+bad does it have to be before you wake me" — and checkboxes invite the answer
+"all of them" followed by a filter rule in their mail client. An empty `kinds`
+list means every kind, which is the right default: a channel that silently
+excluded a category would be one somebody believes is watching something it is
+not.
+
+A channel **never returns its credential**. The serialised struct has no field
+for one.
+
+`POST /notification-channels/:id/test` sends a real message now, while somebody
+is watching. It is the same idea as Phase 14's destination check and exists for
+the same reason: a channel nobody has ever delivered through looks like
+protection and is not. It answers **200 with the channel** whether or not the
+message got through — "we could not reach it, and here is what the server
+said" is the answer, and it belongs on the channel where the page shows it.
+
+Refused with a **422**: a channel kind this panel does not send through; plain
+SMTP to a server that is not on this machine without an explicit
+`allow_insecure`; a **password over an unencrypted connection under any
+circumstances**, which is a different and indefensible concession; an address or
+subject carrying a line break, which is how a message gains a header its author
+did not write; and a severity or event kind outside the closed sets, so a typo
+is an error rather than a filter that silently matches nothing.
+
+`notification.channel.create`, `.update`, `.delete` and `.test` are audited: the
+audit trail is the only record of a channel being changed that does not depend
+on the channel itself.
+
+## What is sent
+
+Five kinds — `alert.opened`, `alert.resolved`, `backup.failed`,
+`ssl.expiring`, `security.finding` — and the test of what belongs is not "is it
+interesting" but "would somebody want to be interrupted by it". A successful
+backup is not news. A channel that reported those is a channel somebody mutes,
+and a muted channel does not deliver the one message that mattered.
+
+**One event per thing that happened**, enforced by a unique index on a dedupe
+key. A disk sitting above its threshold for a week is one email or ten thousand,
+and which one it is depends on a constraint rather than on every caller
+remembering.
+
+---
+
 # 28. Jobs
 
 ```http

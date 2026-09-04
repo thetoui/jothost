@@ -52,18 +52,18 @@ Done, in the order they were built:
 19  Monitoring
 14  Backup
 15  Security Center
+20  Notifications
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  20   Notifications          — delivers alerts raised by 19, 14, 15, 6, 12
- 2.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
- 3.  27   Git & Webhook Actions  — deployment logs need 11
- 4.  22   Multi-Tenant           — quota dimensions must exist first, mail included
- 5.  23   Production Installer   — installs everything, so everything must exist
- 6.  24   Production Hardening   — tests the finished system
- 7.  25   Release                — last by definition
+ 1.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
+ 2.  27   Git & Webhook Actions  — deployment logs need 11
+ 3.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+ 4.  23   Production Installer   — installs everything, so everything must exist
+ 5.  24   Production Hardening   — tests the finished system
+ 6.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -1135,19 +1135,53 @@ Additionally required by the above:
 
 # PHASE 20 — Notifications
 
+**Status: COMPLETE** — see [docs/PHASE20.md](docs/PHASE20.md) for scope,
+decisions, the Phase 19 bug this phase uncovered, and known limitations.
+
 **Build order: 13 of 17.** Depends on 19, 14, 15, 6 and 12 — every alert type
 listed below is raised by one of them, and built earlier this phase would ship
 switches with nothing behind them.
 
-- [ ] Email
-- [ ] LINE
-- [ ] Telegram
-- [ ] Notification settings
-- [ ] SSL alerts
-- [ ] Backup alerts
-- [ ] Disk alerts
-- [ ] Service alerts
-- [ ] Security alerts
+- [x] Email — SMTP on the standard library, with STARTTLS that refuses to
+  downgrade silently: a server not offering it fails the send rather than
+  continuing in the clear, because the operator asked for encryption and
+  believes they have it
+- [x] LINE — the Messaging API, at its published host
+- [x] Telegram — the Bot API, at its published host, sent as plain text with no
+  parse mode: Telegram's Markdown rejects an unbalanced character, and a
+  filename with an underscore would be enough to make an alert fail to send
+- [x] Notification settings — a **severity floor** per channel rather than a set
+  of checkboxes, because the question an operator has is "how bad does it have
+  to be before you wake me"
+- [x] SSL alerts — three thresholds on the way to expiry rather than a daily
+  reminder for a month
+- [x] Backup alerts — failures only, and graded critical: a failed backup is not
+  dangerous today, it is dangerous on the day somebody needs it
+- [x] Disk alerts — as `alert.opened` from Phase 19's monitor, which is where
+  that threshold lives
+- [x] Service alerts — likewise
+- [x] Security alerts — critical and high findings only, and never an accepted
+  one: somebody has already looked at it and written down why
+
+Additionally required by the above:
+
+- [x] **A notification system cannot report its own failure through itself.**
+  Every attempt is a row, a channel counts its consecutive failures, and the
+  page leads with both — because when delivery breaks, the message saying so
+  does not arrive and the operator's experience is silence
+- [x] A channel that has never succeeded shown as **untested**, not as working
+- [x] A test send that delivers a real message now, while somebody is watching
+- [x] One event per thing that happened, enforced by a unique index rather than
+  by every caller remembering
+- [x] An outbox, so the monitor never waits on a mail relay and a process that
+  died mid-send loses nothing
+- [x] Retries that back off and then **give up**, with permanent failures not
+  retried at all: a queue that never drains delays every later notification
+- [x] **No webhook channel and no free-form URL anywhere**, because one would be
+  a request forger sitting inside the panel
+- [x] Migration 0020, fixing a Phase 19 bug this phase made visible: two rules
+  watching one target shared an alert row and resolved each other's alert on
+  every evaluation, which became an email a minute
 
 ---
 

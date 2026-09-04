@@ -16,6 +16,7 @@ export const Permission = {
   FirewallManage: 'firewall.manage',
   BackupManage: 'backup.manage',
   SecurityView: 'security.view',
+  NotificationManage: 'notification.manage',
   FileRead: 'file.read',
   FileWrite: 'file.write',
   CronManage: 'cron.manage',

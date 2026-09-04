@@ -11,6 +11,18 @@ import (
 	"github.com/jothost/panel/shared/validate"
 )
 
+// Notifier is told when an alert starts or clears.
+//
+// An interface declared here rather than an import of the notifications
+// package, so the monitor does not depend on it: a panel with no channels
+// configured must behave exactly as it did before Phase 20 existed, and a nil
+// notifier is how that is expressed.
+type Notifier interface {
+	AlertOpened(ctx context.Context, alertID, severity, message, target string)
+	AlertResolved(ctx context.Context, alertID, severity, message, target string,
+		openFor time.Duration)
+}
+
 // Monitor takes readings on a cadence and drives the alert engine.
 //
 // It runs as one goroutine tied to the API's lifecycle, beside the metric
@@ -19,10 +31,11 @@ import (
 // apart is what lets an operator change a threshold without touching the thing
 // that collects the data, and what stops a slow evaluation delaying a sample.
 type Monitor struct {
-	repo    *Repository
-	agent   *agentclient.Client
-	log     *slog.Logger
-	metrics MetricSource
+	repo     *Repository
+	agent    *agentclient.Client
+	log      *slog.Logger
+	metrics  MetricSource
+	notifier Notifier
 
 	serverID string
 	interval time.Duration
@@ -56,6 +69,9 @@ type MonitorOptions struct {
 	Agent   *agentclient.Client
 	Metrics MetricSource
 	Log     *slog.Logger
+	// Notifier is told when an alert starts or clears. Nil is normal: a panel
+	// with no channels configured behaves exactly as it did before Phase 20.
+	Notifier Notifier
 
 	ServerID string
 	// Interval is how often readings are taken. It should be no finer than the
@@ -89,6 +105,7 @@ func NewMonitor(opts MonitorOptions) *Monitor {
 		agent:      opts.Agent,
 		log:        log,
 		metrics:    opts.Metrics,
+		notifier:   opts.Notifier,
 		serverID:   opts.ServerID,
 		interval:   opts.Interval,
 		retention:  opts.Retention,
@@ -270,14 +287,23 @@ func (m *Monitor) open(ctx context.Context, rule Rule, reading Reading, now time
 			"severity", opened.Severity, "metric", opened.Metric,
 			"target", opened.Target, "message", opened.Message)
 	}
+
+	// Raised on every evaluation, not only the first. The notification's own
+	// dedupe key is the alert's id, so a disk that has been full for a week
+	// produces one message — and doing it this way means a panel that could not
+	// reach its database on the minute the alert opened still notifies when it
+	// comes back, rather than having missed its one chance.
+	if m.notifier != nil {
+		m.notifier.AlertOpened(ctx, opened.ID, opened.Severity,
+			opened.Message, opened.Target)
+	}
 }
 
 // resolve closes an open alert for a condition that has cleared.
 func (m *Monitor) resolve(ctx context.Context, rule Rule, target string,
 	now time.Time, reason string,
 ) {
-	resolved, found, err := m.repo.ResolveAlert(ctx, m.serverID, rule.Metric,
-		target, rule.Severity, now)
+	resolved, found, err := m.repo.ResolveAlert(ctx, m.serverID, rule.ID, target, now)
 	if err != nil {
 		m.log.Error("could not resolve an alert", "metric", rule.Metric, "error", err.Error())
 		return
@@ -295,6 +321,11 @@ func (m *Monitor) resolve(ctx context.Context, rule Rule, target string,
 		fields = append(fields, "reason", reason)
 	}
 	m.log.Info("alert resolved", fields...)
+
+	if m.notifier != nil {
+		m.notifier.AlertResolved(ctx, resolved.ID, resolved.Severity,
+			resolved.Message, resolved.Target, now.Sub(resolved.OpenedAt))
+	}
 }
 
 // takeReadings asks the host what it is doing.

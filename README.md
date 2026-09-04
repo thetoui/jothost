@@ -5,15 +5,17 @@ databases, SSL, files, cron, backups, monitoring, and security from one web inte
 
 **Status:** Phases 0–15 complete, plus 4.1 (subdomains), 4.5
 (the Apache hybrid arrangement), 7.1 (FTP), 16 (the firewall), 17 (SSH security),
-18 (intrusion prevention), 19 (monitoring) and 21 (system updates): foundation,
-authentication, Host Agent, dashboard, websites, subdomains, the nginx + Apache
-engine, PHP, SSL, files, the code editor, databases, Node.js applications,
-scheduled jobs, the log viewer, host services, FTP accounts, DNS and the local
-name server, the packet filter, the SSH server's settings, fail2ban, package
-updates, the alert engine, backups that are read back before they are called
-backups, and a security score that never hides how many checks it is built from.
+18 (intrusion prevention), 19 (monitoring), 20 (notifications) and 21 (system
+updates): foundation, authentication, Host Agent, dashboard, websites,
+subdomains, the nginx + Apache engine, PHP, SSL, files, the code editor,
+databases, Node.js applications, scheduled jobs, the log viewer, host services,
+FTP accounts, DNS and the local name server, the packet filter, the SSH server's
+settings, fail2ban, package updates, the alert engine, backups that are read
+back before they are called backups, a security score that never hides how many
+checks it is built from, and notifications that keep the record of every one
+they failed to deliver.
 
-Next is Phase 20 (Notifications). Phases are built in dependency order rather
+Next is Phase 26 (Mail Server Ecosystem). Phases are built in dependency order rather
 than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md for the
 sequence and why each phase sits where it does. The per-phase notes in
 [docs/](docs/) say what each one does and does not include.
@@ -193,6 +195,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE19.md](docs/PHASE19.md) | Phase 19 scope, decisions, and known limitations |
 | [docs/PHASE14.md](docs/PHASE14.md) | Phase 14 scope, decisions, and known limitations |
 | [docs/PHASE15.md](docs/PHASE15.md) | Phase 15 scope, decisions, and known limitations |
+| [docs/PHASE20.md](docs/PHASE20.md) | Phase 20 scope, decisions, and known limitations |
 
 ---
 

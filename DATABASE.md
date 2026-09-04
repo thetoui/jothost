@@ -921,6 +921,98 @@ disk as fine is a panel that will one day say a full disk is fine.
 
 ---
 
+# 31. notification_channels, notification_events, notification_deliveries
+
+Added by migration 0019, and not in this specification: notifications are
+specified in TASKS.md and PRD.md's alert list only.
+
+## 31.1 Why an outbox rather than a direct call
+
+Each phase writes an *event*; a dispatcher delivers it. Two reasons, and the
+second is the one that matters. A phase calling a sender directly would block
+its own loop on somebody's slow SMTP server — the monitor evaluating alerts
+must not wait on a mail relay. And a process that died between "the alert
+opened" and "the mail was sent" would lose the notification with nothing
+recording that it had ever existed.
+
+```sql
+-- notification_events
+id, server_id
+source, kind, severity
+title, body, link
+dedupe_key VARCHAR(200) NOT NULL
+metadata JSONB
+created_at
+```
+
+**`dedupe_key` is the identity of the thing that happened**, not of the moment
+it was noticed, and a unique index on `(server_id, dedupe_key)` is the whole of
+the panel's protection against flooding. A disk above its threshold for a week
+is one event or ten thousand emails. It is an index rather than a check in Go
+because two API processes racing would each pass a check.
+
+Events are raised on every evaluation rather than only the first, which the
+index makes safe and also makes better: a panel that could not reach its
+database on the minute an alert opened still notifies when it comes back.
+
+## 31.2 Channels, and where the credentials are not
+
+```sql
+-- notification_channels
+id, server_id, name, kind          -- email, telegram, line
+config JSONB                       -- host, port, from, to, chat id
+credentials_encrypted TEXT NOT NULL -- and non-empty
+enabled BOOLEAN
+min_severity VARCHAR(20)
+kinds TEXT[]
+last_success_at, last_failure_at, last_error
+failure_streak INTEGER
+```
+
+An SMTP password and a bot token are both full credentials — anyone holding a
+bot token can post as the bot to every chat it is in. They are AES-256-GCM
+encrypted and bound to their row's id, so a ciphertext moved from another
+channel fails to decrypt rather than quietly authenticating somewhere it should
+not (section 30). The SMTP *username* stays in `config`: it is an identifier,
+and a page needs to show which account a channel sends as.
+
+A CHECK requires the credential to be present **and non-empty**. "There is no
+credential" and "the credential is blank" are different mistakes and both are
+wrong.
+
+**`failure_streak` is what the panel has instead of a way to tell somebody their
+notifications are broken.** It cannot send that message through the thing that
+is broken, so it counts, and the page shows the count. `last_success_at` being
+NULL is a distinct and equally important state: a channel nobody has ever
+delivered through looks like protection and is not.
+
+## 31.3 Deliveries
+
+```sql
+-- notification_deliveries
+id, event_id, channel_id
+status              -- pending, sent, failed
+attempts INTEGER
+next_attempt_at TIMESTAMPTZ
+last_error TEXT
+sent_at TIMESTAMPTZ
+```
+
+One row per (event, channel), because an event delivered to three channels can
+succeed at two of them and a single status on the event would have to pick one
+of those to report. A unique index on `(event_id, channel_id)` means a
+dispatcher restarted mid-run queues nothing twice.
+
+A CHECK requires a failed delivery to say **why**. A failure with no reason is
+one nobody can act on, and acting on it is the entire point of storing it.
+
+The attempt counter is incremented as part of *claiming* a row, so a dispatcher
+that crashed after sending but before recording sends again once rather than
+forever — duplicating an alert is a much better failure than an infinite loop
+of them.
+
+---
+
 # 22. backups
 
 Built by migration 0017. The columns below are the specification's, plus the

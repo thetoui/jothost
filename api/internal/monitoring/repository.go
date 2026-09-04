@@ -240,6 +240,16 @@ func (r *Repository) ListRules(ctx context.Context, serverID string) ([]Rule, er
 // The alerts it opened stay: deleting a rule must not erase the history of what
 // it caught, which is why alerts keep their own copy of what they were about.
 func (r *Repository) DeleteRule(ctx context.Context, id string) error {
+	// Its open alerts are resolved first. Nothing else ever could: the monitor
+	// resolves an alert by evaluating the rule that raised it, and that rule is
+	// about to stop existing — so an alert left open here would stay open
+	// forever, about a condition nobody is watching any more.
+	if _, err := r.pool.Exec(ctx, `
+		UPDATE alerts SET status = 'resolved', resolved_at = now()
+		WHERE rule_id = $1::uuid AND status = 'open'`, id); err != nil {
+		return fmt.Errorf("resolve the alerts of a deleted rule: %w", err)
+	}
+
 	tag, err := r.pool.Exec(ctx, `DELETE FROM alert_rules WHERE id = $1::uuid`, id)
 	if err != nil {
 		return fmt.Errorf("delete alert rule: %w", err)
@@ -271,9 +281,14 @@ func scanAlert(row pgx.Row) (Alert, error) {
 // OpenAlert opens an alert, or refreshes the one already open for the same
 // condition.
 //
-// One row per thing being watched, which the unique index enforces. Without it
-// a flapping disk would open a new alert every evaluation and somebody would
-// wake to four hundred rows describing one filesystem.
+// One row per rule per target, which the unique index enforces. Without it a
+// flapping disk would open a new alert every evaluation and somebody would wake
+// to four hundred rows describing one filesystem.
+//
+// The key is the *rule* and not the metric, target and severity together —
+// see migration 0020. Two rules may legitimately watch one filesystem, and
+// under the older key they shared a row and resolved each other's alert on
+// every tick.
 //
 // The worst value is kept with GREATEST rather than overwritten, because a
 // resolved alert reading "peaked at 99%" is worth more than one reading
@@ -285,7 +300,7 @@ func (r *Repository) OpenAlert(ctx context.Context, alert Alert) (Alert, error) 
 			 message, value, worst, last_value, opened_at, last_seen_at)
 		VALUES ($1::uuid, NULLIF($2, '')::uuid, $3, $4, $5, $6, 'open',
 		        $7, $8, $8, $8, $9, $9)
-		ON CONFLICT (server_id, metric, target, severity) WHERE status = 'open'
+		ON CONFLICT (server_id, rule_id, target) WHERE status = 'open'
 		DO UPDATE SET
 			last_seen_at = EXCLUDED.last_seen_at,
 			last_value   = EXCLUDED.last_value,
@@ -302,21 +317,26 @@ func (r *Repository) OpenAlert(ctx context.Context, alert Alert) (Alert, error) 
 	return opened, nil
 }
 
-// ResolveAlert closes the open alert for a condition, if there is one.
+// ResolveAlert closes one rule's open alert for a target, if there is one.
+//
+// Scoped to the rule, which is what stops a rule that is not breaching
+// resolving an alert a different rule raised about the same filesystem. That
+// was migration 0020's bug: under the older key the two took turns, and every
+// turn was a notification.
 //
 // Resolution is the machine's decision, never a person's: an operator can
 // acknowledge an alert, and cannot mark a full disk as fine. A panel where they
 // could is a panel that will one day say a full disk is fine.
-func (r *Repository) ResolveAlert(ctx context.Context, serverID, metric, target,
-	severity string, at time.Time,
+func (r *Repository) ResolveAlert(ctx context.Context, serverID, ruleID, target string,
+	at time.Time,
 ) (Alert, bool, error) {
 	row := r.pool.QueryRow(ctx, `
 		UPDATE alerts
-		SET status = 'resolved', resolved_at = $5, last_seen_at = $5
-		WHERE server_id = $1::uuid AND metric = $2 AND target = $3
-		  AND severity = $4 AND status = 'open'
+		SET status = 'resolved', resolved_at = $4, last_seen_at = $4
+		WHERE server_id = $1::uuid AND rule_id = $2::uuid AND target = $3
+		  AND status = 'open'
 		RETURNING `+alertColumns,
-		serverID, metric, target, severity, at)
+		serverID, ruleID, target, at)
 
 	alert, err := scanAlert(row)
 	if err != nil {

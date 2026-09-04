@@ -143,6 +143,17 @@ services:
       # /etc/passwd is part of the image, so a rebuild would otherwise delete
       # every site's owner while its files survive in the volume above.
       - agent-accounts:/var/lib/jothost/accounts
+      # Mail, for the same reason as the site content and the databases above,
+      # and more sharply. A rebuild of this image discards the writable layer:
+      # the panel regenerates Postfix's tables and Dovecot's passwd-file from
+      # its own record, so those come back on the next reconcile — but the
+      # Maildirs are customers' messages and the DKIM keys are deliberately
+      # stored nowhere else (docs/PHASE26.md), and neither can be regenerated
+      # from anything. Without these two volumes a rebuild would silently
+      # destroy every message on the host while the panel went on listing the
+      # mailboxes as present.
+      - agent-mail:/var/mail/vhosts
+      - agent-mailstate:/var/lib/jothost/mail
       - agent-mysql:/var/lib/mysql
       - agent-pgdata:/var/lib/postgresql
       # The Phase 2 checks run inside this container, against a live Agent.
@@ -261,5 +272,7 @@ volumes:
   agent-audit:
   agent-sites:
   agent-accounts:
+  agent-mail:
+  agent-mailstate:
   agent-mysql:
   agent-pgdata:

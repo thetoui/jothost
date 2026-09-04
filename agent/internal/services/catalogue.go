@@ -193,6 +193,51 @@ var catalogue = []Definition{
 		Binaries:  []string{"/usr/sbin/proftpd", "/usr/bin/proftpd"},
 	},
 	{
+		Key:     "postfix",
+		Label:   "Mail Transport",
+		Role:    RoleSystem,
+		Summary: "Accepts, routes and sends mail.",
+		Units:   []string{"postfix.service"},
+		// The mail page writes the configuration and asks for a reload; the
+		// Services page starts and stops the daemon, so one thing on this host
+		// owns its lifecycle.
+		Processes: []string{"master"},
+		Binaries:  []string{"/usr/sbin/postfix", "/usr/libexec/postfix/master"},
+	},
+	{
+		Key:     "dovecot",
+		Label:   "Mailbox Server",
+		Role:    RoleSystem,
+		Summary: "Serves mailboxes over IMAP and POP3, and authenticates mail logins.",
+		Units:   []string{"dovecot.service"},
+		// Stopping this does not stop mail arriving — Postfix goes on accepting
+		// it and queues it — but it stops every customer reading their mail and
+		// stops every one of them sending, because submission authenticates
+		// against Dovecot.
+		Processes: []string{"dovecot"},
+		Binaries:  []string{"/usr/sbin/dovecot"},
+	},
+	{
+		Key:       "rspamd",
+		Label:     "Mail Filter",
+		Role:      RoleSystem,
+		Summary:   "Filters incoming mail for spam and signs outgoing mail with DKIM.",
+		Units:     []string{"rspamd.service"},
+		Processes: []string{"rspamd"},
+		Binaries:  []string{"/usr/sbin/rspamd", "/usr/bin/rspamd"},
+	},
+	{
+		Key:     "clamd",
+		Label:   "Virus Scanner",
+		Role:    RoleSystem,
+		Summary: "Scans mail attachments for malware.",
+		// Alpine and Debian both call the daemon clamd; RHEL's unit carries the
+		// socket name.
+		Units:     []string{"clamd.service", "clamav-daemon.service"},
+		Processes: []string{"clamd"},
+		Binaries:  []string{"/usr/sbin/clamd"},
+	},
+	{
 		Key:     "named",
 		Label:   "DNS Server",
 		Role:    RoleSystem,

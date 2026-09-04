@@ -15,6 +15,7 @@ import { CronPage } from '@/pages/CronPage';
 import { Fail2BanPage } from '@/pages/Fail2BanPage';
 import { DnsPage } from '@/pages/DnsPage';
 import { BackupsPage } from '@/pages/BackupsPage';
+import { MailPage } from '@/pages/MailPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { SecurityCenterPage } from '@/pages/SecurityCenterPage';
 import { MonitoringPage } from '@/pages/MonitoringPage';
@@ -99,6 +100,7 @@ export const router = createBrowserRouter(
             { path: 'monitoring', element: <MonitoringPage /> },
             { path: 'backups', element: <BackupsPage /> },
             { path: 'security-center', element: <SecurityCenterPage /> },
+            { path: 'mail', element: <MailPage /> },
             { path: 'notifications', element: <NotificationsPage /> },
             { path: 'firewall', element: <FirewallPage /> },
             { path: 'databases', element: <DatabasesPage /> },

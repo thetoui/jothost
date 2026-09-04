@@ -22,6 +22,7 @@ import (
 	"github.com/jothost/panel/agent/internal/ftp"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/logs"
+	"github.com/jothost/panel/agent/internal/mail"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/nodejs"
 	"github.com/jothost/panel/agent/internal/php"
@@ -153,6 +154,11 @@ type Dependencies struct {
 	// means nothing can be scheduled — which the panel reports rather than
 	// accepting jobs that would never run.
 	Cron *cron.Provider
+
+	// Mail runs the host's mail server. Nil, or a host with only half of one,
+	// means the panel offers to install it rather than accepting mailboxes that
+	// nothing would deliver into.
+	Mail *mail.Provider
 
 	// Logs reads the host's log files. Nil, or configured with no roots, means
 	// log reading is unavailable rather than unrestricted — a path check that
@@ -295,6 +301,15 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationDNSReconcile, r.handleDNSReconcile)
 	r.mustRegister(protocol.OperationDNSZoneStatus, r.handleDNSZoneStatus)
 	r.mustRegister(protocol.OperationDNSSigning, r.handleDNSSigning)
+
+	r.mustRegister(protocol.OperationMailStatus, r.handleMailStatus)
+	r.mustRegister(protocol.OperationMailInstall, r.handleMailInstall)
+	r.mustRegister(protocol.OperationMailReconcile, r.handleMailReconcile)
+	r.mustRegister(protocol.OperationMailDKIMGenerate, r.handleMailDKIMGenerate)
+	r.mustRegister(protocol.OperationMailDKIMRemove, r.handleMailDKIMRemove)
+	r.mustRegister(protocol.OperationMailQuota, r.handleMailQuota)
+	r.mustRegister(protocol.OperationWebmailInstall, r.handleWebmailInstall)
+	r.mustRegister(protocol.OperationWebmailRemove, r.handleWebmailRemove)
 
 	r.mustRegister(protocol.OperationSSHStatus, r.handleSSHStatus)
 	r.mustRegister(protocol.OperationSSHConfigure, r.handleSSHConfigure)

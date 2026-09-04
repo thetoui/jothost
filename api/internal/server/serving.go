@@ -10,6 +10,7 @@ import (
 	"github.com/jothost/panel/api/internal/dashboard"
 	dnspkg "github.com/jothost/panel/api/internal/dns"
 	ftppkg "github.com/jothost/panel/api/internal/ftp"
+	mailpkg "github.com/jothost/panel/api/internal/mail"
 	monitoringpkg "github.com/jothost/panel/api/internal/monitoring"
 	nodepkg "github.com/jothost/panel/api/internal/node"
 	phppkg "github.com/jothost/panel/api/internal/php"
@@ -308,4 +309,88 @@ func maxDuration(a, b time.Duration) time.Duration {
 		return a
 	}
 	return b
+}
+
+// mailWebsites answers what the mail package needs to know about a site: the
+// account webmail's files belong to, the directory they go in, and the
+// certificate the mail server presents.
+//
+// The certificate is read from the SSL repository on every call rather than
+// stored with the mail settings, for the reason ftpWebsites gives: a renewal
+// moves the files, and a stored path is one that silently goes stale — which
+// here means a mail server that will not start.
+type mailWebsites struct {
+	repo *websites.Repository
+	ssl  *sslpkg.Repository
+}
+
+func (m mailWebsites) LookupForMail(ctx context.Context, id string) (mailpkg.WebsiteRef, error) {
+	site, err := m.repo.Get(ctx, id)
+	if err != nil {
+		return mailpkg.WebsiteRef{}, err
+	}
+
+	ref := mailpkg.WebsiteRef{
+		ID:           site.ID,
+		ServerID:     site.ServerID,
+		Domain:       site.PrimaryDomain,
+		SystemUser:   site.SystemUser,
+		DocumentRoot: site.DocumentRoot,
+	}
+
+	certificate, err := m.ssl.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, sslpkg.ErrNotFound) {
+			// No certificate is not an error: the caller's question is whether
+			// the mail server has something to present, and "no" is an answer
+			// it is built to report.
+			return ref, nil
+		}
+		return mailpkg.WebsiteRef{}, err
+	}
+	// A certificate row exists from the moment one is requested and the paths
+	// are filled in when it is issued. A pending row is not something a mail
+	// server can present, and naming it would stop Dovecot from starting.
+	if certificate.CertificatePath == nil || certificate.PrivateKeyPath == nil {
+		return ref, nil
+	}
+	ref.SSLEnabled = true
+	ref.CertificatePath = *certificate.CertificatePath
+	ref.KeyPath = *certificate.PrivateKeyPath
+	return ref, nil
+}
+
+// mailZones lets the mail package publish the records a mail domain needs
+// without knowing how to write one.
+//
+// The adapter exists so the mail package depends on three method signatures
+// rather than on the DNS package: a DKIM record is a DNS record, and this panel
+// has exactly one place that knows how to spell one.
+type mailZones struct {
+	dns *dnspkg.Service
+}
+
+func (m mailZones) ZoneIDFor(ctx context.Context, domain string) (string, bool, error) {
+	return m.dns.ZoneIDFor(ctx, domain)
+}
+
+func (m mailZones) SetManagedRecords(ctx context.Context, requestID, zoneID, name string,
+	records []mailpkg.ManagedRecord,
+) error {
+	converted := make([]dnspkg.ManagedRecord, 0, len(records))
+	for _, record := range records {
+		converted = append(converted, dnspkg.ManagedRecord{
+			Type:     record.Type,
+			Value:    record.Value,
+			Priority: record.Priority,
+			TTL:      record.TTL,
+		})
+	}
+	return m.dns.SetManagedRecords(ctx, requestID, zoneID, name, converted)
+}
+
+func (m mailZones) PublishedValues(ctx context.Context, zoneID, name,
+	recordType string,
+) ([]string, error) {
+	return m.dns.PublishedValues(ctx, zoneID, name, recordType)
 }

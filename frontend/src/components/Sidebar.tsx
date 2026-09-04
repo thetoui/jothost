@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Lock,
   Layers,
+  Mails,
   Network,
   PackageSearch,
   Server,
@@ -71,6 +72,7 @@ const navGroups: NavGroup[] = [
       { label: 'Scheduled jobs', to: '/cron', icon: Clock, enabled: true },
       { label: 'FTP', to: '/ftp', icon: FolderKey, enabled: true },
       { label: 'Backups', to: '/backups', icon: HardDrive, enabled: true },
+      { label: 'Mail', to: '/mail', icon: Mails, enabled: true },
     ],
   },
   {

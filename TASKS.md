@@ -53,17 +53,17 @@ Done, in the order they were built:
 14  Backup
 15  Security Center
 20  Notifications
+26  Mail Server Ecosystem
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  26   Mail Server Ecosystem  — DKIM/SPF/DMARC need 13; ports need 16
- 2.  27   Git & Webhook Actions  — deployment logs need 11
- 3.  22   Multi-Tenant           — quota dimensions must exist first, mail included
- 4.  23   Production Installer   — installs everything, so everything must exist
- 5.  24   Production Hardening   — tests the finished system
- 6.  25   Release                — last by definition
+ 1.  27   Git & Webhook Actions  — deployment logs need 11
+ 2.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+ 3.  23   Production Installer   — installs everything, so everything must exist
+ 4.  24   Production Hardening   — tests the finished system
+ 5.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -1332,22 +1332,62 @@ test) and 22 (the RBAC and tenancy tests).
 
 # PHASE 26 — Mail Server Ecosystem
 
+**Status: COMPLETE** — see [docs/PHASE26.md](docs/PHASE26.md) for the design,
+the decisions worth arguing about, what running it against real daemons found,
+and known limitations.
+
 **Build order: 14 of 17.** Depends on 13 (DKIM, SPF and DMARC are DNS records),
 16 (25, 465, 587, 993), 6 (TLS uses the certificates already issued) and 12
 (Postfix and Dovecot are services).
 **Blocks** 22 (mailboxes are one of its quota dimensions).
 
-- [ ] Postfix MTA provider
-- [ ] Dovecot IMAP/POP3 provider
-- [ ] Mailbox schema & CRUD API
-- [ ] Automated DKIM key generation & DNS record publishing
-- [ ] SPF & DMARC policy auto-configuration
-- [ ] Rspamd / SpamAssassin integration
-- [ ] ClamAV virus scanning integration
-- [ ] Roundcube Webmail provider & automated vhost installer
-- [ ] Email forwarders, Catch-all, and Autoresponders
-- [ ] Mailbox quota limits & TLS security enforcement
-- [ ] Webmail UI integration
+- [x] Postfix MTA provider — configured through `postconf`, which is Postfix's
+  own interface for exactly that, so the distribution keeps ownership of its
+  files and the panel's whole footprint is a list of keys
+- [x] Dovecot IMAP/POP3 provider — one drop-in numbered 99, because Dovecot
+  takes the *last* value for a repeated setting and proftpd takes the first;
+  both numbers were measured rather than assumed
+- [x] Mailbox schema & CRUD API — virtual mailboxes in a passwd-file, mapping
+  to one unprivileged account. A mail password is never a login to the machine
+- [x] Automated DKIM key generation & DNS record publishing — generated on the
+  host, **private half stored nowhere else**, public half published through
+  Phase 13 and then compared against what DNS is actually serving
+- [x] SPF & DMARC policy auto-configuration — with no way to ask for `+all`,
+  which is worse than publishing nothing
+- [x] Rspamd integration — filtering and DKIM signing through one milter, and
+  a stopped filter defers mail rather than sending it unsigned
+- [x] ClamAV virus scanning integration — called through Rspamd, which is what
+  actually calls it, so a scanner that is running and unreachable is reported as
+  down rather than as working
+- [x] Roundcube Webmail provider & automated vhost installer — a pinned
+  version with a pinned checksum, verified before anything is unpacked, into a
+  website the panel already created
+- [x] Email forwarders, Catch-all, and Autoresponders — catch-all off by
+  default (it is a backscatter source), and every vacation script compiled
+  before it is installed
+- [x] Mailbox quota limits & TLS security enforcement — a full mailbox is
+  refused at delivery so the sender is told, and a password may never cross an
+  unencrypted connection
+- [x] Webmail UI integration
+
+Additionally required by the above:
+
+- [x] **The panel is not the authority on whether mail works — DNS is.** Every
+  domain is shown as what this host is configured to do *next to* what the world
+  can actually verify, and a domain whose DNS is elsewhere is reported as
+  uncheckable rather than as broken
+- [x] **An open-relay check that connects and asks**, from this host's own
+  routable address rather than the loopback — which is permitted by design and
+  would report every correct server as an open relay
+- [x] SHA-512 crypt implemented in `shared/crypt`, so no plaintext password ever
+  reaches an external program's argv, verified against Dovecot itself
+- [x] Ports reported as *configured* and *listening* separately, because a
+  daemon that failed to start leaves every port configured and none answering
+- [x] Deleting a mailbox or a domain leaves the messages on the disk
+- [x] `mail.view` split from `mail.manage`: setting a mailbox password is being
+  able to read every message in it, silently
+- [x] A fix in `agent/internal/command` for an init script whose daemon inherits
+  stdout, which made the panel report a failure for a service that had started
 
 # PHASE 27 — Git & Webhook Deployment Actions
 

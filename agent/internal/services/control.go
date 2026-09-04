@@ -32,6 +32,17 @@ func (p *Provider) Restart(ctx context.Context, name string) error {
 	return p.control(ctx, "restart", name)
 }
 
+// Reload asks a unit to re-read its configuration without stopping.
+//
+// Distinct from Restart because for some daemons the difference is visible to
+// somebody: reloading Postfix keeps deliveries that are in progress, while
+// restarting it drops them. Not every daemon supports it, and the ones that do
+// not report a failure — so a caller that needs the change applied either way
+// falls back to a restart rather than assuming the reload worked.
+func (p *Provider) Reload(ctx context.Context, name string) error {
+	return p.control(ctx, "reload", name)
+}
+
 // Enable makes a unit start at boot.
 //
 // A Node.js application that does not come back after a reboot is one an

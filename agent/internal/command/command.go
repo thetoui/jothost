@@ -310,6 +310,24 @@ func (r *Runner) RunWith(ctx context.Context, name string, opts Options, args ..
 			result.ExitCode = exitErr.ExitCode()
 			return result, nil
 		}
+		if errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil {
+			// The program itself exited; something it started is still holding
+			// the output pipe open, so Wait gave up on the rest of the output
+			// after WaitDelay rather than on the program.
+			//
+			// That is not a failure and reporting it as one was a real bug: an
+			// init script that starts a daemon which inherits stdout — Dovecot
+			// is one — returned "WaitDelay expired before I/O complete" for a
+			// service that had started perfectly. The panel then showed a
+			// failure for an action that worked, which is worse than either
+			// outcome on its own.
+			//
+			// What is lost is trailing output from a process that is no longer
+			// the one being run. The exit status is real and is what the
+			// caller acts on.
+			result.ExitCode = cmd.ProcessState.ExitCode()
+			return result, nil
+		}
 		return result, fmt.Errorf("run %s: %w", spec.Name, err)
 	}
 

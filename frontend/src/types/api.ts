@@ -2101,3 +2101,204 @@ export interface NotificationChannelInput {
   kinds?: string[];
   enabled?: boolean;
 }
+
+// ---------------------------------------------------------------------- mail
+
+/** How much of a domain's mail the world is asked to believe. */
+export type SPFPolicy = 'none' | 'soft' | 'strict';
+export type DMARCPolicy = 'off' | 'none' | 'quarantine' | 'reject';
+
+/** The mail server's own settings. */
+export interface MailSettings {
+  server_id: string;
+  enabled: boolean;
+  hostname: string;
+  tls_website_id?: string;
+  require_tls: boolean;
+  spam_enabled: boolean;
+  spam_reject_score: number;
+  virus_enabled: boolean;
+  max_message_mb: number;
+  webmail_website_id?: string;
+  webmail_version?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One piece of the mail server. */
+export interface MailDaemon {
+  installed: boolean;
+  running: boolean;
+  version?: string;
+  detail?: string;
+}
+
+/** One SMTP or IMAP service. */
+export interface MailPort {
+  name: string;
+  port: number;
+  configured: boolean;
+  /** Whether anything is actually bound to it. Differs from `configured` when a
+   * daemon failed to start, which is exactly what a status page has to show. */
+  listening: boolean;
+  requires_tls: boolean;
+}
+
+/** Whether this server will carry a stranger's mail. */
+export interface MailRelayStatus {
+  checked: boolean;
+  open: boolean;
+  detail?: string;
+}
+
+/** What the mail server is actually doing, read from the host. */
+export interface MailStatus {
+  available: boolean;
+  reason?: string;
+  can_install: boolean;
+  postfix: MailDaemon;
+  dovecot: MailDaemon;
+  rspamd: MailDaemon;
+  antivirus: MailDaemon;
+  hostname: string;
+  tls: {
+    configured: boolean;
+    certificate_path?: string;
+    not_after?: string;
+    detail?: string;
+  };
+  ports: MailPort[] | null;
+  queue_length: number;
+  queue_oldest_seconds: number;
+  open_relay: MailRelayStatus;
+  signing: string[] | null;
+  map_type: string;
+  warnings?: string[] | null;
+  webmail?: {
+    installed: boolean;
+    version?: string;
+    path?: string;
+    detail?: string;
+  };
+}
+
+/**
+ * A mail domain, together with what the world can actually see of it.
+ *
+ * The second half is the point. A policy in the panel is a setting; the record
+ * a receiving server fetches is the only thing with any effect, and the two can
+ * disagree.
+ */
+export interface MailDomain {
+  id: string;
+  server_id: string;
+  website_id?: string;
+  domain: string;
+  active: boolean;
+  catch_all: string;
+  dkim_selector: string;
+  dkim_public_key?: string;
+  dkim_created_at?: string;
+  spf_policy: SPFPolicy;
+  dmarc_policy: DMARCPolicy;
+  dmarc_rua: string;
+  created_at: string;
+  updated_at: string;
+  mailboxes: number;
+  aliases: number;
+  /** Whether this host holds the private signing key. */
+  signing: boolean;
+  /** Whether this host serves the domain's zone. When it does not, the four
+   * checks below cannot be answered at all. */
+  dns_managed: boolean;
+  mx_published: boolean;
+  spf_published: boolean;
+  dkim_published: boolean;
+  dmarc_published: boolean;
+  problems?: string[] | null;
+}
+
+/** A mailbox with an autoresponder and how full it is. */
+export interface Mailbox {
+  id: string;
+  domain_id: string;
+  local_part: string;
+  address: string;
+  quota_mb: number;
+  active: boolean;
+  used_mb: number;
+  /** False when the panel could not ask. Shown as unknown rather than as
+   * empty: telling a customer their full mailbox has room is worse than
+   * saying nothing. */
+  quota_known: boolean;
+  autoresponder?: MailAutoresponder;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A forwarder. */
+export interface MailAlias {
+  id: string;
+  domain_id: string;
+  source: string;
+  destination: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A vacation reply. */
+export interface MailAutoresponder {
+  mailbox_id: string;
+  subject: string;
+  body: string;
+  starts_at?: string;
+  ends_at?: string;
+  interval_days: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Everything the mail page shows. */
+export interface MailOverview {
+  settings: MailSettings;
+  status: MailStatus;
+  domains: MailDomain[] | null;
+  mailboxes: number;
+  aliases: number;
+}
+
+/** A domain to create or change. */
+export interface MailDomainInput {
+  domain?: string;
+  website_id?: string;
+  active?: boolean;
+  catch_all?: string;
+  spf_policy?: SPFPolicy;
+  dmarc_policy?: DMARCPolicy;
+  dmarc_rua?: string;
+}
+
+/** A mailbox to create or change. */
+export interface MailboxInput {
+  local_part?: string;
+  password?: string;
+  quota_mb?: number;
+  active?: boolean;
+}
+
+/** A forwarder to create. */
+export interface MailAliasInput {
+  source: string;
+  destination: string;
+  active?: boolean;
+}
+
+/** A vacation reply to set. */
+export interface MailAutoresponderInput {
+  subject: string;
+  body: string;
+  interval_days?: number;
+  active?: boolean;
+}

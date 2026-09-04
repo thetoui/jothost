@@ -17,6 +17,8 @@ export const Permission = {
   BackupManage: 'backup.manage',
   SecurityView: 'security.view',
   NotificationManage: 'notification.manage',
+  MailView: 'mail.view',
+  MailManage: 'mail.manage',
   FileRead: 'file.read',
   FileWrite: 'file.write',
   CronManage: 'cron.manage',

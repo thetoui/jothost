@@ -68,6 +68,14 @@ const (
 	// Unlike monitor.manage, operators do not get it: silencing a false alarm
 	// at three in the morning is their job, and silencing every alert on the
 	// machine is not.
+	// PermMailView and PermMailManage are split because a mailbox holds a
+	// customer's correspondence. Seeing that "sales@example.com exists and is
+	// 40% full" is support work; being able to set its password is being able
+	// to read every message in it, silently, with no trace the owner will ever
+	// see. Those are not the same act.
+	PermMailView   = "mail.view"
+	PermMailManage = "mail.manage"
+
 	PermNotificationManage = "notification.manage"
 	PermAuditView          = "audit.view"
 	PermUserManage         = "user.manage"

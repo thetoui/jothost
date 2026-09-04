@@ -30,6 +30,7 @@ import (
 	ftppkg "github.com/jothost/panel/agent/internal/ftp"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/logs"
+	mailpkg "github.com/jothost/panel/agent/internal/mail"
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/nodejs"
 	"github.com/jothost/panel/agent/internal/operations"
@@ -203,6 +204,30 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		{Name: ftppkg.CommandFtpasswd, Path: cfg.FtpasswdPath, Timeout: 15 * time.Second},
 		{Name: ftppkg.CommandFtpwho, Path: cfg.FtpwhoPath, Timeout: 10 * time.Second},
 		{Name: ftppkg.CommandFtpquota, Path: cfg.FtpquotaPath, Timeout: 15 * time.Second},
+		// The mail server.
+		//
+		// postconf is the one that matters: it is how Postfix's own
+		// configuration is changed, which is why the panel never writes
+		// main.cf or master.cf itself. The daemon binaries are here only to
+		// check a configuration and read a version — both servers are started
+		// and stopped through the service manager, so one thing on this host
+		// owns each daemon's lifecycle.
+		//
+		// None of these is ever given a password. Mailbox passwords are hashed
+		// by the API before they reach this process, so the Agent has no
+		// plaintext to leak into a process table that every account on the host
+		// can read.
+		{Name: mailpkg.CommandPostconf, Path: cfg.PostconfPath, Timeout: 20 * time.Second},
+		{Name: mailpkg.CommandPostmap, Path: cfg.PostmapPath, Timeout: 30 * time.Second},
+		{Name: mailpkg.CommandPostalias, Path: cfg.PostaliasPath, Timeout: 30 * time.Second},
+		{Name: mailpkg.CommandPostfix, Path: cfg.PostfixPath, Timeout: 30 * time.Second},
+		{Name: mailpkg.CommandPostqueue, Path: cfg.PostqueuePath, Timeout: 20 * time.Second},
+		{Name: mailpkg.CommandPostsuper, Path: cfg.PostsuperPath, Timeout: 30 * time.Second},
+		{Name: mailpkg.CommandDoveadm, Path: cfg.DoveadmPath, Timeout: 30 * time.Second},
+		{Name: mailpkg.CommandDovecot, Path: cfg.DovecotPath, Timeout: 20 * time.Second},
+		{Name: mailpkg.CommandRspamadm, Path: cfg.RspamadmPath, Timeout: 30 * time.Second},
+		{Name: mailpkg.CommandRspamc, Path: cfg.RspamcPath, Timeout: 30 * time.Second},
+		{Name: mailpkg.CommandSievec, Path: cfg.SievecPath, Timeout: 20 * time.Second},
 		// sshd, used only to *read* the effective configuration (-T) and to
 		// validate a candidate one (-t). The panel never starts the server with
 		// it: that goes through the service manager, so there is one thing on
@@ -495,6 +520,25 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("an FTP server is not installed; the panel will offer to install it")
 	}
 
+	// The mail server. Mailboxes are virtual — they live in a passwd-file only
+	// Dovecot reads and map to a single unprivileged account that owns every
+	// Maildir — so a mail password is never a login to the machine.
+	mailProvider := mailpkg.NewProvider(mailpkg.Options{
+		Runner: runner,
+		Log:    log,
+		Paths: mailpkg.Paths{
+			PostfixDir: cfg.MailConfigDir,
+			DovecotDir: cfg.DovecotConfigDir,
+			RspamdDir:  cfg.RspamdConfigDir,
+			MailRoot:   cfg.MailRoot,
+			StateDir:   cfg.MailStateDir,
+		},
+		Accounts: operations.MailAccountsFor(sites.NewUserProvider(runner)),
+	})
+	if !mailProvider.Available() {
+		log.Info("a mail server is not installed; the panel will offer to install it")
+	}
+
 	// The host's package updates. The provider detects apk or apt-get itself,
 	// through the same runner Phase 5 installs packages with.
 	updatesProvider := updatespkg.NewProvider(updatespkg.Options{
@@ -698,6 +742,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		SSH:          sshProvider,
 		Fail2Ban:     fail2banProvider,
 		FTP:          ftpProvider,
+		Mail:         mailProvider,
 		DNS:          dnsProvider,
 		Updates:      updatesProvider,
 		Backup:       backupProvider,
@@ -708,6 +753,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	// the service manager the registry owns. See ftp.Provider.SetReloader.
 	ftpProvider.SetReloader(operations.FTPReloaderFor(registry))
 	dnsProvider.SetService(operations.DNSServiceFor(registry))
+	mailProvider.SetServices(operations.MailServicesFor(registry))
 
 	return registry, jobRunner, nil
 }

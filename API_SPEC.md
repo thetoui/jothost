@@ -1890,6 +1890,119 @@ because a day's average of 40% hides an hour at 99%, and `sample_count`, because
 a bucket built from two readings is not the same evidence as one built from a
 hundred.
 
+# 30. Mail
+
+```http
+GET    /mail
+PUT    /mail/settings
+POST   /mail/install
+
+GET    /mail/domains
+POST   /mail/domains
+PATCH  /mail/domains/:id
+DELETE /mail/domains/:id
+POST   /mail/domains/:id/dkim
+
+GET    /mail/domains/:id/mailboxes
+POST   /mail/domains/:id/mailboxes
+PATCH  /mail/mailboxes/:id
+DELETE /mail/mailboxes/:id
+PUT    /mail/mailboxes/:id/password
+PUT    /mail/mailboxes/:id/autoresponder
+DELETE /mail/mailboxes/:id/autoresponder
+
+GET    /mail/domains/:id/aliases
+POST   /mail/domains/:id/aliases
+DELETE /mail/aliases/:id
+
+POST   /mail/webmail
+DELETE /mail/webmail
+```
+
+**As implemented in Phase 26.** Mail is not in this specification or in
+DATABASE.md — PRD.md lists it as a future feature and TASKS.md as Phase 26 —
+so everything here was designed rather than specified. docs/PHASE26.md records
+why.
+
+Reading needs `mail.view`; every change needs `mail.manage`. Two permissions
+rather than one, and the split is the point: seeing that a mailbox exists and is
+40% full is support work, while being able to set its password is being able to
+read every message in it, silently, with no trace the owner will ever see.
+`mail.manage` is granted to admin and operator; `mail.view` additionally to
+viewer.
+
+## What GET /mail is really for
+
+It carries the settings, the host's live status, and every domain — and against
+each domain, **both** halves of a comparison this panel makes nowhere else:
+
+  * what the panel has configured (a signing key, an SPF policy, a DMARC policy),
+  * and what DNS is actually serving.
+
+That is the whole point of the phase. A mail server with a missing SPF record
+sends mail perfectly and has it filed as spam; a domain whose DKIM key was never
+published signs every message with a key nobody can fetch, which is worse than
+not signing because a signature that fails to verify looks like a forgery. The
+reply names each disagreement in words, in `problems`.
+
+Where this host does not serve the domain's zone the reply says **it cannot
+check**, rather than reporting the records as missing. Those are different facts:
+one is a fault, the other is a limit of what this host can see.
+
+`status` additionally carries `open_relay`, which is the answer to the only
+question that can take every customer on the host off the internet at once. It is
+obtained by *connecting* — from this host's own routable address, because
+`mynetworks` contains the loopback and a probe from there is permitted by design.
+`checked: false` means the panel could not ask, which is reported as such rather
+than as a pass.
+
+## Mailboxes
+
+A mailbox is created with a password of at least 12 characters — longer than
+this panel's own minimum for a login, because it is exposed to the whole internet
+on ports the panel does not rate-limit and is typed into devices that remember it
+forever.
+
+The password is hashed at this boundary and the plaintext goes no further: not
+into the database, not over the socket to the privileged Agent, not into a log.
+**No reply ever contains a password hash.**
+
+`PUT /mail/mailboxes/:id/password` answers **204 with no body**. There is nothing
+useful to return, and returning the mailbox would put its row — and one day, by
+accident, its hash — in the reply to a request that carried a password. It is
+audited by address: this is the one action in the panel that grants the ability to
+read somebody's correspondence without them ever seeing a trace.
+
+Deleting a mailbox or a domain **leaves the messages on the disk**. Deleting a row
+can be undone by recreating it; deleting somebody's correspondence cannot, and a
+control panel should not do the irreversible half as a side effect of the
+reversible one.
+
+## Domains
+
+Creating a domain generates a signing key as part of the same act, because a
+domain whose key has to be *remembered* about is one whose mail goes out unsigned
+for however long it takes somebody to remember. The reply carries the public half;
+the private half is written to the host and is stored nowhere else.
+
+`POST /mail/domains/:id/dkim` rotates. The new key is generated, recorded and
+published **before** the old one is deleted, so there is no moment when the domain
+has no key at all.
+
+Refused with a **422**: an SPF or DMARC policy outside the closed sets (there is
+deliberately no way to publish "+all", which is worse than publishing nothing); a
+mail hostname that is not fully qualified, because a host greeting the world as
+localhost has its mail refused by most of it; a local part outside `[a-z0-9._-]`,
+because it is about to be written into two colon-delimited, line-oriented files; a
+forwarder pointing at itself; an autoresponder with no message, or one that would
+reply to every message.
+
+Every change reconciles the whole host afterwards — desired state, not a delta,
+as the FTP and DNS phases do — so a reply that succeeds means the daemons have
+the change, not that a row was written.
+
+---
+
 # 29. Notifications
 
 ```http

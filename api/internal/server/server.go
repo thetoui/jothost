@@ -28,6 +28,7 @@ import (
 	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/jobs"
 	logspkg "github.com/jothost/panel/api/internal/logs"
+	mailpkg "github.com/jothost/panel/api/internal/mail"
 	"github.com/jothost/panel/api/internal/metrics"
 	"github.com/jothost/panel/api/internal/middleware"
 	monitoringpkg "github.com/jothost/panel/api/internal/monitoring"
@@ -74,6 +75,7 @@ type Server struct {
 	ssh           *sshpkg.Handler
 	fail2ban      *f2bpkg.Handler
 	ftp           *ftppkg.Handler
+	mail          *mailpkg.Handler
 	dns           *dnspkg.Handler
 	updates       *updatespkg.Handler
 	backup        *backuppkg.Handler
@@ -417,6 +419,28 @@ func New(opts Options) (*Server, error) {
 
 	s.dns = dnspkg.NewHandler(dnspkg.HandlerOptions{Service: dnsService, Auth: authService})
 
+	// Mail. The mailboxes are the panel's record; Dovecot's passwd-file and
+	// Postfix's lookup tables are what actually accept and deliver, and the
+	// Agent makes the second match the first on every change.
+	//
+	// The DNS service is handed in because a mail domain's SPF, DKIM and DMARC
+	// records are DNS records: this phase decides *what* to publish and Phase
+	// 13 decides how to spell it. It is also how the mail page can say whether
+	// the world can actually see what the panel has configured, which is the
+	// one question a mail server cannot answer about itself.
+	s.mail = mailpkg.NewHandler(mailpkg.HandlerOptions{
+		Service: mailpkg.NewService(mailpkg.ServiceOptions{
+			Repo:     mailpkg.NewRepository(opts.Pool),
+			Websites: mailWebsites{repo: websiteRepo, ssl: sslRepo},
+			Zones:    mailZones{dns: dnsService},
+			Agent:    agent,
+			Audit:    auditRecorder,
+			Log:      log,
+			ServerID: opts.LocalServerID,
+		}),
+		Auth: authService,
+	})
+
 	// System updates. The host's package manager is the authority on what is
 	// outstanding; the panel caches what it last said, because a check
 	// refreshes the package index and reaches the network.
@@ -697,6 +721,7 @@ func (s *Server) routes() http.Handler {
 	s.ssh.Routes(mux)
 	s.fail2ban.Routes(mux)
 	s.ftp.Routes(mux)
+	s.mail.Routes(mux)
 	s.dns.Routes(mux)
 	s.updates.Routes(mux)
 	s.monitoring.Routes(mux)

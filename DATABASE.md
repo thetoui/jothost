@@ -921,6 +921,95 @@ disk as fine is a panel that will one day say a full disk is fine.
 
 ---
 
+# 32. mail_settings, mail_domains, mailboxes, mail_aliases, mail_autoresponders
+
+Added by migration 0021, and not in this specification: mail is listed in PRD.md
+as a future feature and in TASKS.md as Phase 26.
+
+## 32.1 What is stored, and what deliberately is not
+
+```sql
+-- mailboxes
+id, domain_id, local_part
+password_hash TEXT NOT NULL   -- '{SHA512-CRYPT}$6$...'
+quota_mb, active
+```
+
+The **hash**, not the password. What is stored cannot be replayed against IMAP,
+against webmail, or against the customer's other accounts; "show me the password"
+is answered by setting a new one.
+
+That diverges from `ftp_users`, which stores nothing at all, and the reason is the
+reconcile model. The panel rebuilds Dovecot's passwd-file from this table; without
+the hash it could only *preserve* whatever the host already had, so a reinstalled
+host would come back with every mailbox present and no login working — and the
+panel would have no way to know. A hash is not a credential. Storing one is what
+makes the host reconstructible from the panel's own record.
+
+A CHECK requires the value to look like a hash. It is the last place a plaintext
+password can be caught before it is written into a file the mail server
+authenticates against.
+
+```sql
+-- mail_domains
+domain, active, catch_all
+dkim_selector, dkim_public_key, dkim_created_at
+spf_policy, dmarc_policy, dmarc_rua
+```
+
+**The DKIM private key is not here, and that is the phase's most deliberate
+decision.** This database is backed up, replicated, and read by every part of the
+API; a signing key stored here is a key that leaves with any one of those, and it
+would be every customer's key at once. It lives on the machine that signs with it.
+What is here is the public half — what the world can read anyway — which the
+panel publishes and then compares against what DNS is actually serving.
+
+A CHECK requires the selector and the key to be present together or not at all: a
+selector with no key is a record that would be published empty, and a key with no
+selector is one nothing can find.
+
+`catch_all` defaults to empty, meaning mail for an unknown address is **refused**.
+A catch-all looks helpful and is a spam magnet: every dictionary attack lands in
+it, and because the server can no longer say "no such user" it has already
+accepted the message by the time it finds out — so any bounce it then generates
+is backscatter to a forged sender, which is how a host gets blocklisted.
+
+## 32.2 The one non-obvious foreign key
+
+`mail_domains.website_id` is `ON DELETE SET NULL`, not CASCADE. It is the only
+place in this schema where that is not the obvious choice, and it is deliberate:
+deleting a website must not silently delete everybody's mailboxes and every
+message in them. The panel makes the operator delete the mail domain on purpose,
+and says why.
+
+## 32.3 Quotas, and why the default is not unlimited
+
+`mailboxes.quota_mb` defaults to 2048, where `ftp_users.quota_mb` defaults to 0.
+The difference is in how the two fail. An unlimited FTP account fills a disk with
+files somebody uploaded on purpose. An unlimited mailbox fills it with mail
+somebody *else* sent — and the first thing that stops working when the disk is
+full is every other service on the host.
+
+## 32.4 Autoresponders
+
+`mail_autoresponders` is keyed by the mailbox, because there is one per mailbox.
+`interval_days` is between 1 and 30 and can never be zero: zero would mean a reply
+to every message, including to somebody else's vacation reply, which is a loop
+that ends when one of the two mailboxes is full.
+
+The subject and body become a Sieve script the mail server executes. The escaping
+that makes that safe is in the Agent, and the schema's contribution is refusing an
+empty message — an autoresponder with nothing to say is one that fires and sends
+a blank reply.
+
+## 32.5 Permissions
+
+`mail.view` and `mail.manage`, separately. Seeing that a mailbox exists and how
+full it is, is support work. Being able to set its password is being able to read
+every message in it, silently, with no trace the owner will ever see.
+
+---
+
 # 31. notification_channels, notification_events, notification_deliveries
 
 Added by migration 0019, and not in this specification: notifications are

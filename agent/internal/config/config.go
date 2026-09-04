@@ -101,6 +101,33 @@ type Config struct {
 	FTPConfigDir string
 	FTPRunDir    string
 	FTPLogDir    string
+	// The mail server's programs and where its configuration lives.
+	//
+	// postconf is how the panel configures Postfix — it is Postfix's own
+	// interface for exactly that, so the distribution keeps ownership of its
+	// files. The daemon binary is used only to check a configuration and read a
+	// version; starting and stopping go through the service manager, so one
+	// thing on this host owns each daemon's lifecycle.
+	PostconfPath  string
+	PostmapPath   string
+	PostaliasPath string
+	PostfixPath   string
+	PostqueuePath string
+	PostsuperPath string
+	DoveadmPath   string
+	DovecotPath   string
+	RspamadmPath  string
+	RspamcPath    string
+	SievecPath    string
+	// MailConfigDir, DovecotConfigDir and RspamdConfigDir are the three
+	// configuration roots; MailRoot is where Maildirs live and MailStateDir is
+	// where the panel keeps what it generates — the lookup tables, the passwd
+	// file, the Sieve scripts and the DKIM keys.
+	MailConfigDir    string
+	DovecotConfigDir string
+	RspamdConfigDir  string
+	MailRoot         string
+	MailStateDir     string
 	// The read-only companions the update reporter needs on a Debian host.
 	// AptCachePath answers what versions exist, AptMarkPath which packages are
 	// held, and DpkgQueryPath what is installed on the disk.
@@ -239,6 +266,22 @@ func Load() (Config, error) {
 		FTPRunDir:          getString("AGENT_FTP_RUN_DIR", "/run/proftpd"),
 		FTPLogDir:          getString("AGENT_FTP_LOG_DIR", "/var/log/proftpd"),
 		Fail2BanConfigDir:  getString("AGENT_FAIL2BAN_CONFIG_DIR", "/etc/fail2ban"),
+		PostconfPath:       getString("AGENT_POSTCONF_PATH", "/usr/sbin/postconf"),
+		PostmapPath:        getString("AGENT_POSTMAP_PATH", "/usr/sbin/postmap"),
+		PostaliasPath:      getString("AGENT_POSTALIAS_PATH", "/usr/sbin/postalias"),
+		PostfixPath:        getString("AGENT_POSTFIX_PATH", "/usr/sbin/postfix"),
+		PostqueuePath:      getString("AGENT_POSTQUEUE_PATH", "/usr/sbin/postqueue"),
+		PostsuperPath:      getString("AGENT_POSTSUPER_PATH", "/usr/sbin/postsuper"),
+		DoveadmPath:        getString("AGENT_DOVEADM_PATH", "/usr/bin/doveadm"),
+		DovecotPath:        getString("AGENT_DOVECOT_PATH", "/usr/sbin/dovecot"),
+		RspamadmPath:       getString("AGENT_RSPAMADM_PATH", "/usr/bin/rspamadm"),
+		RspamcPath:         getString("AGENT_RSPAMC_PATH", "/usr/bin/rspamc"),
+		SievecPath:         getString("AGENT_SIEVEC_PATH", "/usr/bin/sievec"),
+		MailConfigDir:      getString("AGENT_MAIL_CONFIG_DIR", "/etc/postfix"),
+		DovecotConfigDir:   getString("AGENT_DOVECOT_CONFIG_DIR", "/etc/dovecot"),
+		RspamdConfigDir:    getString("AGENT_RSPAMD_CONFIG_DIR", "/etc/rspamd"),
+		MailRoot:           getString("AGENT_MAIL_ROOT", "/var/mail/vhosts"),
+		MailStateDir:       getString("AGENT_MAIL_STATE_DIR", "/var/lib/jothost/mail"),
 		AptCachePath:       getString("AGENT_APT_CACHE_PATH", "/usr/bin/apt-cache"),
 		AptMarkPath:        getString("AGENT_APT_MARK_PATH", "/usr/bin/apt-mark"),
 		DpkgQueryPath:      getString("AGENT_DPKG_QUERY_PATH", "/usr/bin/dpkg-query"),

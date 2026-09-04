@@ -186,6 +186,21 @@ const (
 	OperationDNSZoneStatus OperationType = "dns.zone.status"
 	OperationDNSSigning    OperationType = "dns.signing"
 
+	// Mail. A request carries the mail this host should serve, as the panel
+	// recorded it: domains, mailboxes and forwarders that have been validated,
+	// and settings whose every field is a number or a flag. It never carries a
+	// plaintext password — the API hashes at its own boundary, so the
+	// privileged process never holds one — and never a configuration
+	// directive.
+	OperationMailStatus       OperationType = "mail.status"
+	OperationMailInstall      OperationType = "mail.install"
+	OperationMailReconcile    OperationType = "mail.reconcile"
+	OperationMailDKIMGenerate OperationType = "mail.dkim.generate"
+	OperationMailDKIMRemove   OperationType = "mail.dkim.remove"
+	OperationMailQuota        OperationType = "mail.quota"
+	OperationWebmailInstall   OperationType = "webmail.install"
+	OperationWebmailRemove    OperationType = "webmail.remove"
+
 	// SSH. Two of these can lock an operator out of the machine, so the Agent
 	// validates every configuration with sshd before installing it and refuses
 	// the changes that would leave nobody able to log in: see
@@ -327,6 +342,14 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationDNSReconcile:         {},
 	OperationDNSZoneStatus:        {},
 	OperationDNSSigning:           {},
+	OperationMailStatus:           {},
+	OperationMailInstall:          {},
+	OperationMailReconcile:        {},
+	OperationMailDKIMGenerate:     {},
+	OperationMailDKIMRemove:       {},
+	OperationMailQuota:            {},
+	OperationWebmailInstall:       {},
+	OperationWebmailRemove:        {},
 	OperationSSHStatus:            {},
 	OperationSSHConfigure:         {},
 	OperationSSHKeyList:           {},

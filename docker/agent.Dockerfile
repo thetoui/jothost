@@ -129,6 +129,21 @@ FROM alpine:3.21 AS runtime
 # drives here. Alpine has no systemd — it is not a package that exists — so a
 # panel speaking only systemd could report what runs on an Alpine host and
 # change none of it.
+# Postfix, Dovecot and Rspamd are baked in for the same reason the databases
+# are: this container is the managed host, and Phase 26 has to drive real
+# daemons. A mail server is the one thing in this panel that cannot be tested
+# against a mock at all - the failures that matter are an open relay, a
+# passwd-file Dovecot will not read, and a milter that silently stops signing,
+# and every one of those is a property of a running server rather than of a
+# generated file.
+#
+# ClamAV is deliberately *not* here. Its signature database is several hundred
+# megabytes, virus scanning is off by default, and the panel installs it on
+# demand - which is the code path a real host takes.
+#
+# The php84 extensions are Roundcube's. Webmail is a PHP application served
+# from a website the panel created, and a missing extension is an installation
+# that unpacks cleanly and then answers every request with a blank page.
 RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       iptables ip6tables ufw \
       openrc busybox-openrc \
@@ -143,11 +158,18 @@ RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       php84 \
       php82-opcache php83-opcache php84-opcache \
       php82-session php83-session php84-session \
+      php84-pdo php84-pdo_sqlite php84-dom php84-xml php84-mbstring \
+      php84-iconv php84-openssl php84-zip php84-intl php84-gd php84-fileinfo \
+      php84-ctype \
+      postfix postfix-pcre \
+      dovecot dovecot-lmtpd dovecot-pop3d dovecot-pigeonhole-plugin \
+      rspamd rspamd-client rspamd-openrc \
       certbot \
       mariadb mariadb-client \
       postgresql16 postgresql16-client \
     && addgroup -g 10001 jothost \
     && mkdir -p /etc/nginx/conf.d /var/www /run/nginx /run/php-fpm \
+                /var/mail/vhosts /var/lib/jothost/mail \
                 /var/lib/jothost/backups /backups \
                 /etc/jothost/ssl /var/www/.acme-challenge/.well-known/acme-challenge \
                 /run/mysqld /var/lib/mysql /run/postgresql /var/lib/postgresql/data \

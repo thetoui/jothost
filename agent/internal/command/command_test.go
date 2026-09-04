@@ -336,3 +336,32 @@ func TestCappedBufferReportsFullWrites(t *testing.T) {
 		t.Fatalf("a full buffer must still accept writes: n=%d err=%v", n, err)
 	}
 }
+
+func TestAProgramThatLeavesAChildHoldingItsOutputStillReportsItsExitStatus(t *testing.T) {
+	// A real failure, found by starting Dovecot through the panel: an init
+	// script exits cleanly and the daemon it started inherits stdout, so the
+	// output pipe never closes and Wait gives up after WaitDelay. Reporting
+	// that as a failure showed the operator an error for an action that had
+	// worked.
+	//
+	// What is lost is trailing output from a process that is no longer the one
+	// being run. The exit status is real.
+	script := filepath.Join(t.TempDir(), "leaky.sh")
+	body := "#!/bin/sh\nsleep 30 &\nexit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	runner, err := NewRunner(Spec{Name: "leaky", Path: "/bin/sh", Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatalf("NewRunner: %v", err)
+	}
+
+	result, err := runner.Run(context.Background(), "leaky", script)
+	if err != nil {
+		t.Fatalf("a program whose child held the pipe was reported as failing: %v", err)
+	}
+	if !result.Succeeded() {
+		t.Errorf("exit code %d, want 0", result.ExitCode)
+	}
+}

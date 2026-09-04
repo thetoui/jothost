@@ -141,6 +141,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-backup
 	$(MAKE) docker-test-security
 	$(MAKE) docker-test-notifications
+	$(MAKE) docker-test-mail
 	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
@@ -260,6 +261,14 @@ docker-test-notifications: create-integration-admin ## Run the Phase 20 notifica
 	docker compose -f docker-compose.test.yml up -d mailpit
 	$(COMPOSE) exec -T agent sh /tests/integration/phase20_notifications.sh
 	docker compose -f docker-compose.test.yml stop mailpit
+
+.PHONY: docker-test-mail
+docker-test-mail: create-integration-admin ## Run the Phase 26 mail server checks
+	# Everything here is proved by doing it: Dovecot authenticates a real
+	# mailbox, a real message is delivered into a real Maildir, and the server
+	# is asked from a non-loopback address whether it will relay for a
+	# stranger. None of that can be tested against a mock.
+	$(COMPOSE) exec -T agent sh /tests/integration/phase26_mail.sh
 
 .PHONY: docker-test-security
 docker-test-security: create-integration-admin ## Run the Phase 15 Security Center checks

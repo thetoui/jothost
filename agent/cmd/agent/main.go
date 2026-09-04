@@ -23,6 +23,7 @@ import (
 	"github.com/jothost/panel/agent/internal/config"
 	"github.com/jothost/panel/agent/internal/cron"
 	"github.com/jothost/panel/agent/internal/database"
+	deploypkg "github.com/jothost/panel/agent/internal/deploy"
 	dnspkg "github.com/jothost/panel/agent/internal/dns"
 	f2bpkg "github.com/jothost/panel/agent/internal/fail2ban"
 	"github.com/jothost/panel/agent/internal/files"
@@ -228,6 +229,43 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		{Name: mailpkg.CommandRspamadm, Path: cfg.RspamadmPath, Timeout: 30 * time.Second},
 		{Name: mailpkg.CommandRspamc, Path: cfg.RspamcPath, Timeout: 30 * time.Second},
 		{Name: mailpkg.CommandSievec, Path: cfg.SievecPath, Timeout: 20 * time.Second},
+		// Deployment.
+		//
+		// git is the only one of these that reaches the network, and its
+		// timeout is generous because a first clone of a large repository is
+		// genuinely slow. What keeps it bounded is not the timeout but the
+		// remote: validate.GitRemote refuses everything but https and ssh,
+		// because git's "ext::" transport runs a command of the caller's
+		// choosing and a remote beginning with a hyphen is an option.
+		//
+		// The deployment shell is its own allowlist entry rather than a shared
+		// "sh", for the reason cron's is: it makes the set of places in this
+		// Agent that can reach a shell a list somebody can read.
+		{Name: deploypkg.CommandGit, Path: cfg.GitPath, Timeout: 15 * time.Minute,
+			AllowedEnv: []string{
+				"HOME", "GIT_TERMINAL_PROMPT", "GIT_CONFIG_NOSYSTEM", "GIT_SSH_COMMAND",
+			}},
+		{Name: deploypkg.CommandSSHKeygen, Path: cfg.SSHKeygenPath, Timeout: 30 * time.Second},
+		{Name: deploypkg.CommandComposer, Path: cfg.ComposerPath, Timeout: 15 * time.Minute,
+			AllowedEnv: []string{
+				"HOME", "USER", "LOGNAME", "CI", "COMPOSER_HOME", "COMPOSER_NO_INTERACTION",
+				"NPM_CONFIG_CACHE", "NPM_CONFIG_UPDATE_NOTIFIER",
+			}},
+		{Name: deploypkg.CommandNpm, Path: cfg.NpmToolPath, Timeout: 15 * time.Minute,
+			AllowedEnv: []string{
+				"HOME", "USER", "LOGNAME", "CI", "COMPOSER_HOME", "COMPOSER_NO_INTERACTION",
+				"NPM_CONFIG_CACHE", "NPM_CONFIG_UPDATE_NOTIFIER",
+			}},
+		{Name: deploypkg.CommandPHP, Path: cfg.PHPToolPath, Timeout: 15 * time.Minute,
+			AllowedEnv: []string{
+				"HOME", "USER", "LOGNAME", "CI", "COMPOSER_HOME", "COMPOSER_NO_INTERACTION",
+				"NPM_CONFIG_CACHE", "NPM_CONFIG_UPDATE_NOTIFIER",
+			}},
+		{Name: deploypkg.CommandDeployShell, Path: cfg.DeployShell, Timeout: 60 * time.Minute,
+			AllowedEnv: []string{
+				"HOME", "USER", "LOGNAME", "CI", "COMPOSER_HOME", "COMPOSER_NO_INTERACTION",
+				"NPM_CONFIG_CACHE", "NPM_CONFIG_UPDATE_NOTIFIER",
+			}},
 		// sshd, used only to *read* the effective configuration (-T) and to
 		// validate a candidate one (-t). The panel never starts the server with
 		// it: that goes through the service manager, so there is one thing on
@@ -539,6 +577,18 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("a mail server is not installed; the panel will offer to install it")
 	}
 
+	// Deployment. Everything a deployment runs — the checkout, the dependency
+	// install, the build, the script — runs as the website's own account, and
+	// an account that resolves to root is refused rather than repaired.
+	deployProvider := deploypkg.NewProvider(deploypkg.Options{
+		Runner: runner,
+		Log:    log,
+		Paths:  deploypkg.Paths{StateDir: cfg.DeployStateDir},
+	})
+	if !deployProvider.Available() {
+		log.Info("git is not installed; websites cannot be deployed from a repository")
+	}
+
 	// The host's package updates. The provider detects apk or apt-get itself,
 	// through the same runner Phase 5 installs packages with.
 	updatesProvider := updatespkg.NewProvider(updatespkg.Options{
@@ -743,6 +793,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Fail2Ban:     fail2banProvider,
 		FTP:          ftpProvider,
 		Mail:         mailProvider,
+		Deploy:       deployProvider,
 		DNS:          dnsProvider,
 		Updates:      updatesProvider,
 		Backup:       backupProvider,

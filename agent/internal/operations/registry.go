@@ -15,6 +15,7 @@ import (
 	"github.com/jothost/panel/agent/internal/collectors"
 	"github.com/jothost/panel/agent/internal/cron"
 	"github.com/jothost/panel/agent/internal/database"
+	"github.com/jothost/panel/agent/internal/deploy"
 	"github.com/jothost/panel/agent/internal/dns"
 	"github.com/jothost/panel/agent/internal/fail2ban"
 	"github.com/jothost/panel/agent/internal/files"
@@ -160,6 +161,12 @@ type Dependencies struct {
 	// nothing would deliver into.
 	Mail *mail.Provider
 
+	// Deploy puts a website's source on the host from git and runs the steps
+	// that turn it into a working site. Nil, or a host with no git, means the
+	// panel reports that rather than accepting repositories nothing would
+	// clone.
+	Deploy *deploy.Provider
+
 	// Logs reads the host's log files. Nil, or configured with no roots, means
 	// log reading is unavailable rather than unrestricted — a path check that
 	// fails open would turn a log viewer into a file reader.
@@ -301,6 +308,12 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationDNSReconcile, r.handleDNSReconcile)
 	r.mustRegister(protocol.OperationDNSZoneStatus, r.handleDNSZoneStatus)
 	r.mustRegister(protocol.OperationDNSSigning, r.handleDNSSigning)
+
+	r.mustRegister(protocol.OperationDeployStatus, r.handleDeployStatus)
+	r.mustRegister(protocol.OperationDeployKeyGenerate, r.handleDeployKeyGenerate)
+	r.mustRegister(protocol.OperationDeployKeyRemove, r.handleDeployKeyRemove)
+	r.mustRegister(protocol.OperationDeployRun, r.handleDeployRun)
+	r.mustRegister(protocol.OperationDeployUnlink, r.handleDeployUnlink)
 
 	r.mustRegister(protocol.OperationMailStatus, r.handleMailStatus)
 	r.mustRegister(protocol.OperationMailInstall, r.handleMailInstall)

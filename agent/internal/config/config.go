@@ -128,6 +128,17 @@ type Config struct {
 	RspamdConfigDir  string
 	MailRoot         string
 	MailStateDir     string
+	// Deployment. GitPath is the only one that reaches the network; the rest
+	// are the build tools the template actions drive, and each may be absent,
+	// which the panel reports as the action being unavailable rather than as a
+	// deployment that failed obscurely. DeployStateDir holds the deploy keys.
+	GitPath        string
+	SSHKeygenPath  string
+	ComposerPath   string
+	NpmToolPath    string
+	PHPToolPath    string
+	DeployShell    string
+	DeployStateDir string
 	// The read-only companions the update reporter needs on a Debian host.
 	// AptCachePath answers what versions exist, AptMarkPath which packages are
 	// held, and DpkgQueryPath what is installed on the disk.
@@ -282,6 +293,13 @@ func Load() (Config, error) {
 		RspamdConfigDir:    getString("AGENT_RSPAMD_CONFIG_DIR", "/etc/rspamd"),
 		MailRoot:           getString("AGENT_MAIL_ROOT", "/var/mail/vhosts"),
 		MailStateDir:       getString("AGENT_MAIL_STATE_DIR", "/var/lib/jothost/mail"),
+		GitPath:            getString("AGENT_GIT_PATH", "/usr/bin/git"),
+		SSHKeygenPath:      getString("AGENT_SSH_KEYGEN_PATH", "/usr/bin/ssh-keygen"),
+		ComposerPath:       getString("AGENT_COMPOSER_PATH", "/usr/bin/composer"),
+		NpmToolPath:        getString("AGENT_NPM_TOOL_PATH", "/usr/bin/npm"),
+		PHPToolPath:        getString("AGENT_PHP_TOOL_PATH", "/usr/bin/php"),
+		DeployShell:        getString("AGENT_DEPLOY_SHELL", "/bin/sh"),
+		DeployStateDir:     getString("AGENT_DEPLOY_STATE_DIR", "/var/lib/jothost/deploy"),
 		AptCachePath:       getString("AGENT_APT_CACHE_PATH", "/usr/bin/apt-cache"),
 		AptMarkPath:        getString("AGENT_APT_MARK_PATH", "/usr/bin/apt-mark"),
 		DpkgQueryPath:      getString("AGENT_DPKG_QUERY_PATH", "/usr/bin/dpkg-query"),

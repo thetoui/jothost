@@ -129,6 +129,14 @@ FROM alpine:3.21 AS runtime
 # drives here. Alpine has no systemd — it is not a package that exists — so a
 # panel speaking only systemd could report what runs on an Alpine host and
 # change none of it.
+# git and composer are Phase 27's. git was already present as a dependency of
+# something else, which is exactly why it is named here: a tool the panel drives
+# and does not ask for is one that disappears the day its accidental parent is
+# removed, and the symptom would be every deployment failing at once.
+#
+# composer is here for the reason the databases are: the panel offers a
+# "composer install" step, and a step only ever exercised against a host that
+# does not have the tool is a step nobody has run.
 # Postfix, Dovecot and Rspamd are baked in for the same reason the databases
 # are: this container is the managed host, and Phase 26 has to drive real
 # daemons. A mail server is the one thing in this panel that cannot be tested
@@ -164,6 +172,7 @@ RUN apk add --no-cache ca-certificates tzdata nginx shadow \
       postfix postfix-pcre \
       dovecot dovecot-lmtpd dovecot-pop3d dovecot-pigeonhole-plugin \
       rspamd rspamd-client rspamd-openrc \
+      git composer \
       certbot \
       mariadb mariadb-client \
       postgresql16 postgresql16-client \

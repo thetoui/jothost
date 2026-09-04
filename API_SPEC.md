@@ -1890,6 +1890,89 @@ because a day's average of 40% hides an hour at 99%, and `sample_count`, because
 a bucket built from two readings is not the same evidence as one built from a
 hundred.
 
+# 31. Deployments
+
+```http
+GET    /deployments
+POST   /deployments/repositories
+GET    /deployments/repositories/:id
+DELETE /deployments/repositories/:id
+PUT    /deployments/repositories/:id/actions
+POST   /deployments/repositories/:id/key
+POST   /deployments/repositories/:id/deploy
+POST   /deployments/repositories/:id/rollback
+
+GET    /deployments/runs/:id
+GET    /deployments/runs/:id/log
+
+POST   /webhooks/deploy/:token          (unauthenticated — see below)
+```
+
+**As implemented in Phase 27.** Git deployment is listed in PRD.md as a future
+feature and in TASKS.md as Phase 27; it is not in this specification, so
+everything here was designed rather than specified. docs/PHASE27.md records why.
+
+Reading needs `deploy.view`. Every change needs `deploy.manage` — and so does
+reading a deployment's **log**, which is the narrower half of the split: a build
+prints whatever the build printed, which regularly includes a token in a URL or
+an environment variable a script echoed. Seeing that a deployment failed is
+support work; reading what it said is not.
+
+## The repository URL is the dangerous field
+
+Refused with a **422**: anything but `https://` and the two ssh forms. git's
+remote is not an address but a small language, and three of its dialects run
+programs — `ext::sh -c ...` is remote code execution spelled as a URL, and a
+remote beginning with a hyphen is an *option* rather than a remote. It is an
+allowlist rather than a denylist, so a transport added to a future git is
+refused without anybody having to remember to refuse it.
+
+Branches and commits are checked the same way and for the same reason: a branch
+beginning with a hyphen is an option, `main:refs/heads` is half a refspec,
+`HEAD@{1}` is a revision expression, and a commit is hexadecimal or it is not
+a commit.
+
+## Deploying
+
+`POST .../deploy` answers **202** with the deployment row. It does not wait: a
+clone, a dependency install and a build take minutes, and the row is how the
+page follows it.
+
+A second deployment while one is running answers **409**. That is not a fault —
+somebody pressed the button twice, or a push arrived mid-build — and the right
+answer is to say so rather than queue a second write into the same working tree.
+
+`POST .../rollback` takes a commit and deploys it. It is a deployment rather than
+an undo, which is the honest shape: it checks out an older commit and runs the
+same steps. It cannot un-run a migration or remove a file a build wrote, and the
+panel says so rather than implying otherwise.
+
+## The webhook
+
+`POST /webhooks/deploy/:token` is the only route in this panel that is reachable
+without authentication and causes code to run.
+
+**The token is an address, not a credential.** It selects which repository a push
+is about so the panel knows which secret to verify against; anybody who can read
+a forge's settings page can read it.
+
+**The signature authenticates.** An HMAC-SHA256 over the exact bytes of the body,
+compared in constant time. The body is read under a hard cap and verified before
+it is parsed. Every way of failing answers **401** with one message — a wrong
+signature, no signature, and a token that matches nothing — because telling an
+unauthenticated caller which tokens exist is telling them what to attack.
+
+Nothing in the payload is trusted except the branch, and that only to decide
+whether this push is one the website deploys. The repository, the commit and the
+branch to check out all come from the panel's own record: a verified push is a
+*signal that something changed*, not an instruction about what to do.
+
+A push for another branch answers **200** and says nothing was done, which is the
+ordinary outcome of pushing to a feature branch rather than a failure. A verified
+push with automatic deployment off answers the same way.
+
+---
+
 # 30. Mail
 
 ```http

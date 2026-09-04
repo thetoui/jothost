@@ -2302,3 +2302,122 @@ export interface MailAutoresponderInput {
   interval_days?: number;
   active?: boolean;
 }
+
+// ---------------------------------------------------------------- deployment
+
+/** How a push reaches the panel. */
+export type DeployProvider = 'none' | 'github' | 'gitlab' | 'generic';
+
+/** How a deployment was started. */
+export type DeployTrigger = 'manual' | 'webhook' | 'rollback';
+
+/** What a deployment is doing, or did. */
+export type DeployStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+
+/** One step of a deployment. Every kind but `script` is a fixed command line. */
+export type DeployActionKind =
+  | 'composer.install'
+  | 'npm.ci'
+  | 'npm.install'
+  | 'npm.build'
+  | 'artisan.migrate'
+  | 'artisan.optimise'
+  | 'script';
+
+export interface DeployAction {
+  id: string;
+  repository_id: string;
+  kind: DeployActionKind;
+  position: number;
+  enabled: boolean;
+  created_at: string;
+}
+
+/** One deployment. */
+export interface Deployment {
+  id: string;
+  repository_id: string;
+  website_id: string;
+  trigger: DeployTrigger;
+  branch: string;
+  commit_sha: string;
+  commit_message: string;
+  commit_author: string;
+  previous_commit: string;
+  status: DeployStatus;
+  exit_code?: number;
+  /** Omitted from lists: a build prints whatever the build printed, which
+   * regularly includes a token in a URL. Reading it needs deploy.manage. */
+  log?: string;
+  log_truncated: boolean;
+  rolled_back: boolean;
+  rollback_error?: string;
+  job_id?: string;
+  started_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
+  created_at: string;
+}
+
+/** What the host says about a working tree. */
+export interface DeployHostStatus {
+  available: boolean;
+  reason?: string;
+  git_version?: string;
+  cloned: boolean;
+  commit?: string;
+  branch?: string;
+  message?: string;
+  author?: string;
+  /** Uncommitted changes a deployment would destroy. */
+  dirty: boolean;
+  dirty_files?: string[] | null;
+  remote?: string;
+  has_key: boolean;
+  fingerprint?: string;
+  /** Which template steps this host can actually run. */
+  tools?: Record<string, boolean> | null;
+  warnings?: string[] | null;
+}
+
+/** A website's source. */
+export interface GitRepository {
+  id: string;
+  server_id: string;
+  website_id: string;
+  remote_url: string;
+  branch: string;
+  deploy_key_public?: string;
+  deploy_key_fingerprint?: string;
+  provider: DeployProvider;
+  /** The address of the webhook, not a credential: it selects which repository
+   * a push is about. The signature is what authenticates. */
+  webhook_token?: string;
+  auto_deploy: boolean;
+  deploy_script: string;
+  script_timeout_seconds: number;
+  current_commit: string;
+  current_branch: string;
+  last_deployed_at?: string;
+  created_at: string;
+  updated_at: string;
+
+  website: string;
+  actions?: DeployAction[] | null;
+  status?: DeployHostStatus;
+  recent?: Deployment[] | null;
+  webhook_url?: string;
+}
+
+/** A repository to create or change. */
+export interface GitRepositoryInput {
+  website_id: string;
+  remote_url: string;
+  branch?: string;
+  provider?: DeployProvider;
+  auto_deploy?: boolean;
+  deploy_script?: string;
+  script_timeout_seconds?: number;
+  /** Set once and never returned. Empty on an update leaves the existing one. */
+  webhook_secret?: string;
+}

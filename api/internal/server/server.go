@@ -20,6 +20,7 @@ import (
 	cronpkg "github.com/jothost/panel/api/internal/cron"
 	"github.com/jothost/panel/api/internal/dashboard"
 	databasespkg "github.com/jothost/panel/api/internal/databases"
+	deploypkg "github.com/jothost/panel/api/internal/deploy"
 	dnspkg "github.com/jothost/panel/api/internal/dns"
 	f2bpkg "github.com/jothost/panel/api/internal/fail2ban"
 	filespkg "github.com/jothost/panel/api/internal/files"
@@ -76,6 +77,8 @@ type Server struct {
 	fail2ban      *f2bpkg.Handler
 	ftp           *ftppkg.Handler
 	mail          *mailpkg.Handler
+	deploy        *deploypkg.Handler
+	deployService *deploypkg.Service
 	dns           *dnspkg.Handler
 	updates       *updatespkg.Handler
 	backup        *backuppkg.Handler
@@ -428,6 +431,28 @@ func New(opts Options) (*Server, error) {
 	// 13 decides how to spell it. It is also how the mail page can say whether
 	// the world can actually see what the panel has configured, which is the
 	// one question a mail server cannot answer about itself.
+	// Deployment. The panel records where a website's source comes from; the
+	// Agent does the checking out and the building, as the website's own
+	// account. Everything long-running goes through the job queue, so the
+	// panel follows a deployment rather than holding a request open for the
+	// length of a build.
+	deployService := deploypkg.NewService(deploypkg.ServiceOptions{
+		Repo:     deploypkg.NewRepository(opts.Pool),
+		Websites: deployWebsites{repo: websiteRepo},
+		Agent:    agent,
+		Jobs:     jobRepo,
+		Secrets:  encrypter,
+		Audit:    auditRecorder,
+		Log:      log,
+		ServerID: opts.LocalServerID,
+	})
+	s.deployService = deployService
+	s.deploy = deploypkg.NewHandler(deploypkg.HandlerOptions{
+		Service: deployService,
+		Auth:    authService,
+	})
+	deploypkg.SetPanelURL(cfg.PanelURL)
+
 	s.mail = mailpkg.NewHandler(mailpkg.HandlerOptions{
 		Service: mailpkg.NewService(mailpkg.ServiceOptions{
 			Repo:     mailpkg.NewRepository(opts.Pool),
@@ -598,10 +623,10 @@ func New(opts Options) (*Server, error) {
 		s.worker = jobs.NewWorker(jobs.Options{
 			Repository: jobRepo,
 			Dispatcher: agent,
-			Observer:   jobs.Observers{websiteService, s.phpSync, s.renewer, backupService},
+			Observer:   jobs.Observers{websiteService, s.phpSync, s.renewer, backupService, deployService},
 			// The resolver rebuilds a backup job's payload at dispatch, so the
 			// queue never stores an S3 secret key or an SSH private key.
-			Resolver: backupService,
+			Resolver: jobs.Resolvers{backupService, deployService},
 			Log:      log,
 			// Installing a PHP package downloads and unpacks it, which takes
 			// far longer than any other operation the panel runs.
@@ -722,6 +747,7 @@ func (s *Server) routes() http.Handler {
 	s.fail2ban.Routes(mux)
 	s.ftp.Routes(mux)
 	s.mail.Routes(mux)
+	s.deploy.Routes(mux)
 	s.dns.Routes(mux)
 	s.updates.Routes(mux)
 	s.monitoring.Routes(mux)
@@ -845,6 +871,15 @@ func (s *Server) Run(ctx context.Context) error {
 		}()
 	} else {
 		s.log.Warn("metric sampling is disabled: no server is registered")
+	}
+
+	// A deployment that was running when the panel stopped is one nothing will
+	// finish. Closed at startup rather than left, because the unique index
+	// that stops two deployments at once would otherwise hold for ever and no
+	// further deployment of that website could start — while the page showed
+	// one in progress that nothing was progressing.
+	if s.deployService != nil {
+		s.deployService.ReleaseStale(ctx)
 	}
 
 	// The job worker is what turns a queued website into a provisioned one.

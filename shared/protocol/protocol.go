@@ -186,6 +186,16 @@ const (
 	OperationDNSZoneStatus OperationType = "dns.zone.status"
 	OperationDNSSigning    OperationType = "dns.signing"
 
+	// Deployment. A request carries what the panel recorded: a repository
+	// address that has been through validate.GitRemote — git's remote is a
+	// small language and three of its dialects run programs — a branch, and
+	// typed actions from a closed set. It never carries a command line.
+	OperationDeployStatus      OperationType = "deploy.status"
+	OperationDeployKeyGenerate OperationType = "deploy.key.generate"
+	OperationDeployKeyRemove   OperationType = "deploy.key.remove"
+	OperationDeployRun         OperationType = "deploy.run"
+	OperationDeployUnlink      OperationType = "deploy.unlink"
+
 	// Mail. A request carries the mail this host should serve, as the panel
 	// recorded it: domains, mailboxes and forwarders that have been validated,
 	// and settings whose every field is a number or a flag. It never carries a
@@ -342,6 +352,11 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationDNSReconcile:         {},
 	OperationDNSZoneStatus:        {},
 	OperationDNSSigning:           {},
+	OperationDeployStatus:         {},
+	OperationDeployKeyGenerate:    {},
+	OperationDeployKeyRemove:      {},
+	OperationDeployRun:            {},
+	OperationDeployUnlink:         {},
 	OperationMailStatus:           {},
 	OperationMailInstall:          {},
 	OperationMailReconcile:        {},

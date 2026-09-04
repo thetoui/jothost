@@ -76,6 +76,15 @@ const (
 	PermMailView   = "mail.view"
 	PermMailManage = "mail.manage"
 
+	// PermDeployView and PermDeployManage are split for a narrower reason than
+	// the mail pair above. Deploying is running code on this host as a
+	// website's account, so the manage half is the powerful one; the read half
+	// is separated because a build log prints whatever the build printed,
+	// which regularly includes a token in a URL or an environment variable a
+	// script echoed. Seeing *that* a deployment failed is support work.
+	PermDeployView   = "deploy.view"
+	PermDeployManage = "deploy.manage"
+
 	PermNotificationManage = "notification.manage"
 	PermAuditView          = "audit.view"
 	PermUserManage         = "user.manage"

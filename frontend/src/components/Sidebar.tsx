@@ -14,6 +14,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Lock,
+  GitBranch,
   Layers,
   Mails,
   Network,
@@ -73,6 +74,7 @@ const navGroups: NavGroup[] = [
       { label: 'FTP', to: '/ftp', icon: FolderKey, enabled: true },
       { label: 'Backups', to: '/backups', icon: HardDrive, enabled: true },
       { label: 'Mail', to: '/mail', icon: Mails, enabled: true },
+      { label: 'Deployments', to: '/deployments', icon: GitBranch, enabled: true },
     ],
   },
   {

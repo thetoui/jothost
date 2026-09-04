@@ -921,6 +921,98 @@ disk as fine is a panel that will one day say a full disk is fine.
 
 ---
 
+# 33. git_repositories, deployment_actions, deployments
+
+Added by migration 0022, and not in this specification: git deployment is listed
+in PRD.md as a future feature and in TASKS.md as Phase 27.
+
+## 33.1 The column that becomes an argument to a program
+
+```sql
+-- git_repositories
+remote_url VARCHAR(512) NOT NULL
+branch     VARCHAR(255) NOT NULL DEFAULT 'main'
+```
+
+Both carry a CHECK mirroring the rules enforced in Go, and the reason is what
+these columns are for: they become arguments to git. A remote beginning with a
+hyphen is an *option* rather than a remote — `--upload-pack=/tmp/evil` is
+remote code execution that looks like a typo — and git's `ext::` transport runs
+a command of the caller's choosing. The Go check is an allowlist of the two forms
+anybody uses; the constraint here is the second lock on the same door.
+
+## 33.2 Where the deploy key is not
+
+```sql
+deploy_key_public      TEXT NOT NULL DEFAULT ''
+deploy_key_fingerprint VARCHAR(120) NOT NULL DEFAULT ''
+```
+
+The public half only. The private half lives on the host that authenticates with
+it — the same decision Phase 26 made about DKIM keys, and sharper here: this key
+grants read access to a customer's *source code*, and this database is backed up,
+replicated, and read by every part of the API.
+
+## 33.3 The webhook's two halves
+
+```sql
+provider VARCHAR(20) NOT NULL DEFAULT 'none'
+webhook_token VARCHAR(64)
+webhook_secret_encrypted TEXT
+```
+
+The token is the *address* and is not a credential: it selects which repository a
+push is about. The secret authenticates, and it is encrypted against the row's own
+id (section 30) because anybody holding it can make this panel deploy.
+
+A CHECK requires both together whenever a provider is set. A token nothing
+verifies is an unauthenticated endpoint that deploys, which is the one thing this
+phase must never ship; a secret nothing addresses is a secret no request can
+reach.
+
+`deploy_script` is deliberately **not** encrypted. It is not a secret, it is shown
+on the page, and encrypting it would suggest a confidentiality the rest of its
+lifecycle does not have — a script that needs a secret should read it from the
+site's own environment, and the panel says so.
+
+## 33.4 One deployment at a time, enforced by an index
+
+```sql
+CREATE UNIQUE INDEX deployments_one_running_idx
+    ON deployments (repository_id) WHERE status IN ('pending', 'running');
+```
+
+Two deployments into one document root is a working tree being rewritten by one
+process while another builds from it, and the result is neither commit. It is an
+index rather than a check in Go because two API processes would each pass a
+check.
+
+It is a mutex and not a lock only because the panel closes deployments left
+running by a restart, at startup. Without that, one interrupted deployment would
+block a website's deployments for ever while the page showed one in progress that
+nothing was progressing.
+
+`previous_commit` is written when a deployment *starts*, because it is where a
+rollback goes — and by the time a build has failed, the working tree no longer
+knows what it was on.
+
+## 33.5 The log
+
+`deployments.log` is the most sensitive column in the phase. A build prints
+whatever the build printed, which regularly includes a token in a URL or an
+environment variable a script echoed. It is omitted from every list and read
+through its own endpoint, behind `deploy.manage` rather than `deploy.view`.
+
+## 33.6 Ordering the steps
+
+`deployment_actions.position` is explicit rather than implied by insertion order:
+"npm ci" after "npm run build" is not a deployment, it is a deployment that
+fails. A unique index on (repository, position) keeps the order well defined,
+which is also why reordering is written as one transaction — applying it as a
+sequence of updates passes through states where two steps share a position.
+
+---
+
 # 32. mail_settings, mail_domains, mailboxes, mail_aliases, mail_autoresponders
 
 Added by migration 0021, and not in this specification: mail is listed in PRD.md

@@ -19,6 +19,8 @@ export const Permission = {
   NotificationManage: 'notification.manage',
   MailView: 'mail.view',
   MailManage: 'mail.manage',
+  DeployView: 'deploy.view',
+  DeployManage: 'deploy.manage',
   FileRead: 'file.read',
   FileWrite: 'file.write',
   CronManage: 'cron.manage',

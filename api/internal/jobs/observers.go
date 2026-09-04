@@ -36,3 +36,35 @@ func notify(ctx context.Context, observer Observer, job Job, state State,
 	}()
 	observer.JobFinished(ctx, job, state, result, failure)
 }
+
+// Resolvers chains payload resolvers, in order.
+//
+// The worker takes one, and by Phase 27 two features need one: backups, whose
+// payload names a destination and must not carry its credentials in the queue,
+// and deployments, whose payload is rebuilt from the deployment's own row.
+//
+// A resolver returns nil for a job type it does not own, which is the same
+// convention a single resolver already followed — so chaining them is the first
+// non-nil answer, and a job nobody claims keeps the payload it was queued with.
+type Resolvers []PayloadResolver
+
+// ResolvePayload asks each resolver in turn and returns the first answer.
+func (r Resolvers) ResolvePayload(ctx context.Context, job Job) (map[string]any, error) {
+	for _, resolver := range r {
+		if resolver == nil {
+			continue
+		}
+		payload, err := resolver.ResolvePayload(ctx, job)
+		if err != nil {
+			// Not swallowed, unlike an observer's failure. A payload that
+			// cannot be completed is a job that must not be attempted: this is
+			// the difference between a backup sent to a destination with no
+			// credentials and one that is not sent at all.
+			return nil, err
+		}
+		if payload != nil {
+			return payload, nil
+		}
+	}
+	return nil, nil
+}

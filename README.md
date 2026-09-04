@@ -6,17 +6,19 @@ databases, SSL, files, cron, backups, monitoring, and security from one web inte
 **Status:** Phases 0–15 complete, plus 4.1 (subdomains), 4.5
 (the Apache hybrid arrangement), 7.1 (FTP), 16 (the firewall), 17 (SSH security),
 18 (intrusion prevention), 19 (monitoring), 20 (notifications), 21 (system
-updates) and 26 (the mail server): foundation, authentication, Host Agent,
-dashboard, websites, subdomains, the nginx + Apache engine, PHP, SSL, files, the
-code editor, databases, Node.js applications, scheduled jobs, the log viewer,
-host services, FTP accounts, DNS and the local name server, the packet filter,
-the SSH server's settings, fail2ban, package updates, the alert engine, backups
-that are read back before they are called backups, a security score that never
-hides how many checks it is built from, notifications that keep the record of
-every one they failed to deliver, and a mail server that shows what it is
-configured to do next to what the world can actually verify.
+updates), 26 (the mail server) and 27 (git deployment): foundation,
+authentication, Host Agent, dashboard, websites, subdomains, the nginx +
+Apache engine, PHP, SSL, files, the code editor, databases, Node.js
+applications, scheduled jobs, the log viewer, host services, FTP accounts, DNS
+and the local name server, the packet filter, the SSH server's settings,
+fail2ban, package updates, the alert engine, backups that are read back before
+they are called backups, a security score that never hides how many checks it
+is built from, notifications that keep the record of
+every one they failed to deliver, a mail server that shows what it is
+configured to do next to what the world can actually verify, and deployments
+that run a customer's build as the customer's own account and never as root.
 
-Next is Phase 27 (Git & Webhook Deployment Actions). Phases are built in dependency order rather
+Next is Phase 22 (Multi-Tenant). Phases are built in dependency order rather
 than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md for the
 sequence and why each phase sits where it does. The per-phase notes in
 [docs/](docs/) say what each one does and does not include.
@@ -198,6 +200,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE15.md](docs/PHASE15.md) | Phase 15 scope, decisions, and known limitations |
 | [docs/PHASE20.md](docs/PHASE20.md) | Phase 20 scope, decisions, and known limitations |
 | [docs/PHASE26.md](docs/PHASE26.md) | Phase 26 scope, decisions, and known limitations |
+| [docs/PHASE27.md](docs/PHASE27.md) | Phase 27 scope, decisions, and known limitations |
 
 ---
 

@@ -54,16 +54,16 @@ Done, in the order they were built:
 15  Security Center
 20  Notifications
 26  Mail Server Ecosystem
+27  Git & Webhook Actions
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  27   Git & Webhook Actions  — deployment logs need 11
- 2.  22   Multi-Tenant           — quota dimensions must exist first, mail included
- 3.  23   Production Installer   — installs everything, so everything must exist
- 4.  24   Production Hardening   — tests the finished system
- 5.  25   Release                — last by definition
+ 1.  22   Multi-Tenant           — quota dimensions must exist first, mail included
+ 2.  23   Production Installer   — installs everything, so everything must exist
+ 3.  24   Production Hardening   — tests the finished system
+ 4.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -1391,19 +1391,57 @@ Additionally required by the above:
 
 # PHASE 27 — Git & Webhook Deployment Actions
 
+**Status: COMPLETE** — see [docs/PHASE27.md](docs/PHASE27.md) for how this
+phase answers CLAUDE.md section 4, what the webhook does and does not protect,
+what rollback cannot do, and what running it found.
+
 **Build order: 15 of 17.** Depends on 11 (deployment log streaming), 12, and the
 per-site isolated execution built in Phases 5 and 9.
 
-- [ ] Git repository manager per website
-- [ ] SSH deployment key generation
-- [ ] Webhook receiver endpoint & secret signature validation
-- [ ] Post-deployment script runner engine
-- [ ] Pre-built action templates (composer install, npm run build, php artisan migrate)
-- [ ] Custom shell script execution isolated per site user
-- [ ] Real-time deployment log streaming & execution history
-- [ ] Automatic rollback on script failure
-- [ ] Branch selection & Push-to-deploy trigger control
-- [ ] Deployment UI
+- [x] Git repository manager per website — one per website, enforced by an
+  index: two would be two things writing into one document root
+- [x] SSH deployment key generation — Ed25519, generated on the host, **private
+  half stored nowhere else**, with the host key pinned on first use per website
+- [x] Webhook receiver endpoint & secret signature validation — the panel's
+  only unauthenticated route that runs code. The token in the URL is an
+  *address*; an HMAC over the body is what authenticates, compared in constant
+  time, and every way of failing answers identically
+- [x] Post-deployment script runner engine — steps run in order, stopping at
+  the first failure, as the website's own account
+- [x] Pre-built action templates — six typed actions, each a fixed argv the
+  Agent builds, with the flags that stop a build hanging on a prompt
+- [x] Custom shell script execution isolated per site user — stored
+  configuration rather than a request, written to a 0600 file owned by the site
+  and run as `sh <file>` — never `sh -c <text>`, because the process table is
+  world-readable and a deploy script is exactly the kind of text that holds a
+  token
+- [x] Deployment log streaming & execution history — the page follows a
+  running deployment by polling; the history and the log are separate reads
+  behind separate permissions
+- [x] Automatic rollback on script failure — restoring the **source**, and
+  saying plainly in the log that it cannot undo a build
+- [x] Branch selection & Push-to-deploy trigger control — off by default, and
+  audited when it is switched on: it is the moment a repository's writers can
+  run code here without touching the panel
+- [x] Deployment UI
+
+Additionally required by the above:
+
+- [x] **An allowlist for the repository URL, not a denylist.** git's remote is a
+  small language and three of its dialects run programs: `ext::sh -c ...` is
+  remote code execution spelled as a URL, and a remote beginning with a hyphen
+  is an option. Two forms are accepted and everything else is refused by not
+  being one of them
+- [x] One deployment at a time per repository, enforced by a unique partial
+  index rather than a check two API processes could both pass
+- [x] A deployment left running by a restart is closed at startup, so the index
+  is a mutex rather than a permanent lock
+- [x] A build never sees the Agent's environment, which holds the agent token,
+  the database password and the encryption key
+- [x] `deploy.view` split from `deploy.manage`, because a build log prints
+  whatever the build printed — which regularly includes a token in a URL
+- [x] The deployment tools are allowlisted under their own names, after the
+  Agent refused to start with two specs called `npm`
 
 # Definition of Done
 

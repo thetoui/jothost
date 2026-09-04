@@ -8,6 +8,7 @@ import (
 
 	cronpkg "github.com/jothost/panel/api/internal/cron"
 	"github.com/jothost/panel/api/internal/dashboard"
+	deploypkg "github.com/jothost/panel/api/internal/deploy"
 	dnspkg "github.com/jothost/panel/api/internal/dns"
 	ftppkg "github.com/jothost/panel/api/internal/ftp"
 	mailpkg "github.com/jothost/panel/api/internal/mail"
@@ -393,4 +394,29 @@ func (m mailZones) PublishedValues(ctx context.Context, zoneID, name,
 	recordType string,
 ) ([]string, error) {
 	return m.dns.PublishedValues(ctx, zoneID, name, recordType)
+}
+
+// deployWebsites answers what the deploy package needs to know about a site:
+// the account everything runs as, and the directory the working tree lives in.
+//
+// Both come from the website's own row rather than from a request. That is the
+// whole of what keeps a deployment inside one site: the account is the one the
+// website was created with, and a deployment that could name its own would be a
+// deployment that could run as another customer.
+type deployWebsites struct {
+	repo *websites.Repository
+}
+
+func (d deployWebsites) LookupForDeploy(ctx context.Context, id string) (deploypkg.WebsiteRef, error) {
+	site, err := d.repo.Get(ctx, id)
+	if err != nil {
+		return deploypkg.WebsiteRef{}, err
+	}
+	return deploypkg.WebsiteRef{
+		ID:           site.ID,
+		ServerID:     site.ServerID,
+		Domain:       site.PrimaryDomain,
+		SystemUser:   site.SystemUser,
+		DocumentRoot: site.DocumentRoot,
+	}, nil
 }

@@ -142,6 +142,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-security
 	$(MAKE) docker-test-notifications
 	$(MAKE) docker-test-mail
+	$(MAKE) docker-test-deploy
 	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
@@ -261,6 +262,14 @@ docker-test-notifications: create-integration-admin ## Run the Phase 20 notifica
 	docker compose -f docker-compose.test.yml up -d mailpit
 	$(COMPOSE) exec -T agent sh /tests/integration/phase20_notifications.sh
 	docker compose -f docker-compose.test.yml stop mailpit
+
+.PHONY: docker-test-deploy
+docker-test-deploy: create-integration-admin ## Run the Phase 27 deployment checks
+	# The checks stand up a bare repository inside the container and deploy from
+	# it over SSH, with a key the panel generated — so the deploy key, the host
+	# key pinning and the authentication are all real. A local path would have
+	# exercised none of them.
+	$(COMPOSE) exec -T agent sh /tests/integration/phase27_deploy.sh
 
 .PHONY: docker-test-mail
 docker-test-mail: create-integration-admin ## Run the Phase 26 mail server checks

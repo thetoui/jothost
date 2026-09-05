@@ -21,6 +21,11 @@ const (
 	CommandAdduser = "adduser"
 	CommandUserdel = "userdel"
 	CommandDeluser = "deluser"
+	// CommandAddgroup and CommandDelgroup exist only for the BusyBox path.
+	// shadow-utils makes a private group with --user-group; BusyBox has no
+	// such flag, so the group is created and removed as its own step.
+	CommandAddgroup = "addgroup"
+	CommandDelgroup = "delgroup"
 )
 
 // Errors returned by the account provider.
@@ -133,17 +138,33 @@ func (p *UserProvider) Ensure(ctx context.Context, name, home string) (Account, 
 }
 
 // create runs the host's account tool.
+//
+// **Every site account gets a group of its own, named after it**, and that is
+// not tidiness. It is the difference between per-site isolation and none:
+//
+//   - BusyBox `adduser -S` with no -G puts the account in *nogroup*, which is
+//     shared by every service account on an Alpine host. Two customers' sites
+//     would then be in one group, and anything either of them made
+//     group-readable would be readable by the other.
+//   - shadow-utils decides from USERGROUPS_ENAB in login.defs, so whether a
+//     private group appears depends on a setting the panel does not control.
+//     `--user-group` says it outright.
+//   - PHP-FPM names the group in every pool it writes. Without one it refuses
+//     to start — "cannot get gid for group" — which takes down PHP for every
+//     site on the host, not only the new one. That is how this was found.
 func (p *UserProvider) create(ctx context.Context, name, home string) error {
 	shell := p.pickShell()
 
 	// Arguments are argv entries. The name is already validated to be
 	// [a-z_][a-z0-9_-]*, so it cannot be read as an option.
 	if p.runner.Available(CommandUseradd) {
-		// shadow-utils: --system makes it a service account, -M skips home
-		// creation because the site directory is provisioned separately with
-		// its own permissions.
+		// shadow-utils: --system makes it a service account, --no-create-home
+		// skips home creation because the site directory is provisioned
+		// separately with its own permissions, and --user-group makes the
+		// private group explicit rather than inherited from login.defs.
 		result, err := p.runner.Run(ctx, CommandUseradd,
-			"--system", "--no-create-home", "--shell", shell, "--home-dir", home, name)
+			"--system", "--user-group", "--no-create-home",
+			"--shell", shell, "--home-dir", home, name)
 		if err != nil {
 			return fmt.Errorf("create user %s: %w", name, err)
 		}
@@ -153,9 +174,28 @@ func (p *UserProvider) create(ctx context.Context, name, home string) error {
 		return nil
 	}
 
+	// BusyBox has no equivalent of --user-group, so the group is created first
+	// and the account is put in it. An existing group is not an error: this
+	// runs again on a retried provision, and the account it belongs to may
+	// have been removed while the group survived.
+	if p.runner.Available(CommandAddgroup) {
+		result, err := p.runner.Run(ctx, CommandAddgroup, "-S", name)
+		if err != nil {
+			return fmt.Errorf("create group %s: %w", name, err)
+		}
+		if !result.Succeeded() && !groupExists(name) {
+			return fmt.Errorf("addgroup failed for %s: %s", name, summarizeOutput(result.Stderr))
+		}
+	}
+
 	// BusyBox adduser: -S system, -D no password, -H no home creation.
-	result, err := p.runner.Run(ctx, CommandAdduser,
-		"-S", "-D", "-H", "-s", shell, "-h", home, name)
+	args := []string{"-S", "-D", "-H", "-s", shell, "-h", home}
+	if groupExists(name) {
+		args = append(args, "-G", name)
+	}
+	args = append(args, name)
+
+	result, err := p.runner.Run(ctx, CommandAdduser, args...)
 	if err != nil {
 		return fmt.Errorf("create user %s: %w", name, err)
 	}
@@ -163,6 +203,12 @@ func (p *UserProvider) create(ctx context.Context, name, home string) error {
 		return fmt.Errorf("adduser failed for %s: %s", name, summarizeOutput(result.Stderr))
 	}
 	return nil
+}
+
+// groupExists reports whether a group of this name is resolvable.
+func groupExists(name string) bool {
+	_, err := user.LookupGroup(name)
+	return err == nil
 }
 
 // Remove deletes a site account.
@@ -196,6 +242,15 @@ func (p *UserProvider) Remove(ctx context.Context, name string) (bool, error) {
 		}
 		if !result.Succeeded() {
 			return false, fmt.Errorf("deluser failed for %s: %s", name, summarizeOutput(result.Stderr))
+		}
+		// BusyBox's deluser leaves the private group behind, and a group with
+		// no members is a gid that will be handed to the next account created.
+		// Removing it is not fatal if it fails: the account is already gone,
+		// which is what was asked for.
+		if groupExists(name) && p.runner.Available(CommandDelgroup) {
+			if _, err := p.runner.Run(ctx, CommandDelgroup, name); err != nil {
+				return true, nil
+			}
 		}
 	default:
 		return false, ErrNoUserTool

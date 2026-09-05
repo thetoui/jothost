@@ -56,14 +56,14 @@ Done, in the order they were built:
 26  Mail Server Ecosystem
 27  Git & Webhook Actions
 22  Multi-Tenant
+23  Production Installer
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  23   Production Installer   — installs everything, so everything must exist
- 2.  24   Production Hardening   — tests the finished system
- 3.  25   Release                — last by definition
+ 1.  24   Production Hardening   — tests the finished system
+ 2.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -1292,22 +1292,26 @@ Additionally required by the above:
 
 # PHASE 23 — Production Installer
 
+**Status: COMPLETE** — see [docs/PHASE23.md](docs/PHASE23.md) for what "no
+configuration beyond the domain" had to mean, the distribution differences that
+actually bite, what running it on a clean host found, and known limitations.
+
 **Build order: 17 of 17.** Depends on everything it installs: 16 for the firewall
 step, 12 for the systemd step, and every runtime feature it lays down.
 
-- [ ] OS detection
-- [ ] Architecture detection
-- [ ] Root detection
-- [ ] Dependency installation
-- [ ] Database setup
-- [ ] API installation
-- [ ] Agent installation
-- [ ] Nginx configuration
-- [ ] SSL
-- [ ] Admin creation
-- [ ] systemd
-- [ ] Firewall
-- [ ] Health check
+- [x] OS detection
+- [x] Architecture detection
+- [x] Root detection
+- [x] Dependency installation
+- [x] Database setup
+- [x] API installation
+- [x] Agent installation
+- [x] Nginx configuration
+- [x] SSL
+- [x] Admin creation
+- [x] systemd
+- [x] Firewall
+- [x] Health check
 
 Commands:
 
@@ -1316,7 +1320,30 @@ install
 update
 repair
 uninstall
+status
 ```
+
+Additionally required by the above:
+
+- [x] **`make dist`**, because an installer needs something to install: static
+  binaries with the version compiled in, the built frontend, and the migrations
+- [x] The installer **configures the Agent for the host it found** —
+  `AGENT_NGINX_SITES_DIR`, the cron spool, the web group. Alpine includes
+  `conf.d` at the main level, where a `server` block stops nginx starting at
+  all, so this is not a preference but the difference between a working host
+  and one whose nginx refuses the whole configuration
+- [x] Secrets **generated once and preserved**, checked across an update and a
+  repair: a new `ENCRYPTION_KEY` would orphan every stored two-factor secret,
+  and nothing would say so until somebody tried to sign in
+- [x] A self-signed fallback that **says it is self-signed**, because a machine
+  whose DNS does not point at it yet cannot pass an HTTP-01 challenge, and
+  refusing to finish would leave a panel nobody can reach
+- [x] `status`, so an operator can ask what is installed and what is running
+  without reading the script
+- [x] A fix to Phase 4: a site account now gets a **group of its own** on every
+  distribution. BusyBox's `adduser -S` put every site in the shared `nogroup`,
+  which is the per-site isolation the design rests on, silently absent — and
+  which surfaced as PHP-FPM refusing to start for any site on the host
 
 ---
 

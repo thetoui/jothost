@@ -87,6 +87,73 @@ go-lint: ## Run go vet and gofmt checks
 go-fmt: ## Format Go source
 	@$(GO_RUN) 'for m in $(GO_MODULES); do (cd /src/$$m && gofmt -w .); done'
 
+# --------------------------------------------------------------- distribution
+
+# The artefacts the installer lays down.
+#
+# A directory rather than a tarball: `make dist` is what the Phase 23 installer
+# checks are run against, and a directory can be mounted into a container
+# without unpacking. Phase 25 wraps this in a release archive.
+#
+# Everything is built inside Linux containers, so the result is the same
+# whichever machine ran the command — which is the point, since these binaries
+# are copied onto a customer's server.
+DIST_DIR ?= dist
+
+.PHONY: dist
+dist: dist-clean dist-binaries dist-frontend dist-support ## Build the installable artefacts into dist/
+	@echo ""
+	@echo "Artefacts in $(DIST_DIR):"
+	@ls -1 $(DIST_DIR)
+	@echo ""
+	@echo "Install them with:  sudo $(DIST_DIR)/install.sh install --domain panel.example.com"
+
+.PHONY: dist-clean
+dist-clean: ## Remove the built artefacts
+	rm -rf $(DIST_DIR)
+
+.PHONY: dist-binaries
+dist-binaries:
+	@mkdir -p $(DIST_DIR)/bin
+	# Statically linked, because the binaries are copied onto a host whose libc
+	# is not known: a dynamically linked Go binary built on Alpine will not run
+	# on Debian, and the failure is a bare "not found" that names nothing.
+	#
+	# The version is compiled in rather than read from a file, so a binary
+	# always reports what it actually is.
+	$(GO_RUN) 'set -e; \
+		version=$$(cat VERSION 2>/dev/null || echo 0.1.0-dev); \
+		commit=$$(cat .git/HEAD 2>/dev/null | sed "s|ref: ||" | xargs -I{} sh -c "cat .git/{} 2>/dev/null" | cut -c1-12); \
+		[ -n "$$commit" ] || commit=unknown; \
+		built=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+		flags="-s -w \
+			-X github.com/jothost/panel/shared/version.Version=$$version \
+			-X github.com/jothost/panel/shared/version.Commit=$$commit \
+			-X github.com/jothost/panel/shared/version.BuildDate=$$built"; \
+		(cd api && CGO_ENABLED=0 go build -trimpath -ldflags "$$flags" \
+			-o /src/$(DIST_DIR)/bin/jothost-api ./cmd/api); \
+		(cd agent && CGO_ENABLED=0 go build -trimpath -ldflags "$$flags" \
+			-o /src/$(DIST_DIR)/bin/jothost-agent ./cmd/agent); \
+		printf "%s\n" "$$version" > /src/$(DIST_DIR)/VERSION; \
+		printf "%s\n" "$$commit" >> /src/$(DIST_DIR)/VERSION; \
+		printf "%s\n" "$$built" >> /src/$(DIST_DIR)/VERSION'
+	@chmod +x $(DIST_DIR)/bin/*
+
+.PHONY: dist-frontend
+dist-frontend:
+	@mkdir -p $(DIST_DIR)
+	docker run --rm -v "$(CURDIR)/frontend:/app" -v jothost-dist-node:/app/node_modules \
+		-w /app node:22-alpine sh -euc 'npm ci --no-audit --no-fund && npm run build'
+	rm -rf $(DIST_DIR)/frontend
+	cp -r frontend/dist $(DIST_DIR)/frontend
+
+.PHONY: dist-support
+dist-support:
+	@mkdir -p $(DIST_DIR)
+	cp -r migrations $(DIST_DIR)/migrations
+	cp scripts/jothost-installer.sh $(DIST_DIR)/install.sh
+	@chmod +x $(DIST_DIR)/install.sh
+
 # ------------------------------------------------------------------ frontend
 
 .PHONY: fe-install
@@ -271,6 +338,16 @@ docker-test-deploy: create-integration-admin ## Run the Phase 27 deployment chec
 	# key pinning and the authentication are all real. A local path would have
 	# exercised none of them.
 	$(COMPOSE) exec -T agent sh /tests/integration/phase27_deploy.sh
+
+.PHONY: docker-test-installer
+docker-test-installer: dist ## Run the Phase 23 installer checks on a clean host
+	# A throwaway container with nothing on it: no nginx, no PostgreSQL, no
+	# panel. The installer has to bring all of that with it, and the checks
+	# afterwards ask the panel over HTTP whether it is really there.
+	#
+	# It depends on `dist` because an installer with nothing to install proves
+	# nothing.
+	$(COMPOSE_TEST) run --rm installer-test
 
 .PHONY: docker-test-tenancy
 docker-test-tenancy: create-integration-admin ## Run the Phase 22 multi-tenancy checks

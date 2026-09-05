@@ -28,7 +28,7 @@ var sliceTemplate = template.Must(template.New("slice").Parse(
 	`# Managed by JotHost Panel. Manual edits are overwritten.
 [Unit]
 Description=JotHost subscription {{ .Description }}
-Documentation=https://github.com/jothost/panel
+Documentation=https://github.com/thetoui/jothost
 Before=slices.target
 
 [Slice]

@@ -193,6 +193,11 @@ type Config struct {
 	AdduserPath string
 	UserdelPath string
 	DeluserPath string
+	// The group tools exist for the BusyBox path only: shadow-utils makes a
+	// site's private group with useradd --user-group, and BusyBox has no
+	// equivalent, so the group is created and removed as its own step.
+	AddgroupPath string
+	DelgroupPath string
 	// WebGroup is the group the web server runs as. Site directories are
 	// group-owned by it so the server can read what it serves. Empty probes
 	// the conventional names.
@@ -329,6 +334,8 @@ func Load() (Config, error) {
 		AdduserPath:        getString("AGENT_ADDUSER_PATH", "/usr/sbin/adduser"),
 		UserdelPath:        getString("AGENT_USERDEL_PATH", "/usr/sbin/userdel"),
 		DeluserPath:        getString("AGENT_DELUSER_PATH", "/usr/sbin/deluser"),
+		AddgroupPath:       getString("AGENT_ADDGROUP_PATH", "/usr/sbin/addgroup"),
+		DelgroupPath:       getString("AGENT_DELGROUP_PATH", "/usr/sbin/delgroup"),
 		WebGroup:           getString("AGENT_WEB_GROUP", ""),
 
 		// The MariaDB client is preferred because a MariaDB host ships it

@@ -34,7 +34,7 @@ const UnitDir = "/etc/systemd/system"
 var unitTemplate = template.Must(template.New("unit").Parse(
 	`[Unit]
 Description=JotHost Node.js application {{ .App.Name }}
-Documentation=https://github.com/jothost/panel
+Documentation=https://github.com/thetoui/jothost
 After=network-online.target
 Wants=network-online.target
 

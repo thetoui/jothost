@@ -476,6 +476,35 @@ jothost-agent.service
 
 Frontend should be compiled to static files and served through Nginx.
 
+The installer (`scripts/jothost-installer.sh`, shipped as `install.sh` beside
+the artefacts) lays all of that down from one command and a domain. The layout
+it produces is the contract between the installer, the service units and the
+panel's own configuration:
+
+```text
+/opt/jothost/bin/          jothost-api, jothost-agent
+/opt/jothost/frontend/     the compiled SPA, served by nginx
+/opt/jothost/migrations/   the SQL the API applies at startup
+/etc/jothost/api.env       0640 root:jothost
+/etc/jothost/agent.env     0600 root:root
+/var/lib/jothost/          the Agent's state
+/var/log/jothost/          2770 root:jothost
+/run/jothost/agent.sock    0660 root:jothost
+```
+
+The Agent runs as root and the API as the unprivileged `jothost-api`, which is
+the boundary in section 2 made concrete on a real host. The installer also sets
+`AGENT_ALLOWED_UIDS` to the API account's uid, so the socket's group says who
+*can* connect and that says who may even so.
+
+Host conventions differ, and the installer resolves them once and tells both
+halves: nginx's vhost directory (`http.d` on Alpine, `conf.d` on Debian), the
+cron spool, and the web server's group. A vhost written into the wrong
+directory on Alpine stops nginx from starting at all, because `conf.d` is
+included at the main level there.
+
+See [docs/PHASE23.md](docs/PHASE23.md).
+
 ---
 
 # 16. Docker Development

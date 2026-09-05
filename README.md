@@ -6,8 +6,9 @@ databases, SSL, files, cron, backups, monitoring, and security from one web inte
 **Status:** Phases 0–15 complete, plus 4.1 (subdomains), 4.5
 (the Apache hybrid arrangement), 7.1 (FTP), 16 (the firewall), 17 (SSH security),
 18 (intrusion prevention), 19 (monitoring), 20 (notifications), 21 (system
-updates), 26 (the mail server) and 27 (git deployment): foundation,
-authentication, Host Agent, dashboard, websites, subdomains, the nginx +
+updates), 26 (the mail server), 27 (git deployment), 22 (multi-tenancy) and 23
+(the production installer): foundation, authentication, Host Agent, dashboard,
+websites, subdomains, the nginx +
 Apache engine, PHP, SSL, files, the code editor, databases, Node.js
 applications, scheduled jobs, the log viewer, host services, FTP accounts, DNS
 and the local name server, the packet filter, the SSH server's settings,
@@ -17,10 +18,11 @@ is built from, notifications that keep the record of
 every one they failed to deliver, a mail server that shows what it is
 configured to do next to what the world can actually verify, and deployments
 that run a customer's build as the customer's own account and never as root,
-and quotas that are charged to whoever owns the website rather than to whoever
-pressed the button.
+quotas that are charged to whoever owns the website rather than to whoever
+pressed the button, and an installer that turns an empty Linux machine into a
+working panel from one command and a domain.
 
-Next is Phase 23 (Production Installer). Phases are built in dependency order
+Next is Phase 24 (Production Hardening). Phases are built in dependency order
 rather than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md
 for the sequence and why each phase sits where it does. The per-phase notes in
 [docs/](docs/) say what each one does and does not include.
@@ -102,6 +104,40 @@ Without Make:
 ```bash
 docker compose up -d --build
 ```
+
+---
+
+## Installing on a server
+
+Everything above is the development stack. To put the panel on a real Linux
+machine, build the artefacts and run the installer on the target host:
+
+```bash
+make dist
+```
+
+Copy `dist/` to the server, then:
+
+```bash
+sudo ./install.sh install --domain panel.example.com --email you@example.com
+```
+
+That is the whole of it. The installer detects the distribution, installs
+nginx, PostgreSQL, Redis, certbot and PHP, creates the panel's accounts and
+services, obtains a certificate, creates the administrator and prints their
+password once, closes the firewall to everything but SSH and the web, and then
+asks the panel over the network whether it is answering before reporting
+success.
+
+```bash
+sudo ./install.sh status       # what is installed and what is running
+sudo ./install.sh update       # new binaries and frontend, same secrets
+sudo ./install.sh repair       # reconcile a machine that has drifted
+sudo ./install.sh uninstall    # remove the panel; --purge also its data
+```
+
+Supported: Debian/Ubuntu, Alpine, and RHEL/Rocky/Alma, on x86_64 and aarch64.
+See [docs/PHASE23.md](docs/PHASE23.md) for what it does and does not do.
 
 ---
 
@@ -203,6 +239,8 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE20.md](docs/PHASE20.md) | Phase 20 scope, decisions, and known limitations |
 | [docs/PHASE26.md](docs/PHASE26.md) | Phase 26 scope, decisions, and known limitations |
 | [docs/PHASE27.md](docs/PHASE27.md) | Phase 27 scope, decisions, and known limitations |
+| [docs/PHASE22.md](docs/PHASE22.md) | Phase 22 scope, decisions, and known limitations |
+| [docs/PHASE23.md](docs/PHASE23.md) | Phase 23 scope, decisions, and known limitations |
 
 ---
 

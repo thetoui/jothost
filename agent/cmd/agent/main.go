@@ -365,6 +365,8 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		{Name: sites.CommandAdduser, Path: cfg.AdduserPath, Timeout: 15 * time.Second},
 		{Name: sites.CommandUserdel, Path: cfg.UserdelPath, Timeout: 15 * time.Second},
 		{Name: sites.CommandDeluser, Path: cfg.DeluserPath, Timeout: 15 * time.Second},
+		{Name: sites.CommandAddgroup, Path: cfg.AddgroupPath, Timeout: 15 * time.Second},
+		{Name: sites.CommandDelgroup, Path: cfg.DelgroupPath, Timeout: 15 * time.Second},
 	}
 
 	// PHP contributes one allowlist entry per version actually present, found

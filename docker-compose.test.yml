@@ -209,6 +209,29 @@ services:
     networks:
       - jothost_default
 
+  # A clean Linux host for the Phase 23 installer.
+  #
+  # alpine:3.21 with nothing added: no nginx, no PostgreSQL, no Redis, no
+  # panel. That emptiness is the point — an installer tested on the development
+  # image would be tested against a machine that already had everything it was
+  # supposed to install.
+  #
+  # It runs with its own init (OpenRC is installed by the installer itself) and
+  # needs no privileges: everything the checks exercise is package installation,
+  # file writing, process starting and HTTP.
+  installer-test:
+    image: alpine:3.21
+    working_dir: /src
+    environment:
+      # A name that resolves to this container, so the final health check is a
+      # real request over the network on the panel's own domain rather than a
+      # request to localhost dressed up as one.
+      PANEL_DOMAIN: ${INSTALLER_TEST_DOMAIN:-panel.installer.test}
+    volumes:
+      - ./dist:/dist:ro
+      - ./tests:/tests:ro
+    command: ["sh", "/tests/integration/phase23_installer.sh"]
+
 volumes:
   go-build-cache:
   go-mod-cache:

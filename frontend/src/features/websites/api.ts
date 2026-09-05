@@ -53,8 +53,13 @@ export const websitesApi = {
       body: { domain: input.domain, name: input.name ?? '' },
     }),
 
-  remove: (id: string) =>
-    request<JobAccepted>(`/websites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // removeFiles deletes the site's content along with it. Off by default,
+  // matching the API: a vhost can be recreated and content cannot.
+  remove: (id: string, removeFiles = false) =>
+    request<JobAccepted>(
+      `/websites/${encodeURIComponent(id)}${removeFiles ? '?remove_files=true' : ''}`,
+      { method: 'DELETE' },
+    ),
 
   subdomains: (websiteId: string, signal?: AbortSignal) =>
     request<SubdomainList>(
@@ -73,8 +78,11 @@ export const websitesApi = {
       },
     }),
 
-  removeSubdomain: (id: string) =>
-    request<JobAccepted>(`/subdomains/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  removeSubdomain: (id: string, removeFiles = false) =>
+    request<JobAccepted>(
+      `/subdomains/${encodeURIComponent(id)}${removeFiles ? '?remove_files=true' : ''}`,
+      { method: 'DELETE' },
+    ),
 
   domains: (websiteId: string, signal?: AbortSignal) =>
     request<DomainList>(

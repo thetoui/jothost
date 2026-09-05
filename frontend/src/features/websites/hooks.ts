@@ -100,13 +100,22 @@ export function useCreateWebsite() {
   });
 }
 
-/** useDeleteWebsite queues removal of a site. */
+/**
+ * useDeleteWebsite queues removal of a site.
+ *
+ * `removeFiles` is a separate decision from deleting the record, because the
+ * two are separate on the host: the panel keeps a deleted site's content by
+ * default. Keeping it has a consequence worth surfacing rather than burying —
+ * the directory stays, and a later site cannot be created on the same document
+ * root until it is cleared.
+ */
 export function useDeleteWebsite() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => websitesApi.remove(id),
-    onSuccess: (_result, id) => {
+    mutationFn: ({ id, removeFiles }: { id: string; removeFiles: boolean }) =>
+      websitesApi.remove(id, removeFiles),
+    onSuccess: (_result, { id }) => {
       void queryClient.invalidateQueries({ queryKey: websiteKeys.list() });
       void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(id) });
     },

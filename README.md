@@ -246,6 +246,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE24.md](docs/PHASE24.md) | Phase 24 security audit, findings, and known limitations |
 | [docs/UI.md](docs/UI.md) | Which control to reach for, and what keeps the panel consistent |
 | [docs/SITE_OWNERSHIP.md](docs/SITE_OWNERSHIP.md) | Why a deleted site's directory could change hands, and what stops it |
+| [docs/AUDIT.md](docs/AUDIT.md) | What the panel records, who may read it, and what it cannot do |
 
 ---
 
@@ -259,7 +260,8 @@ and tested.
 Currently enforced: Argon2id password hashing, opaque revocable sessions,
 single-use refresh tokens with theft detection, TOTP two-factor, RBAC,
 per-account and per-IP login throttling, encrypted secrets at rest, and an
-append-only audit trail.
+append-only audit trail — readable in the panel under Audit trail, behind a
+permission of its own ([docs/AUDIT.md](docs/AUDIT.md)).
 
 On the Agent: kernel-verified caller identity plus a shared token, an operation
 allowlist that cannot drift from its handlers, argv-only command execution with

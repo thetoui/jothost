@@ -93,6 +93,7 @@ const navGroups: NavGroup[] = [
       { label: 'Monitoring', to: '/monitoring', icon: Activity, enabled: true },
       { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: true },
       { label: 'Notifications', to: '/notifications', icon: BellRing, enabled: true },
+      { label: 'Audit trail', to: '/audit', icon: ScrollText, enabled: true },
       { label: 'Accounts & plans', to: '/tenancy', icon: Users, enabled: true },
       { label: 'Account security', to: '/security', icon: UserCog, enabled: true },
     ],

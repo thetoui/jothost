@@ -203,6 +203,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-fail2ban
 	$(MAKE) docker-test-ftp
 	$(MAKE) docker-test-site-ownership
+	$(MAKE) docker-test-audit
 	$(MAKE) docker-test-dns
 	$(MAKE) docker-test-updates
 	$(MAKE) docker-test-monitoring
@@ -317,6 +318,11 @@ docker-test-site-ownership: create-integration-admin ## Run the site directory o
 	# Deleting a website keeps its files. This proves the freed uid stops owning
 	# them first, and that the next site cannot be provisioned into what is left.
 	$(COMPOSE) exec -T agent sh /tests/integration/site_ownership.sh
+
+.PHONY: docker-test-audit
+docker-test-audit: create-integration-admin ## Run the audit trail integration checks
+	# The trail was written from Phase 1 and readable by nothing until now.
+	$(COMPOSE) exec -T agent sh /tests/integration/audit.sh
 
 .PHONY: docker-test-dns
 docker-test-dns: create-integration-admin ## Run the Phase 13 DNS integration checks

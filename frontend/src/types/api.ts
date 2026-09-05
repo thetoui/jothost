@@ -2609,3 +2609,43 @@ export interface TenantAccountInput {
   company?: string;
   parent_id?: string;
 }
+
+// ------------------------------------------------------------------- audit
+
+/**
+ * One recorded action.
+ *
+ * Almost everything is nullable, and each for its own reason rather than out
+ * of caution: an action can have no actor (a failed login against a username
+ * that does not exist), no name for the actor it had (the account was deleted
+ * afterwards, and the trail keeps the row but cannot keep the name), and no
+ * resource (a login belongs to nothing).
+ */
+export interface AuditEntry {
+  id: string;
+  action: string;
+  user_id: string | null;
+  username: string | null;
+  resource_type: string | null;
+  resource_id: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  status: string | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AuditEntryList {
+  entries: AuditEntry[];
+  /** How many are on this page. */
+  count: number;
+  /** How many matched the filter, which is the number worth showing. */
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AuditActionList {
+  actions: string[];
+  count: number;
+}

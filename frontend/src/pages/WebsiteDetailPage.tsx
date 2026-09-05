@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, ProgressBar, Skeleton, SkeletonRows } from '@/components/ui/Loading';
-import { TextField } from '@/components/ui/Field';
+import { TextField, Toggle } from '@/components/ui/Field';
 import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
@@ -55,6 +55,10 @@ export function WebsiteDetailPage() {
   const { data: jobList } = useWebsiteJobs(id);
   const deleteWebsite = useDeleteWebsite();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Off by default, and reset every time the dialog opens: a destructive
+  // option that remembers its last answer is one somebody agrees to twice
+  // without reading it the second time.
+  const [removeFiles, setRemoveFiles] = useState(false);
 
   if (isPending) {
     return <DetailSkeleton />;
@@ -114,7 +118,10 @@ export function WebsiteDetailPage() {
           <RequirePermission permission={Permission.WebsiteDelete}>
             <Button
               variant="danger"
-              onClick={() => setConfirmingDelete(true)}
+              onClick={() => {
+                setRemoveFiles(false);
+                setConfirmingDelete(true);
+              }}
               disabled={site.status === 'deleting'}
               icon={<Trash2 aria-hidden="true" className="h-4 w-4" />}
             >
@@ -185,33 +192,53 @@ export function WebsiteDetailPage() {
         open={confirmingDelete}
         onClose={() => setConfirmingDelete(false)}
         onConfirm={() =>
-          deleteWebsite.mutate(site.id, {
-            onSuccess: () => {
-              setConfirmingDelete(false);
-              navigate('/websites');
+          deleteWebsite.mutate(
+            { id: site.id, removeFiles },
+            {
+              onSuccess: () => {
+                setConfirmingDelete(false);
+                navigate('/websites');
+              },
             },
-          })
+          )
         }
         title="Delete this website?"
         description="This cannot be undone from the panel."
-        confirmLabel="Delete website"
+        confirmLabel={removeFiles ? 'Delete website and files' : 'Delete website'}
         destructive
         loading={deleteWebsite.isPending}
         error={deleteError}
       >
         <p className="mb-2">
-          <span className="font-medium text-slate-900">{site.primary_domain}</span> and everything
-          belonging to it is removed from the host:
+          <span className="font-medium text-slate-900">{site.primary_domain}</span> is removed from
+          the host:
         </p>
         <ul className="ml-4 list-disc space-y-1 text-slate-600">
-          <li>
-            its files under <span className="font-mono text-xs">{site.document_root}</span>
-          </li>
           <li>
             its system account <span className="font-mono text-xs">{site.system_user}</span>
           </li>
           <li>its web server configuration and any PHP pool</li>
+          <li>its certificate, scheduled jobs and FTP accounts</li>
         </ul>
+
+        <div className="mt-4 rounded-md border border-surface-border bg-surface-muted p-3">
+          <Toggle
+            id="delete-remove-files"
+            label="Also delete the website's files"
+            description={`Everything under ${site.document_root}. Leave this off to keep the files.`}
+            checked={removeFiles}
+            onChange={setRemoveFiles}
+            disabled={deleteWebsite.isPending}
+          />
+          {/* Both answers have a consequence, so both are stated. The panel used
+              to say the files were deleted and then keep them, which is the one
+              option that was never on offer. */}
+          <p className="mt-2.5 text-xs text-slate-500">
+            {removeFiles
+              ? 'The content is deleted permanently. Take a backup first if you may want it.'
+              : 'The files are kept and reassigned to root. The domain cannot be created again until the directory is cleared.'}
+          </p>
+        </div>
       </ConfirmDialog>
     </div>
   );

@@ -225,10 +225,11 @@ provisioned into the retained directory, got <nil>`.
   change in behaviour for anyone who relied on the old adoption. The error
   names the directory and says what to do; `?remove_files=true` on the delete
   avoids it entirely.
-- **The panel's UI does not offer "delete the files too".** The API takes the
-  parameter and the Agent has always supported it, but the websites page still
-  sends a plain delete, so through the interface the only way to clear a
-  directory is a shell. That is the next piece of work and it is small.
+- ~~**The panel's UI does not offer "delete the files too".**~~ **Fixed.** The
+  delete dialog now carries the choice, off by default, and states the
+  consequence of each answer rather than only one. It also stopped claiming the
+  files were deleted when they were kept — which it had said since Phase 4, and
+  which was the one outcome that was never on offer.
 - **Misowned directories are reported, never repaired.** Section 4 explains
   why. An operator still has to look at 35 directories by hand on the
   development host, and the panel could narrow that list for them — it knows

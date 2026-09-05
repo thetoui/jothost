@@ -182,9 +182,16 @@ found: two checks in this very suite pointed at `/api/v1/audit` and had been
 passing on its 404, which is what prompted the stricter `denied()` helper that
 refuses to accept 404 as a permission refusal.
 
-Not fixed here, under CLAUDE.md section 21: an audit-log endpoint is a feature,
-and this phase tests the finished system rather than extending it. It is the
-clearest piece of work left.
+Not fixed *here*, under CLAUDE.md section 21: an audit-log endpoint is a
+feature, and this phase tests the finished system rather than extending it.
+
+**Since fixed.** `GET /api/v1/audit` and `/api/v1/audit/actions` now stand
+behind that permission, with a page in the panel to read them. The finding
+above is left as written because it is the record of what the audit found, and
+because of how it was found: two checks in this suite were passing on the 404,
+which is what prompted the stricter `denied()` helper. The route sweep picked
+up both new endpoints on its next run without being told — 259 routes became
+261, and both refused an account with no permissions.
 
 ### 5.2 Version and readiness are unauthenticated
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/jothost/panel/api/internal/agentclient"
 	"github.com/jothost/panel/api/internal/audit"
+	"github.com/jothost/panel/api/internal/auditlog"
 	"github.com/jothost/panel/api/internal/auth"
 	backuppkg "github.com/jothost/panel/api/internal/backup"
 	"github.com/jothost/panel/api/internal/config"
@@ -87,6 +88,9 @@ type Server struct {
 	deployService *deploypkg.Service
 	dns           *dnspkg.Handler
 	updates       *updatespkg.Handler
+	// auditReader serves the trail every other feature writes to. It has no
+	// service layer: reading an append-only table has no business rules.
+	auditReader   *auditlog.Handler
 	backup        *backuppkg.Handler
 	security      *securitypkg.Handler
 	notifications *notificationspkg.Handler
@@ -558,6 +562,13 @@ func New(opts Options) (*Server, error) {
 		Service: updateService,
 		Auth:    authService,
 	})
+
+	// The audit trail, readable at last. Every phase since the first has been
+	// writing to it and nothing could read it back through the panel.
+	s.auditReader = auditlog.NewHandler(auditlog.HandlerOptions{
+		Reader: audit.NewReader(opts.Pool),
+		Auth:   authService,
+	})
 	if opts.LocalServerID != "" {
 		s.updateScheduler = updatespkg.NewScheduler(updatespkg.SchedulerOptions{
 			Service:  updateService,
@@ -826,6 +837,7 @@ func (s *Server) routes() http.Handler {
 	s.deploy.Routes(mux)
 	s.dns.Routes(mux)
 	s.updates.Routes(mux)
+	s.auditReader.Routes(mux)
 	s.monitoring.Routes(mux)
 	s.backup.Routes(mux)
 	s.security.Routes(mux)

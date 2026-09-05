@@ -387,6 +387,37 @@ The same parameter applies to `DELETE /subdomains/:id`.
 
 ---
 
+# 6.1 Audit trail
+
+```http
+GET /audit
+GET /audit/actions
+```
+
+Both need `audit.view`, and nothing else needs it. The trail records who did
+what across every customer on the host, which is a different thing to be
+trusted with from seeing how much disk is left — so it is not folded into
+`server.view`.
+
+`GET /audit` takes `action`, `user_id`, `resource_type`, `resource_id`,
+`status` (`SUCCESS` or `FAILURE`), `since` and `until` (RFC 3339), plus `limit`
+and `offset`. It answers with the page, the `total` that matched the filter,
+and the `limit` actually applied — which is not always the one asked for: a
+page is capped at 200, because this table grows for the life of the
+installation and an unbounded read is a way to ask the panel to load its own
+history into memory.
+
+`GET /audit/actions` lists the action names actually present, for populating a
+filter. It is read from the trail rather than from a list in the code: every
+feature appends its own names, and a filter offering names nothing ever
+recorded is worse than no filter.
+
+There is no way to write, change or remove an entry, and there is not meant to
+be. `audit_logs` has carried triggers rejecting UPDATE and DELETE since
+migration 0001.
+
+---
+
 # 7. Domains
 
 ```http

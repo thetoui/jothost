@@ -589,6 +589,9 @@ Additionally required by the above:
 
 # PHASE 8 — Database Manager
 
+**Status: COMPLETE** — see [docs/PHASE8.md](docs/PHASE8.md) for scope,
+decisions, and known limitations.
+
 - [x] MariaDB provider
 - [x] MySQL provider
 - [x] PostgreSQL provider
@@ -624,6 +627,9 @@ belongs to shown and editable in the list itself.
 ---
 
 # PHASE 9 — Node.js Manager
+
+**Status: COMPLETE** — see [docs/PHASE9.md](docs/PHASE9.md) for scope,
+decisions, and known limitations.
 
 - [x] Node version detection
 - [x] Node version installation

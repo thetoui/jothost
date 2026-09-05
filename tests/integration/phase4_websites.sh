@@ -140,7 +140,7 @@ stale_id="$(printf '%s' "$existing" |
   sed -n 's/.*"id":"\([0-9a-f-]*\)".*/\1/p' | head -n 1)"
 if [ -n "$stale_id" ]; then
   log "Removing a website left behind by an earlier run"
-  stale_job="$(json_field "$(api DELETE "/api/v1/websites/$stale_id")" id)"
+  stale_job="$(json_field "$(api DELETE "/api/v1/websites/$stale_id?remove_files=true")" id)"
   [ -n "$stale_job" ] && await_job "$stale_job" >/dev/null
 fi
 
@@ -217,7 +217,7 @@ else
   fail "the provisioning job ended $state: $(printf '%s' "$detail" | head -c 300)"
 fi
 
-site="$(api GET "/api/v1/websites/$website_id")"
+site="$(api GET "/api/v1/websites/$website_id?remove_files=true")"
 contains "the site is now active"          "$site" '"status":"active"'
 contains "the site lists its primary domain" "$site" "\"domain\":\"$SITE_DOMAIN\""
 
@@ -293,7 +293,7 @@ expect_status "a finished job cannot be cancelled" 409 \
 log ""
 log "Website deletion"
 
-delete_response="$(api DELETE "/api/v1/websites/$website_id")"
+delete_response="$(api DELETE "/api/v1/websites/$website_id?remove_files=true")"
 delete_job="$(printf '%s' "$delete_response" | sed -n 's/.*"job":{"id":"\([0-9a-f-]*\)".*/\1/p')"
 
 if [ -z "$delete_job" ]; then
@@ -302,7 +302,7 @@ else
   # The row survives until the host confirms; removing it first would strand
   # the files with nothing in the panel pointing at them.
   expect_status "the site is still readable while deleting" 200 \
-    "$(api_status GET "/api/v1/websites/$website_id")"
+    "$(api_status GET "/api/v1/websites/$website_id?remove_files=true")"
 
   state="$(await_job "$delete_job")"
   if [ "$state" = "SUCCESS" ]; then
@@ -313,7 +313,7 @@ else
   fi
 
   expect_status "the website record is gone" 404 \
-    "$(api_status GET "/api/v1/websites/$website_id")"
+    "$(api_status GET "/api/v1/websites/$website_id?remove_files=true")"
   # The vhost must go with it, or the host keeps serving a site the panel no
   # longer knows about.
   expect_status "the host no longer serves the domain" 404 "$(site_status "$SITE_DOMAIN")"

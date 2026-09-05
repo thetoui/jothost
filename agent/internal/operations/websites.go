@@ -137,6 +137,15 @@ func (r *Registry) handleWebsiteDelete(ctx context.Context, req protocol.Request
 		return nil, Fail(protocol.CodeInvalidPayload,
 			"system_user is required when remove_user is set", nil)
 	}
+	// Removing an account frees its uid for reuse, so the Agent has to be able
+	// to find whatever still carries that uid before it does. Without a
+	// document root it cannot, and the files would be left pointing at a number
+	// the system is about to hand to somebody else.
+	if payload.RemoveUser && payload.DocumentRoot == "" {
+		return nil, Fail(protocol.CodeInvalidPayload,
+			"document_root is required when remove_user is set, "+
+				"so the account's files can be reassigned before its uid is freed", nil)
+	}
 
 	// The site's FPM pools go first, while its account still exists.
 	//
@@ -400,6 +409,14 @@ func websiteError(err error) error {
 	case errors.Is(err, sites.ErrOutsideRoot):
 		return Fail(protocol.CodeInvalidPayload,
 			"The document root is outside the permitted directory", err)
+	case errors.Is(err, sites.ErrOccupied):
+		// Worth its own message rather than falling through to the default,
+		// because the operator has to do something specific about it and the
+		// wrapped error names the directory and its owner.
+		return Fail(protocol.CodeInvalidRequest,
+			"That directory already holds files belonging to another account. "+
+				"A deleted website keeps its files, so recreating one on the same "+
+				"document root needs the old files removed or moved first", err)
 	case errors.Is(err, validate.ErrInvalidDomain):
 		return Fail(protocol.CodeInvalidPayload, "That is not a valid domain name", err)
 	case errors.Is(err, validate.ErrInvalidSystemUser):

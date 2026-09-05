@@ -232,4 +232,13 @@ make docker-test-websites
 6. **A failed delete leaves the row.** This is deliberate — the files may still
    be on the host, and a vanished row would leave orphaned directories nobody
    knows about — but it means a site can sit in `failed` needing a retry.
+
+   The worry in that sentence turned out to be right, and about the *successful*
+   path rather than the failed one. A successful delete kept the files and
+   removed the account, which put the uid back in the allocation pool while the
+   files still carried it; a few sites later the number was issued again and an
+   unrelated customer owned a directory nobody had given them. Deletion now
+   reassigns a retained tree to root before the account goes, and provisioning
+   refuses a directory that already holds another account's files rather than
+   adopting it. `docs/SITE_OWNERSHIP.md` has the whole account.
 7. **No quota or resource limits per site.** A single site can fill the disk.

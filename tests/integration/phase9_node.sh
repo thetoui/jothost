@@ -175,7 +175,7 @@ purge() {
 
   purge_site="$(site_id "$(api GET /api/v1/websites)" "$SITE_DOMAIN")"
   if [ -n "$purge_site" ]; then
-    api DELETE "/api/v1/websites/$purge_site" >/dev/null 2>&1 || true
+    api DELETE "/api/v1/websites/$purge_site?remove_files=true" >/dev/null 2>&1 || true
     # Deleting a website is a job; give it a moment so the next create is not
     # refused as a duplicate domain.
     waited=0
@@ -256,7 +256,7 @@ fi
 # test. json_field takes the first occurrence, which is the website's own.
 waited=0
 while [ "$waited" -lt 90 ]; do
-  site="$(api GET "/api/v1/websites/$SITE")"
+  site="$(api GET "/api/v1/websites/$SITE?remove_files=true")"
   if [ "$(json_field "$site" 'status')" = "active" ]; then
     break
   fi

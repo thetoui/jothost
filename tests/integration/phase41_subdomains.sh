@@ -123,7 +123,7 @@ await_active() {
   await_id="$1"
   await_waited=0
   while [ "$await_waited" -lt 90 ]; do
-    await_site="$(api GET "/api/v1/websites/$await_id")"
+    await_site="$(api GET "/api/v1/websites/$await_id?remove_files=true")"
     await_state="$(json_field "$await_site" 'status')"
     case "$await_state" in
       active|failed) break ;;
@@ -176,7 +176,7 @@ remove_site() {
 
   case "$2" in
     subdomain) api DELETE "/api/v1/subdomains/$remove_id" >/dev/null 2>&1 || true ;;
-    *)         api DELETE "/api/v1/websites/$remove_id" >/dev/null 2>&1 || true ;;
+    *)         api DELETE "/api/v1/websites/$remove_id?remove_files=true" >/dev/null 2>&1 || true ;;
   esac
 
   remove_waited=0
@@ -249,7 +249,7 @@ else
   exit 1
 fi
 
-parent_site="$(api GET "/api/v1/websites/$PARENT")"
+parent_site="$(api GET "/api/v1/websites/$PARENT?remove_files=true")"
 PARENT_USER="$(json_field "$parent_site" 'system_user')"
 contains 'it has no parent of its own' "$parent_site" '"parent_website_id":null'
 not_contains 'a fresh website carries no subdomains' "$parent_site" '"subdomains"'
@@ -486,7 +486,7 @@ expect_status 'an unknown field is refused rather than ignored' 400 "$code"
 # Deleting the parent would take the nested subdomain's files with it while its
 # vhost stayed live: the panel would have no record of a name nginx still
 # serves.
-code="$(api_status DELETE "/api/v1/websites/$PARENT")"
+code="$(api_status DELETE "/api/v1/websites/$PARENT?remove_files=true")"
 expect_status 'deleting a website with subdomains is refused' 409 "$code"
 
 # A subdomain is not deleted through the website endpoint: the two differ on
@@ -530,7 +530,7 @@ else
 fi
 
 # With nothing beneath it, the parent can be deleted.
-code="$(api_status DELETE "/api/v1/websites/$PARENT")"
+code="$(api_status DELETE "/api/v1/websites/$PARENT?remove_files=true")"
 expect_status 'the parent is deletable once it is empty' 202 "$code"
 
 purge

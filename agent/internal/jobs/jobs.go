@@ -207,8 +207,16 @@ func (r *Runner) run(ctx context.Context, cancel context.CancelFunc, job *Job, e
 		job.Error = &protocol.Error{Code: protocol.CodeTimeout, Message: "Operation timed out"}
 	case err != nil:
 		job.State = protocol.JobFailed
-		// The cause is logged; the caller receives a structured code only.
-		job.Error = &protocol.Error{Code: protocol.CodeInternal, Message: "Operation failed"}
+		// A handler's own structured error is meant to be read by whoever asked
+		// for the work: it is written for them, carries no internal detail, and
+		// the synchronous path has always passed it straight through. Only an
+		// error that arrived from somewhere else — an unexpected one, whose text
+		// may hold paths or configuration — is flattened, and its cause logged.
+		//
+		// The two paths used to disagree, so the same failure explained itself
+		// when it was called directly and said "Operation failed" when it was
+		// run as a job. Every website operation goes through a job.
+		job.Error = describeError(err)
 		r.log.Error("job failed",
 			"job_id", job.ID,
 			"operation", string(job.Operation),
@@ -378,4 +386,27 @@ func newJobID() (string, error) {
 		return "", fmt.Errorf("generate job id: %w", err)
 	}
 	return "job_" + hex.EncodeToString(buf), nil
+}
+
+// StructuredError is an error that already describes itself to the caller.
+//
+// It is an interface rather than a type because the errors that satisfy it
+// live in the operations package, which imports this one: naming the type here
+// would be a cycle. Anything that can state a code and a message safe to show
+// is enough.
+type StructuredError interface {
+	error
+	// ErrorCode is the protocol code to report.
+	ErrorCode() string
+	// ErrorMessage is the text written for whoever asked for the operation.
+	ErrorMessage() string
+}
+
+// describeError renders a job failure for the caller.
+func describeError(err error) *protocol.Error {
+	var structured StructuredError
+	if errors.As(err, &structured) {
+		return &protocol.Error{Code: structured.ErrorCode(), Message: structured.ErrorMessage()}
+	}
+	return &protocol.Error{Code: protocol.CodeInternal, Message: "Operation failed"}
 }

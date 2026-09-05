@@ -487,3 +487,10 @@ func (r *Registry) errorResponse(req protocol.Request, err error) protocol.Respo
 	)
 	return protocol.NewError(req.RequestID, protocol.CodeInternal, "Operation failed")
 }
+
+// ErrorCode and ErrorMessage make a HandlerError reportable to the caller
+// without the jobs package having to import this one. See jobs.StructuredError.
+func (e *HandlerError) ErrorCode() string { return e.Code }
+
+// ErrorMessage is the text a handler wrote for whoever asked for the work.
+func (e *HandlerError) ErrorMessage() string { return e.Message }

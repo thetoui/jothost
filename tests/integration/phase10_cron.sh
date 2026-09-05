@@ -109,7 +109,7 @@ cleanup() {
     for id in ${created_jobs:-}; do
       api DELETE "/api/v1/cron/$id" >/dev/null 2>&1 || true
     done
-    api DELETE "/api/v1/websites/$website_id" >/dev/null 2>&1 || true
+    api DELETE "/api/v1/websites/$website_id?remove_files=true" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -146,7 +146,7 @@ existing="$(api GET '/api/v1/websites?limit=100')"
 old_id="$(printf '%s' "$existing" | tr '{' '\n' | grep -F "\"primary_domain\":\"$DOMAIN\"" |
   sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n 1)"
 if [ -n "$old_id" ]; then
-  api DELETE "/api/v1/websites/$old_id" >/dev/null 2>&1 || true
+  api DELETE "/api/v1/websites/$old_id?remove_files=true" >/dev/null 2>&1 || true
   # Waited for rather than slept through. Deleting a website removes its system
   # account, and a new site with the same domain gets the same account name — so
   # a delete still in flight when the next create finishes removes the account
@@ -180,7 +180,7 @@ pass 'create the website the jobs belong to'
 # the site is ready while it is still being built.
 waited=0
 while [ "$waited" -lt 60 ]; do
-  site="$(api GET "/api/v1/websites/$website_id")"
+  site="$(api GET "/api/v1/websites/$website_id?remove_files=true")"
   status="$(printf '%s' "$site" | grep -o '"status":"[^"]*"' | head -n 1 | cut -d'"' -f4)"
   case "$status" in
     active) break ;;
@@ -197,7 +197,7 @@ account="$(field "$site" system_user)"
 api PATCH "/api/v1/websites/$website_id/php" '{"version":"8.4"}' >/dev/null 2>&1 || true
 waited=0
 while [ "$waited" -lt 60 ]; do
-  case "$(api GET "/api/v1/websites/$website_id")" in
+  case "$(api GET "/api/v1/websites/$website_id?remove_files=true")" in
     *'"php_version":"8.4"'*) break ;;
   esac
   sleep 2
@@ -420,7 +420,7 @@ expect_status 'a job that does not exist is a 404' 404 \
 log ''
 log '9. When the website goes'
 
-api DELETE "/api/v1/websites/$website_id" >/dev/null
+api DELETE "/api/v1/websites/$website_id?remove_files=true" >/dev/null
 sleep 3
 website_id=''
 

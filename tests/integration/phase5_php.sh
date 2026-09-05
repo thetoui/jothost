@@ -158,7 +158,7 @@ for version in $VERSIONS; do
     grep -F "\"primary_domain\":\"$domain\"" |
     sed -n 's/.*"id":"\([0-9a-f-]*\)".*/\1/p' | head -n 1)"
   if [ -n "$stale" ]; then
-    job="$(json_field "$(api DELETE "/api/v1/websites/$stale")" id)"
+    job="$(json_field "$(api DELETE "/api/v1/websites/$stale?remove_files=true")" id)"
     [ -n "$job" ] && await_job "$job" >/dev/null
   fi
 done
@@ -536,7 +536,7 @@ for version in $VERSIONS; do
   eval "site_id=\${WEBSITE_ID_$compact:-}"
   [ -z "$site_id" ] && continue
 
-  job="$(printf '%s' "$(api DELETE "/api/v1/websites/$site_id")" |
+  job="$(printf '%s' "$(api DELETE "/api/v1/websites/$site_id?remove_files=true")" |
     sed -n 's/.*"job":{"id":"\([0-9a-f-]*\)".*/\1/p')"
   [ -n "$job" ] && await_job "$job" >/dev/null
 done

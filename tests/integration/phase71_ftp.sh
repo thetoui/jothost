@@ -117,7 +117,7 @@ restore() {
       api DELETE "/api/v1/ftp/users/$id" >/dev/null 2>&1 || true
     done
     if [ -n "${website_id:-}" ]; then
-      api DELETE "/api/v1/websites/$website_id" >/dev/null 2>&1 || true
+      api DELETE "/api/v1/websites/$website_id?remove_files=true" >/dev/null 2>&1 || true
     fi
   fi
   rc-service proftpd stop >/dev/null 2>&1 || true

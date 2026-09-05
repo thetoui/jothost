@@ -198,7 +198,7 @@ purge() {
 
   purge_site="$(site_id "$(api GET '/api/v1/websites?include_subdomains=true')" "$SITE_DOMAIN")"
   if [ -n "$purge_site" ]; then
-    api DELETE "/api/v1/websites/$purge_site" >/dev/null 2>&1 || true
+    api DELETE "/api/v1/websites/$purge_site?remove_files=true" >/dev/null 2>&1 || true
     waited=0
     while [ "$waited" -lt 40 ]; do
       if [ -z "$(site_id "$(api GET '/api/v1/websites')" "$SITE_DOMAIN")" ]; then
@@ -274,7 +274,7 @@ fi
 
 waited=0
 while [ "$waited" -lt 90 ]; do
-  site="$(api GET "/api/v1/websites/$SITE")"
+  site="$(api GET "/api/v1/websites/$SITE?remove_files=true")"
   if [ "$(json_field "$site" 'status')" = "active" ]; then
     break
   fi
@@ -349,7 +349,7 @@ else
 fi
 await_jobs
 
-site="$(api GET "/api/v1/websites/$SITE")"
+site="$(api GET "/api/v1/websites/$SITE?remove_files=true")"
 PORT="$(json_number "$site" 'apache_port')"
 if [ -n "$PORT" ] && [ "$PORT" -ge 7080 ] && [ "$PORT" -le 7979 ]; then
   pass "the site is assigned a backend port in the reserved range ($PORT)"
@@ -447,7 +447,7 @@ fi
 wildcard_state=''
 waited=0
 while [ "$waited" -lt 120 ]; do
-  wildcard_state="$(json_field "$(api GET "/api/v1/websites/$WILDCARD_ID")" 'status')"
+  wildcard_state="$(json_field "$(api GET "/api/v1/websites/$WILDCARD_ID?remove_files=true")" 'status')"
   case "$wildcard_state" in
     active|failed) break ;;
   esac
@@ -517,7 +517,7 @@ contains 'the parent still serves its own content' "$body" "SERVED $SITE_DOMAIN"
 # redirects a directory requested without its trailing slash, and with the
 # directive On it would send every wildcard visitor to the parent domain
 # instead of the name they asked for.
-wildcard_root="$(json_field "$(api GET "/api/v1/websites/$WILDCARD_ID")" 'document_root')"
+wildcard_root="$(json_field "$(api GET "/api/v1/websites/$WILDCARD_ID?remove_files=true")" 'document_root')"
 if [ -n "$wildcard_root" ] && [ -d "$wildcard_root" ]; then
   mkdir -p "$wildcard_root/dir" && printf 'inside\n' > "$wildcard_root/dir/index.html"
   location="$(curl -s -o /dev/null -D - --max-time 20 -H "Host: $unclaimed" \
@@ -631,7 +631,7 @@ PHP
     # And the site is still a site: choosing a PHP version must not have taken
     # it out of Apache, which is what a payload missing the backend port would
     # have done.
-    site="$(api GET "/api/v1/websites/$SITE")"
+    site="$(api GET "/api/v1/websites/$SITE?remove_files=true")"
     still="$(json_number "$site" 'apache_port')"
     if [ "$still" = "$PORT" ]; then
       pass 'setting a PHP version keeps the site in Apache'
@@ -683,7 +683,7 @@ fi
 
 # The port is kept, so switching back and forth does not renumber every
 # backend on the host.
-site="$(api GET "/api/v1/websites/$SITE")"
+site="$(api GET "/api/v1/websites/$SITE?remove_files=true")"
 kept="$(json_number "$site" 'apache_port')"
 if [ "$kept" = "$PORT" ]; then
   pass 'the site keeps its backend port for next time'

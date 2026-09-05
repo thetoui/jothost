@@ -258,7 +258,8 @@ func (s *Service) DeleteSubdomain(ctx context.Context, req DeleteRequest) (jobs.
 			"document_root": site.DocumentRoot,
 			"system_user":   site.SystemUser,
 			// The account is removed only when this subdomain owns it.
-			"remove_user": !site.InheritsSystemUser(),
+			"remove_user":  !site.InheritsSystemUser(),
+			"remove_files": req.RemoveFiles,
 		},
 		CreatedBy:    req.Actor,
 		ResourceType: ResourceTypeWebsite,

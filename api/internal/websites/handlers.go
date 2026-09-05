@@ -243,6 +243,10 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		Actor:     claims.UserID,
 		IPAddress: clientIP(r),
 		UserAgent: r.UserAgent(),
+		// ?remove_files=true deletes the site's content with it. Absent means
+		// keep, which is the safe default and the one every existing caller
+		// gets without changing.
+		RemoveFiles: r.URL.Query().Get("remove_files") == "true",
 	})
 	if err != nil {
 		httpx.Error(w, r, translate(err))
@@ -336,10 +340,11 @@ func (h *Handler) deleteSubdomain(w http.ResponseWriter, r *http.Request) {
 	claims, _ := auth.ClaimsFromContext(r.Context())
 
 	job, err := h.service.DeleteSubdomain(ctx, DeleteRequest{
-		WebsiteID: id,
-		Actor:     claims.UserID,
-		IPAddress: clientIP(r),
-		UserAgent: r.UserAgent(),
+		WebsiteID:   id,
+		Actor:       claims.UserID,
+		RemoveFiles: r.URL.Query().Get("remove_files") == "true",
+		IPAddress:   clientIP(r),
+		UserAgent:   r.UserAgent(),
 	})
 	if err != nil {
 		httpx.Error(w, r, translate(err))

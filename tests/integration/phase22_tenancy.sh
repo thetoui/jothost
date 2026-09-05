@@ -161,8 +161,8 @@ await_website() {
 }
 
 cleanup() {
-  [ -n "$website_a" ] && api DELETE "/api/v1/websites/$website_a" >/dev/null 2>&1
-  [ -n "$website_b" ] && api DELETE "/api/v1/websites/$website_b" >/dev/null 2>&1
+  [ -n "$website_a" ] && api DELETE "/api/v1/websites/$website_a?remove_files=true" >/dev/null 2>&1
+  [ -n "$website_b" ] && api DELETE "/api/v1/websites/$website_b?remove_files=true" >/dev/null 2>&1
   # Websites are deleted through a job, so the subscription may still own rows
   # for a moment. It is retried a few times rather than raced.
   waited=0
@@ -407,7 +407,7 @@ contains "and names the overage" "$warning" "over its websites limit"
 # rest of this script reasons about.
 third="$(api GET /api/v1/websites | tr '{' '\n' | grep "$DOMAIN_C" |
   sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n 1)"
-[ -n "$third" ] && api DELETE "/api/v1/websites/$third" >/dev/null
+[ -n "$third" ] && api DELETE "/api/v1/websites/$third?remove_files=true" >/dev/null
 api PATCH "/api/v1/tenancy/subscriptions/$subscription_id" "{\"plan_id\":\"$plan_id\"}" >/dev/null
 
 log ""
@@ -547,8 +547,8 @@ log "12. And an account that has done things can still be deleted"
 # something auditable failed with an internal error naming a trigger. This
 # reseller has signed in, created a subscription and impersonated somebody, so
 # it has audit rows; deleting it is what proves the fix.
-api DELETE "/api/v1/websites/$website_a" >/dev/null
-api DELETE "/api/v1/websites/$website_b" >/dev/null
+api DELETE "/api/v1/websites/$website_a?remove_files=true" >/dev/null
+api DELETE "/api/v1/websites/$website_b?remove_files=true" >/dev/null
 waited=0
 while [ "$waited" -lt 90 ]; do
   code="$(api_status DELETE "/api/v1/tenancy/subscriptions/$subscription_id")"

@@ -146,7 +146,7 @@ stale="$(api GET /api/v1/websites | tr '{' '\n' |
   grep -F "\"primary_domain\":\"$SITE_DOMAIN\"" |
   sed -n 's/.*"id":"\([0-9a-f-]*\)".*/\1/p' | head -n 1)"
 if [ -n "$stale" ]; then
-  job="$(json_field "$(api DELETE "/api/v1/websites/$stale")" id)"
+  job="$(json_field "$(api DELETE "/api/v1/websites/$stale?remove_files=true")" id)"
   [ -n "$job" ] && await_job "$job" >/dev/null
 fi
 
@@ -427,7 +427,7 @@ issued="$(api POST "/api/v1/websites/$website_id/ssl/issue" '{"provider":"selfsi
 issue_job="$(printf '%s' "$issued" | sed -n 's/.*"job":{"id":"\([0-9a-f-]*\)".*/\1/p')"
 [ -n "$issue_job" ] && await_job "$issue_job" >/dev/null
 
-delete_job="$(printf '%s' "$(api DELETE "/api/v1/websites/$website_id")" |
+delete_job="$(printf '%s' "$(api DELETE "/api/v1/websites/$website_id?remove_files=true")" |
   sed -n 's/.*"job":{"id":"\([0-9a-f-]*\)".*/\1/p')"
 if [ -n "$delete_job" ]; then
   await_job "$delete_job" >/dev/null

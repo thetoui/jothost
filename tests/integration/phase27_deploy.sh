@@ -241,7 +241,7 @@ if [ "$state" != "SUCCESS" ]; then
 fi
 pass "a website was created to deploy into"
 
-site="$(api GET "/api/v1/websites/$website_id")"
+site="$(api GET "/api/v1/websites/$website_id?remove_files=true")"
 document_root="$(json_field "$site" document_root)"
 system_user="$(printf '%s' "$site" | sed -n 's/.*"system_user":"\([^"]*\)".*/\1/p' | head -n 1)"
 if [ -z "$system_user" ] || [ -z "$document_root" ]; then

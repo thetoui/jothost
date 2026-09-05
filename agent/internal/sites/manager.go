@@ -247,6 +247,9 @@ type DeleteRequest struct {
 type DeleteResult struct {
 	Domain        string `json:"domain"`
 	ConfigRemoved bool   `json:"config_removed"`
+	// FilesRetained reports that the site's files were kept and reassigned to
+	// root rather than deleted, so the freed account uid no longer owns them.
+	FilesRetained bool `json:"files_retained"`
 	// ApacheRemoved reports whether the Apache backend was taken down with it.
 	ApacheRemoved bool `json:"apache_removed"`
 	FilesRemoved  bool `json:"files_removed"`
@@ -302,16 +305,37 @@ func (m *Manager) Delete(ctx context.Context, req DeleteRequest, report func(int
 		}
 	}
 
-	if req.RemoveFiles && req.DocumentRoot != "" {
-		progress(report, 65, "Removing site files")
+	if req.DocumentRoot != "" {
 		layout, err := m.fs.LayoutFor(req.DocumentRoot)
 		if err != nil {
 			return result, err
 		}
-		if err := m.fs.Remove(layout); err != nil {
-			return result, err
+
+		if req.RemoveFiles {
+			progress(report, 65, "Removing site files")
+			if err := m.fs.Remove(layout); err != nil {
+				return result, err
+			}
+			result.FilesRemoved = true
+		} else if req.RemoveUser {
+			// The files are being kept and the account is not, so the tree has
+			// to stop belonging to that account before its uid goes back into
+			// the pool. This is the same rule the pools, the crontab and the
+			// certificate above already follow — deal with what refers to the
+			// account while the account still exists — and the filesystem was
+			// the one place it was not being followed.
+			progress(report, 65, "Reassigning the retained site files")
+			if err := m.fs.Neutralize(layout); err != nil {
+				// Fatal, and deliberately so. Carrying on would remove the
+				// account anyway and free a uid that the files still carry,
+				// which is the exact outcome this exists to prevent. A website
+				// that needs a retry is a far smaller problem than a directory
+				// that silently changes hands.
+				return result, fmt.Errorf("retained files could not be reassigned, "+
+					"so the account was kept to stop its uid being reused: %w", err)
+			}
+			result.FilesRetained = true
 		}
-		result.FilesRemoved = true
 	}
 
 	if req.RemoveUser && req.SystemUser != "" {

@@ -55,6 +55,23 @@ var (
 	// ErrNoWebGroup means the web server's group could not be resolved, so a
 	// provisioned site would not be readable by the server meant to serve it.
 	ErrNoWebGroup = errors.New("the web server group could not be resolved")
+	// ErrOccupied means a site directory already exists, holds files, and does
+	// not belong to the account being provisioned — so provisioning would hand
+	// one customer's files to another.
+	ErrOccupied = errors.New("site directory already holds files owned by another account")
+)
+
+// orphanUID and orphanGID are what a kept-but-abandoned site tree is given.
+//
+// Root, because root is the one identifier the system will never hand out
+// again. Every other uid on the host is a number in an allocation pool: free
+// it while files still carry it and the next account created inherits them.
+const (
+	orphanUID = 0
+	orphanGID = 0
+	// orphanMode closes a retained tree to everyone but root. The site is
+	// gone, nothing serves it, and the web server no longer needs a way in.
+	orphanMode os.FileMode = 0o700
 )
 
 // Layout is the resolved set of paths for one site.
@@ -197,9 +214,17 @@ func (p *Provisioner) LayoutFor(documentRoot string) (Layout, error) {
 
 // Provision creates a site's directories and hands them to its account.
 //
-// It is idempotent: an existing directory is re-owned and re-permissioned
-// rather than treated as an error, so a retried job converges instead of
-// failing on its second attempt.
+// It is idempotent for the account it is provisioning: that account's own
+// existing directory is re-owned and re-permissioned rather than treated as an
+// error, so a retried job converges instead of failing on its second attempt.
+//
+// It is deliberately *not* idempotent against somebody else's directory. A
+// directory that already holds files belonging to another account is refused,
+// because adopting it means chowning one customer's content to another — and
+// the panel cannot tell a leftover from a deployment somebody is about to miss.
+// Being idempotent used to mean adopting whatever was there, which is how a
+// directory left by a deleted site became the property of the next site
+// created once the uid was handed out again.
 //
 // gid is the site account's own group and is deliberately not used for the
 // directories: they are group-owned by the web server so it can read them.
@@ -217,6 +242,24 @@ func (p *Provisioner) Provision(layout Layout, uid, gid int) error {
 		{layout.Root, siteRootMode},
 		{layout.Content, contentMode},
 		{layout.Logs, logsMode},
+	}
+
+	// Every directory is checked before any of them is touched. Refusing
+	// halfway through would leave a half-provisioned site behind and make the
+	// refusal itself the thing that needed cleaning up.
+	//
+	// The site root is judged without counting the two directories the layout
+	// itself puts there. They are structure, not content, and each is checked
+	// on its own a line later — so a refusal names the directory that actually
+	// holds somebody's files rather than the one above it.
+	if err := p.checkVacant(layout.Root, uid, ContentDir, LogsDir); err != nil {
+		return err
+	}
+	if err := p.checkVacant(layout.Content, uid); err != nil {
+		return err
+	}
+	if err := p.checkVacant(layout.Logs, uid); err != nil {
+		return err
 	}
 
 	for _, dir := range directories {
@@ -257,12 +300,15 @@ func (p *Provisioner) WritePlaceholder(layout Layout, domain string, uid, gid in
 	if _, err := os.Stat(index); err == nil {
 		// Content already exists; overwriting it would destroy a deployment.
 		//
-		// Its ownership is still corrected. A directory left behind by a
-		// previous site holds files owned by an account that no longer exists,
-		// and nginx cannot read them — so the new site returns 403 from the
-		// moment it is created, which is precisely the outcome this function
-		// exists to prevent. Ownership is the panel's to set at creation; the
-		// content itself is not touched.
+		// Its ownership is still corrected, but the reach of that is now much
+		// smaller than it was. This used to be the panel's answer to a
+		// directory left behind by a deleted site: adopt the leftover so the
+		// new site did not return 403. It cured the symptom and spread the
+		// disease, because adopting a leftover is exactly how one customer's
+		// files end up owned by another. Provision now refuses that directory
+		// outright, so the only tree that reaches this line belongs to the
+		// account being provisioned already — a retried job, or a site whose
+		// index was written before a chown failed.
 		if uid >= 0 && gid >= 0 {
 			if err := os.Chown(index, uid, gid); err != nil {
 				return fmt.Errorf("own the existing index: %w", err)
@@ -318,4 +364,234 @@ func (p *Provisioner) Exists(layout Layout) (bool, error) {
 		return false, fmt.Errorf("stat site content: %w", err)
 	}
 	return true, nil
+}
+
+// checkVacant refuses a directory that already holds another account's files.
+//
+// The three cases it has to tell apart:
+//
+//   - It does not exist. Nothing to adopt; provisioning creates it.
+//   - It exists and is empty. Adopting it is harmless whoever owns it —
+//     there is no content to hand over — and this is the ordinary case for a
+//     site root whose logs and content directories are made a moment later.
+//   - It exists and holds files. Then ownership decides. The same account is
+//     a retried job converging, which must keep working. A different account
+//     is either a live customer's data or a dead one's, and neither belongs
+//     to the site being created.
+//
+// Emptiness rather than existence is the test because the alternative —
+// refusing any directory that exists — would break the retry path that made
+// Provision idempotent in the first place.
+//
+// ignore names entries that do not count towards emptiness. It exists for the
+// site root, which holds the content and logs directories by definition and
+// would otherwise be reported as occupied by its own layout.
+func (p *Provisioner) checkVacant(path string, uid int, ignore ...string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%w: %s exists and is not a directory", ErrOccupied, path)
+	}
+
+	owner, ok := ownerOf(info)
+	if !ok || owner == uid {
+		// Not a Unix filesystem, or already ours. Either way there is nothing
+		// here that belongs to somebody else.
+		return nil
+	}
+
+	empty, err := isEmptyDir(path, ignore...)
+	if err != nil {
+		return err
+	}
+	if empty {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s is owned by uid %d and is not empty; "+
+		"remove it or reassign it before creating this site", ErrOccupied, path, owner)
+}
+
+// Neutralize strips a retained site tree of its former owner.
+//
+// This runs when a website is deleted with its files kept — the default, and a
+// deliberate one: a deleted vhost can be recreated, deleted content cannot.
+// What is *not* deliberate is what used to happen next. The account was
+// removed a moment later, its uid went back into the allocation pool, and the
+// files kept carrying that number. The next few sites created took uids from
+// the same pool, and one of them was eventually handed the number written on a
+// previous customer's files. Nothing announced it; the directory simply began
+// belonging to somebody else.
+//
+// So the tree is given to root, which is the one uid the system will never
+// hand out, and closed to everybody else. The files survive, which is the
+// point of keeping them; what does not survive is the claim on them.
+//
+// Lchown rather than Chown, and no symlink is followed. The Agent is root and
+// this walks a tree a customer controlled: a symlink to /etc/shadow would
+// otherwise be handed straight to whatever this is asked to reassign.
+func (p *Provisioner) Neutralize(layout Layout) error {
+	resolved, err := p.validator.Resolve(layout.Root)
+	if err != nil {
+		return fmt.Errorf("%w: refusing to reassign %s", ErrOutsideRoot, layout.Root)
+	}
+	if resolved == p.root {
+		return fmt.Errorf("%w: refusing to reassign the site root itself", ErrOutsideRoot)
+	}
+
+	if _, err := os.Lstat(resolved); err != nil {
+		if os.IsNotExist(err) {
+			// Files already gone. Nothing carries the uid, so nothing to do.
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", resolved, err)
+	}
+
+	walkErr := filepath.WalkDir(resolved, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("walk %s: %w", path, err)
+		}
+		if err := os.Lchown(path, orphanUID, orphanGID); err != nil {
+			return fmt.Errorf("reassign %s: %w", path, err)
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return walkErr
+	}
+
+	// Only the top of the tree is re-permissioned. Root owns every inode now,
+	// so the modes underneath grant nothing to anybody; rewriting them all
+	// would destroy the permissions a restored backup would want back.
+	if err := os.Chmod(resolved, orphanMode); err != nil {
+		return fmt.Errorf("close %s: %w", resolved, err)
+	}
+	return nil
+}
+
+// OwnershipFinding is one site directory whose owner is not what it should be.
+type OwnershipFinding struct {
+	Path string `json:"path"`
+	UID  int    `json:"uid"`
+	// Owner is the account that holds the uid, empty if none does.
+	Owner string `json:"owner,omitempty"`
+	// OwnerHome is that account's home directory. A site account's home is its
+	// own site root, so a home pointing somewhere else means this directory is
+	// owned by an account that belongs to a different site.
+	OwnerHome string `json:"owner_home,omitempty"`
+	// Orphaned means no account holds the uid at all. This is the unambiguous
+	// case: nothing can justify it, and the number is queued for reuse.
+	Orphaned bool `json:"orphaned"`
+}
+
+// AuditOwnership reports site directories owned by the wrong account.
+//
+// Two kinds of wrong, and they are not equally certain, which is the whole
+// reason this reports rather than repairs:
+//
+//   - Orphaned: no account holds the uid. Nothing explains this and nothing
+//     can justify it. The number is sitting in the allocation pool waiting to
+//     be handed to the next account created, at which point the directory
+//     silently changes hands.
+//   - Misowned: an account holds the uid, but its home is a different site's
+//     root. Usually this is the above, one step later — the uid was already
+//     recycled. But it is also exactly what a subdomain that inherits its
+//     parent's account looks like, which is legitimate and common.
+//
+// The Agent cannot tell those two apart. It knows what is on the disk; only
+// the panel knows which sites are live and which of them share an account. So
+// misowned directories are reported and left alone, and only the orphaned ones
+// are safe to act on without asking. Guessing here would mean reassigning a
+// live subdomain's directory and taking a working site off the air.
+func (p *Provisioner) AuditOwnership() ([]OwnershipFinding, error) {
+	entries, err := os.ReadDir(p.root)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", p.root, err)
+	}
+
+	var findings []OwnershipFinding
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(p.root, entry.Name())
+		info, err := os.Lstat(path)
+		if err != nil {
+			// A directory that vanished between the listing and the stat is
+			// not a finding; anything else is worth knowing about.
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("stat %s: %w", path, err)
+		}
+
+		uid, ok := ownerOf(info)
+		if !ok || uid == orphanUID {
+			// Root-owned is the safe state, not a finding. It covers both an
+			// already-neutralised leftover and the directories the web server's
+			// own package installs alongside the sites — on Alpine, nginx puts
+			// localhost, logs, modules and run under /var/www.
+			continue
+		}
+
+		account, err := user.LookupId(strconv.Itoa(uid))
+		if err != nil {
+			var unknown user.UnknownUserIdError
+			if errors.As(err, &unknown) {
+				findings = append(findings, OwnershipFinding{
+					Path: path, UID: uid, Orphaned: true,
+				})
+				continue
+			}
+			return nil, fmt.Errorf("look up uid %d: %w", uid, err)
+		}
+
+		// A site account's home is its own site root, set when the account is
+		// created. Anything else means this directory belongs to another site.
+		if filepath.Clean(account.HomeDir) != path {
+			findings = append(findings, OwnershipFinding{
+				Path: path, UID: uid, Owner: account.Username,
+				OwnerHome: account.HomeDir,
+			})
+		}
+	}
+	return findings, nil
+}
+
+// RepairOrphans reassigns the directories no account owns at all.
+//
+// Only the orphaned findings, and deliberately so — see AuditOwnership for why
+// the misowned ones need a person. An orphan is safe because the uid resolves
+// to nobody: there is no site it could belong to and no account whose access
+// is being taken away. There is only a number waiting to be reused.
+//
+// Returns the paths it reassigned. A failure on one directory stops the sweep
+// rather than pressing on, because the reason one chown failed is usually the
+// reason the next one will.
+func (p *Provisioner) RepairOrphans() ([]string, error) {
+	findings, err := p.AuditOwnership()
+	if err != nil {
+		return nil, err
+	}
+
+	var repaired []string
+	for _, finding := range findings {
+		if !finding.Orphaned {
+			continue
+		}
+		layout, err := p.LayoutFor(filepath.Join(finding.Path, ContentDir))
+		if err != nil {
+			return repaired, fmt.Errorf("resolve %s: %w", finding.Path, err)
+		}
+		if err := p.Neutralize(layout); err != nil {
+			return repaired, fmt.Errorf("reassign %s: %w", finding.Path, err)
+		}
+		repaired = append(repaired, finding.Path)
+	}
+	return repaired, nil
 }

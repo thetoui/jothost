@@ -268,6 +268,15 @@ type DeleteRequest struct {
 	Actor     string
 	IPAddress string
 	UserAgent string
+	// RemoveFiles deletes the site's content along with it.
+	//
+	// Off by default, and that default is the deliberate one: a vhost can be
+	// recreated and content cannot. But keeping the files has a cost that used
+	// to be hidden — the directory stays, provisioning refuses to adopt it, and
+	// without this the domain could never be created again through the panel at
+	// all. So the choice is offered rather than made silently in either
+	// direction.
+	RemoveFiles bool
 }
 
 // Delete queues removal of a website.
@@ -319,6 +328,10 @@ func (s *Service) Delete(ctx context.Context, req DeleteRequest) (jobs.Job, erro
 			// Removing the account is deliberate and separate: a site's files
 			// can be deleted while its user is still referenced elsewhere.
 			"remove_user": true,
+			// Kept by default. When they are kept the Agent reassigns them to
+			// root before the account goes, so the uid about to be reused stops
+			// owning anything.
+			"remove_files": req.RemoveFiles,
 		},
 		CreatedBy:    req.Actor,
 		ResourceType: ResourceTypeWebsite,

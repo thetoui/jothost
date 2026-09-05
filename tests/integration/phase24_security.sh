@@ -172,7 +172,7 @@ json_field() {
 }
 
 cleanup() {
-  [ -n "$website_id" ] && api DELETE "/api/v1/websites/$website_id" >/dev/null 2>&1
+  [ -n "$website_id" ] && api DELETE "/api/v1/websites/$website_id?remove_files=true" >/dev/null 2>&1
   [ -n "$low_id" ] && api DELETE "/api/v1/tenancy/accounts/$low_id" >/dev/null 2>&1
   return 0
 }
@@ -444,7 +444,7 @@ site=$(api POST /api/v1/websites "{\"domain\":\"$SITE_DOMAIN\",\"name\":\"audit\
 website_id=$(json_field "$site" id)
 waited=0
 while [ "$waited" -lt 120 ]; do
-  state=$(json_field "$(api GET "/api/v1/websites/$website_id")" status)
+  state=$(json_field "$(api GET "/api/v1/websites/$website_id?remove_files=true")" status)
   case "$state" in active|failed) break ;; esac
   sleep 3; waited=$((waited + 3))
 done

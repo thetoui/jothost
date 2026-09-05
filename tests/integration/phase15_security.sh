@@ -175,7 +175,7 @@ if [ "$state" != "SUCCESS" ]; then
 fi
 pass "a website was created to scan ($DOMAIN)"
 
-site_root="$(json_field "$(api GET "/api/v1/websites/$website_id")" document_root)"
+site_root="$(json_field "$(api GET "/api/v1/websites/$website_id?remove_files=true")" document_root)"
 if [ -z "$site_root" ] || [ ! -d "$site_root" ]; then
   log "FATAL: $DOMAIN has no document root on disk"
   exit 1

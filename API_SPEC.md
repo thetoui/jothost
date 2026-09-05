@@ -370,6 +370,21 @@ website (in status `creating`) and the job realising it:
 `DELETE /websites/:id` returns **202** with the job; the record survives until
 the Agent confirms the site is gone from the host.
 
+The site's **files are kept** unless `?remove_files=true` is passed. Keeping
+them is the default because a vhost can be recreated and content cannot, but it
+has two consequences worth knowing before choosing it:
+
+- The retained tree is reassigned to root before the site's account is removed,
+  so the uid going back into the allocation pool stops owning anything. Without
+  that step the directory silently changes hands the next time that number is
+  issued.
+- Because the files are still there, a later site cannot be provisioned into
+  that directory: creation refuses rather than adopting another account's
+  content. Recreating a website on the same document root therefore needs the
+  old files removed first — with `?remove_files=true` on the delete, or by hand.
+
+The same parameter applies to `DELETE /subdomains/:id`.
+
 ---
 
 # 7. Domains

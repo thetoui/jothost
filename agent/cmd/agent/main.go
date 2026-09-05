@@ -60,6 +60,11 @@ func main() {
 	callOp := flag.String("call", "", "send one operation to a running agent and print the response")
 	callPayload := flag.String("payload", "", "JSON payload for -call")
 	callAsync := flag.Bool("async", false, "submit -call as a background job")
+	// -repair-site-ownership is a maintenance mode for a host that already has
+	// abandoned site directories. It reassigns the ones no account owns and
+	// reports the rest, then exits without starting the Agent.
+	repairOwnership := flag.Bool("repair-site-ownership", false,
+		"reassign abandoned site directories to root, report ambiguous ones, and exit")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -75,6 +80,13 @@ func main() {
 		}
 		fmt.Println("ok")
 		return
+	}
+
+	// Before the Agent starts, and without it. This walks the site root and
+	// changes ownership, which is not something to do behind a running server's
+	// back while it is provisioning sites into the same directories.
+	if *repairOwnership {
+		os.Exit(repairSiteOwnership(cfg))
 	}
 
 	if *callOp != "" {
@@ -481,6 +493,8 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("website provisioning ready", "web_group", provisioner.WebGroup())
 	}
 
+	auditSiteOwnership(provisioner, log)
+
 	phpDetector := php.NewDetector(php.DetectorOptions{Runner: runner})
 	phpPools := php.NewProvider(php.ProviderOptions{Detector: phpDetector})
 	phpInstaller := php.NewInstaller(runner)
@@ -886,4 +900,96 @@ func trimNewline(b []byte) []byte {
 		b = b[:len(b)-1]
 	}
 	return b
+}
+
+// auditSiteOwnership reports abandoned site directories at startup.
+//
+// It reports and does not act. A directory owned by an account that no longer
+// exists is a uid waiting to be handed to the next site created, at which
+// point somebody else's files quietly become that site's — and on a host
+// upgraded from a build that left them behind, that has already been true for
+// a while. Saying so at every start is how an operator finds out; the panel
+// cannot fix it for them, for the reason AuditOwnership sets out.
+func auditSiteOwnership(provisioner *sites.Provisioner, log *slog.Logger) {
+	findings, err := provisioner.AuditOwnership()
+	if err != nil {
+		log.Warn("site directory ownership could not be audited",
+			logger.KeyError, err.Error())
+		return
+	}
+
+	var orphaned, misowned int
+	for _, finding := range findings {
+		if finding.Orphaned {
+			orphaned++
+		} else {
+			misowned++
+		}
+	}
+	if orphaned == 0 && misowned == 0 {
+		return
+	}
+
+	if orphaned > 0 {
+		log.Warn("site directories are owned by accounts that no longer exist",
+			"count", orphaned,
+			"detail", "their uids will be reused by the next sites created; "+
+				"run the agent with -repair-site-ownership to reassign them to root")
+	}
+	if misowned > 0 {
+		// Reported separately and never acted on: this is also what a
+		// subdomain sharing its parent's account looks like.
+		log.Warn("site directories are owned by another site's account",
+			"count", misowned,
+			"detail", "expected for a subdomain that shares its parent's account, "+
+				"and a recycled uid otherwise; run -repair-site-ownership to list them")
+	}
+}
+
+// repairSiteOwnership is the -repair-site-ownership mode. It returns an exit
+// code.
+func repairSiteOwnership(cfg config.Config) int {
+	log := logger.New(logger.Options{
+		Service: "agent",
+		Level:   cfg.LogLevel,
+		Output:  os.Stdout,
+	})
+
+	provisioner, err := sites.NewProvisioner(cfg.SiteRoot, cfg.WebGroup)
+	if err != nil {
+		log.Error("the site root could not be opened", logger.KeyError, err.Error())
+		return 1
+	}
+
+	findings, err := provisioner.AuditOwnership()
+	if err != nil {
+		log.Error("site directory ownership could not be audited", logger.KeyError, err.Error())
+		return 1
+	}
+
+	for _, finding := range findings {
+		if finding.Orphaned {
+			continue
+		}
+		// Listed, not touched. The operator has to decide, because the Agent
+		// cannot tell a recycled uid from a subdomain sharing an account.
+		log.Warn("site directory is owned by another site's account",
+			"path", finding.Path, "owner", finding.Owner, "owner_home", finding.OwnerHome,
+			"detail", "expected if this is a subdomain of the owner's site; "+
+				"otherwise the uid was recycled and this needs reassigning by hand")
+	}
+
+	repaired, err := provisioner.RepairOrphans()
+	for _, path := range repaired {
+		log.Info("reassigned an abandoned site directory to root", "path", path)
+	}
+	if err != nil {
+		log.Error("the sweep stopped early", "reassigned", len(repaired),
+			logger.KeyError, err.Error())
+		return 1
+	}
+
+	log.Info("site directory ownership repaired",
+		"reassigned", len(repaired), "needing_review", len(findings)-len(repaired))
+	return 0
 }

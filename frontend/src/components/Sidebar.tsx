@@ -106,7 +106,7 @@ export function Sidebar() {
   return (
     <nav
       aria-label="Main navigation"
-      className={`flex shrink-0 flex-col bg-rail transition-[width] duration-200 ${
+      className={`flex h-full shrink-0 flex-col bg-rail transition-[width] duration-200 ${
         collapsed ? 'w-16' : 'w-60'
       }`}
     >

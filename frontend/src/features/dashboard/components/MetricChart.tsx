@@ -63,7 +63,17 @@ export function MetricChart({
     <div>
       <svg
         viewBox={`0 0 ${VIEW_WIDTH} ${height}`}
-        className="h-auto w-full"
+        // The height is set in pixels rather than left to the aspect ratio.
+        // With `h-auto` the rendered height was the card's width times
+        // 180/600, so the chart grew with the window: on a wide screen the two
+        // stacked charts were nearly the height of the viewport between them,
+        // and the dashboard's own figures were pushed off the bottom.
+        //
+        // preserveAspectRatio="none" is what makes this safe — the drawing
+        // already stretches to whatever box it is given, which is what a time
+        // series wants horizontally and what keeps the axis readable.
+        style={{ height }}
+        className="w-full"
         role="img"
         aria-label={`${series.map((s) => s.label).join(' and ')} over time`}
         preserveAspectRatio="none"

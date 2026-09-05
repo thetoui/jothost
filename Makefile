@@ -211,6 +211,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-mail
 	$(MAKE) docker-test-deploy
 	$(MAKE) docker-test-tenancy
+	$(MAKE) docker-test-hardening
 	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
@@ -338,6 +339,42 @@ docker-test-deploy: create-integration-admin ## Run the Phase 27 deployment chec
 	# key pinning and the authentication are all real. A local path would have
 	# exercised none of them.
 	$(COMPOSE) exec -T agent sh /tests/integration/phase27_deploy.sh
+
+.PHONY: docker-test-hardening
+docker-test-hardening: ## Run the whole Phase 24 hardening suite
+	$(MAKE) docker-test-security-audit
+	$(MAKE) docker-test-agent-boundary
+	$(MAKE) docker-test-recovery
+	$(MAKE) docker-test-load
+
+.PHONY: docker-test-security-audit
+docker-test-security-audit: create-integration-admin ## Run the Phase 24 adversarial suite
+	# Drives the panel the way somebody trying to get in would: no token, a
+	# stolen one, paths that leave the root, values that would close a command
+	# line, and an account holding no permissions at all. Every section begins
+	# with a control, because a refusal proves nothing unless the request
+	# reached the code that refused it.
+	$(COMPOSE_TEST) run --rm security-audit
+
+.PHONY: docker-test-agent-boundary
+docker-test-agent-boundary: create-integration-admin ## Run the Phase 24 Agent boundary checks
+	# The privilege boundary itself, from inside the managed host: who may
+	# speak to the Agent's socket, what it refuses, and what the panel leaves
+	# readable on disk.
+	$(COMPOSE) exec -T agent sh /tests/integration/phase24_agent.sh
+
+.PHONY: docker-test-recovery
+docker-test-recovery: create-integration-admin ## Run the Phase 24 recovery drills
+	# Runs on this machine rather than in a container, because a recovery drill
+	# has to be able to take services away and put them back. It stops the API,
+	# the Agent and PostgreSQL in turn and checks the one claim the whole
+	# architecture rests on: that a control panel outage is not a hosting
+	# outage.
+	sh tests/recovery/phase24_recovery.sh
+
+.PHONY: docker-test-load
+docker-test-load: create-integration-admin ## Run the Phase 24 load test
+	$(COMPOSE_TEST) run --rm load-test
 
 .PHONY: docker-test-installer
 docker-test-installer: dist ## Run the Phase 23 installer checks on a clean host

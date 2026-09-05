@@ -28,6 +28,18 @@ set -eu
 # host the boot sequence builds it; here that has to be asked for, and until it
 # exists every rc-service call answers "already starting".
 if command -v rc-status >/dev/null 2>&1; then
+  # The state from this container's previous life is cleared first.
+  #
+  # On a real host /run is a tmpfs and a boot starts it empty, which is what
+  # every init system assumes. `docker compose stop` and `start` keep the
+  # container's filesystem, so OpenRC comes back believing nginx is already
+  # started — or crashed — and refuses to start it. The Agent then runs
+  # perfectly while every website operation fails at its last step, which is a
+  # failure nobody would look for here.
+  #
+  # Running the entrypoint *is* this container's boot, so it clears what a boot
+  # clears.
+  rm -rf /run/openrc
   mkdir -p /run/openrc
   touch /run/openrc/softlevel
   # Building the dependency cache is what creates the state directories.
@@ -61,6 +73,27 @@ start_service() {
 # first means a reload during website creation has something to reload.
 if command -v nginx >/dev/null 2>&1; then
   mkdir -p /run/nginx /etc/nginx/conf.d
+
+  # A pidfile left behind by the previous life of this container.
+  #
+  # `docker compose stop` and `start` keep the container's filesystem, so /run
+  # is not cleared the way a reboot clears it on a real host. nginx's pidfile
+  # survives pointing at a process that no longer exists, OpenRC reads it and
+  # reports the service "crashed", and nginx is never started.
+  #
+  # The panel then looks entirely well — the Agent is up, the socket answers,
+  # every operation is accepted — and every website operation fails at the last
+  # step with "site configured but not served: kill(181, 1) failed". That is
+  # the shape of the failure this removes, and it was found by a recovery drill
+  # stopping and starting this container.
+  if [ -f /run/nginx/nginx.pid ]; then
+    stale_pid="$(cat /run/nginx/nginx.pid 2>/dev/null || true)"
+    if [ -z "$stale_pid" ] || ! kill -0 "$stale_pid" 2>/dev/null; then
+      rm -f /run/nginx/nginx.pid
+      echo "agent-entrypoint: removed a stale nginx pidfile (${stale_pid:-empty})"
+    fi
+  fi
+
   if nginx -t >/dev/null 2>&1; then
     start_service nginx || {
       nginx

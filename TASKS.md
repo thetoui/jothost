@@ -1349,22 +1349,57 @@ Additionally required by the above:
 
 # PHASE 24 — Production Hardening
 
+**Status: COMPLETE** — see [docs/PHASE24.md](docs/PHASE24.md) for the audit
+itself, the findings, the hollow checks the controls caught, and known
+limitations.
+
 **Build order: 18 of 17.** Depends on 14 (restore test), 16 (firewall recovery
 test) and 22 (the RBAC and tenancy tests).
 
-- [ ] Full security audit
-- [ ] API penetration test
-- [ ] Agent security test
-- [ ] Path traversal test
-- [ ] Command injection test
-- [ ] Privilege escalation test
-- [ ] Authentication test
-- [ ] RBAC test
-- [ ] Rate limit test
-- [ ] Backup restore test
-- [ ] Disaster recovery test
-- [ ] Firewall recovery test
-- [ ] Load test
+- [x] Full security audit — `docs/PHASE24.md`, plus a static sweep of both
+  binaries for shell invocation, secrets reaching a logger, and concatenated
+  SQL, and an enumeration of the dependency surface
+- [x] API penetration test — the unauthenticated surface read from the source
+  rather than from memory, so a route that loses its guard fails a test
+- [x] Agent security test — the three locks on the socket, each tested *past*
+  the ones before it: outside the group, inside the group but the wrong uid,
+  and root without a token
+- [x] Path traversal test — including symlink escape, which normalisation alone
+  does not catch, run against a real filesystem rather than a mocked one
+- [x] Command injection test — the characters that end a shell word, an nginx
+  directive or an SQL statement, refused by shape at the validator
+- [x] Privilege escalation test
+- [x] Authentication test — identical answers for an unknown user and a wrong
+  password, tokens accepted only from the Authorization header, immediate
+  revocation, and refresh replay revoking every session for the account
+- [x] RBAC test — **all 259 registered routes** called with an account holding
+  no permissions at all; the two deliberate exceptions checked individually
+  rather than skipped
+- [x] Rate limit test — 429 exactly, and not on authenticated reads
+- [x] Backup restore test — drilled by `phase14_backup.sh`, which destroys the
+  archive and the row and restores both; not repeated here
+- [x] Disaster recovery test — the API, the Agent and the database each taken
+  away in turn, with the hosting expected to survive all three
+- [x] Firewall recovery test — drilled by `phase16_firewall.sh`, which applies
+  a rule provisionally and watches the host put itself back; not repeated here
+- [x] Load test — correctness under concurrency, not throughput: 2,880
+  concurrent authenticated requests, and six simultaneous attempts to create
+  the same account, of which exactly one may succeed
+
+Additionally required by the above:
+
+- [x] **A control before every group of refusals.** A refusal proves nothing
+  unless the request reached the code that refused it, and the first day of
+  this phase produced eleven traversal refusals for a parameter the handler
+  never received. Controls caught four more hollow checks after that, all in
+  this phase's own tests
+- [x] A finding recorded rather than fixed: **`audit.view` is a permission with
+  no endpoint behind it**, so the audit trail cannot be read through the API.
+  A feature, and so out of scope under section 21 — but the clearest work left
+- [x] A fix to the development stack: `docker compose stop agent && start
+  agent` left OpenRC's state and nginx's pidfile in `/run` pointing at dead
+  processes, so every website operation failed at its last step on a stack that
+  looked entirely well
 
 ---
 

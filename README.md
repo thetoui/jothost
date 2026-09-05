@@ -6,8 +6,8 @@ databases, SSL, files, cron, backups, monitoring, and security from one web inte
 **Status:** Phases 0–15 complete, plus 4.1 (subdomains), 4.5
 (the Apache hybrid arrangement), 7.1 (FTP), 16 (the firewall), 17 (SSH security),
 18 (intrusion prevention), 19 (monitoring), 20 (notifications), 21 (system
-updates), 26 (the mail server), 27 (git deployment), 22 (multi-tenancy) and 23
-(the production installer): foundation, authentication, Host Agent, dashboard,
+updates), 26 (the mail server), 27 (git deployment), 22 (multi-tenancy), 23
+(the production installer) and 24 (production hardening): foundation, authentication, Host Agent, dashboard,
 websites, subdomains, the nginx +
 Apache engine, PHP, SSL, files, the code editor, databases, Node.js
 applications, scheduled jobs, the log viewer, host services, FTP accounts, DNS
@@ -20,9 +20,11 @@ configured to do next to what the world can actually verify, and deployments
 that run a customer's build as the customer's own account and never as root,
 quotas that are charged to whoever owns the website rather than to whoever
 pressed the button, and an installer that turns an empty Linux machine into a
-working panel from one command and a domain.
+working panel from one command and a domain, and an audit that attacks all of
+it — where every group of refusals is preceded by a control, because a refusal
+proves nothing unless the request reached the code that refused it.
 
-Next is Phase 24 (Production Hardening). Phases are built in dependency order
+Next is Phase 25 (Release). Phases are built in dependency order
 rather than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md
 for the sequence and why each phase sits where it does. The per-phase notes in
 [docs/](docs/) say what each one does and does not include.
@@ -241,6 +243,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE27.md](docs/PHASE27.md) | Phase 27 scope, decisions, and known limitations |
 | [docs/PHASE22.md](docs/PHASE22.md) | Phase 22 scope, decisions, and known limitations |
 | [docs/PHASE23.md](docs/PHASE23.md) | Phase 23 scope, decisions, and known limitations |
+| [docs/PHASE24.md](docs/PHASE24.md) | Phase 24 security audit, findings, and known limitations |
 
 ---
 
@@ -260,3 +263,10 @@ On the Agent: kernel-verified caller identity plus a shared token, an operation
 allowlist that cannot drift from its handlers, argv-only command execution with
 no shell anywhere, path validation against traversal and symlink escape, and a
 separate append-only audit trail that survives the database being unreachable.
+
+All of that is attacked rather than asserted: [docs/PHASE24.md](docs/PHASE24.md)
+is the audit, and `make docker-test-hardening` is the part of it that runs. It
+sweeps every route registered in the source with an account holding no
+permissions, so a route that loses its guard fails a test rather than waiting to
+be noticed. The findings — including one gap left open on purpose — are in that
+document.

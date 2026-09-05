@@ -209,6 +209,42 @@ services:
     networks:
       - jothost_default
 
+  # The Phase 24 adversarial suite.
+  #
+  # On the stack's network, so it reaches the API the way anything else on the
+  # network would, and with the repository mounted read-only because the RBAC
+  # section reads the route table out of the source. A route added tomorrow
+  # without a guard has to fail this suite rather than wait to be noticed, and
+  # a list kept in the test would drift the first week.
+  security-audit:
+    image: alpine:3.21
+    environment:
+      API_BASE_URL: ${INTEGRATION_API_URL:-http://api:8080}
+      INTEGRATION_ADMIN_USERNAME: ${INTEGRATION_ADMIN_USERNAME:-integration_admin}
+      INTEGRATION_ADMIN_PASSWORD: ${INTEGRATION_ADMIN_PASSWORD:-integration-admin-pw-9271}
+      SRC_DIR: /src
+    volumes:
+      - ./:/src:ro
+      - ./tests:/tests:ro
+    networks:
+      - jothost_default
+    command: ["sh", "/tests/integration/phase24_security.sh"]
+
+  # The Phase 24 load test. Separate from the audit above because it answers a
+  # different question: not "can this be broken into" but "does it stay correct
+  # under load".
+  load-test:
+    image: alpine:3.21
+    environment:
+      API_BASE_URL: ${INTEGRATION_API_URL:-http://api:8080}
+      INTEGRATION_ADMIN_USERNAME: ${INTEGRATION_ADMIN_USERNAME:-integration_admin}
+      INTEGRATION_ADMIN_PASSWORD: ${INTEGRATION_ADMIN_PASSWORD:-integration-admin-pw-9271}
+    volumes:
+      - ./tests:/tests:ro
+    networks:
+      - jothost_default
+    command: ["sh", "/tests/integration/phase24_load.sh"]
+
   # A clean Linux host for the Phase 23 installer.
   #
   # alpine:3.21 with nothing added: no nginx, no PostgreSQL, no Redis, no

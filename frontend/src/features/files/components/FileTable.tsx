@@ -14,6 +14,7 @@ import {
   FileActionMenu,
   type FileAction,
 } from '@/features/files/components/FileActionMenu';
+import { focusRingTight } from '@/components/ui/focus';
 import { describeMode, formatModified, formatSize, isWorldWritable } from '@/features/files/format';
 import type { FileEntry } from '@/types/api';
 
@@ -150,7 +151,7 @@ export function FileTable({
                         }}
                         aria-haspopup={entry.type === 'file' ? 'menu' : undefined}
                         aria-expanded={entry.type === 'file' ? menuFor === entry.path : undefined}
-                        className="truncate text-left font-medium text-slate-800 hover:text-brand-700 hover:underline"
+                        className={`truncate rounded-sm text-left font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
                       >
                         {entry.name}
                       </button>

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
+import { focusRingRail } from '@/components/ui/focus';
 import { useUiStore } from '@/stores/uiStore';
 
 interface NavItem {
@@ -146,7 +147,7 @@ export function Sidebar() {
 }
 
 function NavItemLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
-  const base = `group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+  const base = `group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${focusRingRail} ${
     collapsed ? 'justify-center' : ''
   }`;
 

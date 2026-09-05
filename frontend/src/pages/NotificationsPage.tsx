@@ -140,7 +140,7 @@ function Stat({
   tone?: 'danger';
 }) {
   const colour =
-    value === 0 ? 'text-slate-400' : tone === 'danger' ? 'text-rose-700' : 'text-slate-900';
+    value === 0 ? 'text-slate-400' : tone === 'danger' ? 'text-danger-700' : 'text-slate-900';
   return (
     <div>
       <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
@@ -275,20 +275,20 @@ function describeChannel(channel: NotificationChannel): string {
 function describeHealth(channel: NotificationChannel): JSX.Element {
   if (channel.failure_streak > 0) {
     return (
-      <span className="text-rose-700">
+      <span className="text-danger-700">
         Failing ({channel.failure_streak} in a row): {channel.last_error ?? 'no reason given'}
       </span>
     );
   }
   if (channel.last_success_at === null) {
     return (
-      <span className="text-amber-700">
+      <span className="text-warn-700">
         Never delivered anything — send a test before relying on it
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-emerald-700">
+    <span className="inline-flex items-center gap-1 text-ok-700">
       <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />
       Last delivered {formatWhen(channel.last_success_at)}
     </span>
@@ -327,7 +327,7 @@ function Deliveries({ overview }: { overview: NotificationOverview }) {
                   {delivery.attempts > 1 ? ` · ${delivery.attempts} attempts` : ''}
                 </p>
                 {delivery.status === 'failed' && delivery.last_error && (
-                  <p className="mt-1 text-xs text-rose-700">{delivery.last_error}</p>
+                  <p className="mt-1 text-xs text-danger-700">{delivery.last_error}</p>
                 )}
               </div>
             </li>
@@ -351,13 +351,13 @@ function DeliveryIcon({ status }: { status: NotificationDelivery['status'] }) {
     return (
       <CheckCircle2
         aria-label="delivered"
-        className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
+        className="mt-0.5 h-4 w-4 shrink-0 text-ok-600"
       />
     );
   }
   if (status === 'failed') {
     return (
-      <XCircle aria-label="not delivered" className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+      <XCircle aria-label="not delivered" className="mt-0.5 h-4 w-4 shrink-0 text-danger-600" />
     );
   }
   return (

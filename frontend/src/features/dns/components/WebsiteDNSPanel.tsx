@@ -5,6 +5,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { SkeletonRows } from '@/components/ui/Loading';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { ZoneEditor } from '@/features/dns/components/ZoneEditor';
@@ -89,12 +90,12 @@ export function WebsiteDNSPanel({ websiteId, domain }: WebsiteDNSPanelProps) {
                 <button
                   type="button"
                   onClick={() => setOpen(zone.id)}
-                  className="w-full rounded border border-slate-200 px-3 py-2 text-left hover:border-slate-300"
+                  className={`w-full rounded border border-surface-border px-3 py-2 text-left transition-colors hover:border-surface-strong ${focusRingTight}`}
                 >
                   <span className="flex items-center gap-2 font-medium text-slate-900">
                     {zone.name}
                     {zone.dnssec && (
-                      <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-normal text-emerald-700">
+                      <span className="inline-flex items-center gap-1 rounded bg-ok-50 px-1.5 py-0.5 text-xs font-normal text-ok-700">
                         <KeyRound aria-hidden="true" className="h-3 w-3" />
                         Signed
                       </span>

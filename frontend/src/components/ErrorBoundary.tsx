@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
+import { Button } from '@/components/ui/Button';
+
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
@@ -47,13 +49,9 @@ export class ErrorBoundary extends Component<Props, State> {
           The page failed to render. Reloading usually resolves it. If the problem persists,
           check the API logs.
         </p>
-        <button
-          type="button"
-          onClick={this.handleReset}
-          className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-        >
+        <Button variant="primary" onClick={this.handleReset}>
           Try again
-        </button>
+        </Button>
       </div>
     );
   }

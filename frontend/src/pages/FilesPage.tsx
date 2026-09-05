@@ -23,6 +23,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, ProgressBar, SkeletonRows } from '@/components/ui/Loading';
 import { TextField } from '@/components/ui/Field';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { useProfile } from '@/features/auth/hooks';
@@ -256,11 +257,11 @@ export function FilesPage() {
                     type="button"
                     onClick={() => goTo(crumb.path)}
                     aria-current={index === crumbs.length - 1 ? 'page' : undefined}
-                    className={
+                    className={`rounded-sm underline-offset-2 ${focusRingTight} ${
                       index === crumbs.length - 1
                         ? 'font-medium text-slate-900'
                         : 'text-slate-500 hover:text-brand-700 hover:underline'
-                    }
+                    }`}
                   >
                     {crumb.name}
                   </button>
@@ -676,7 +677,7 @@ function SearchResults({ loading, error, result, onOpen }: SearchResultsProps) {
             <button
               type="button"
               onClick={() => onOpen(match.entry)}
-              className="text-left text-sm font-medium text-slate-800 hover:text-brand-700 hover:underline"
+              className={`rounded-sm text-left text-sm font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
             >
               {match.entry.path}
             </button>

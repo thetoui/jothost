@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Download, FolderKey, Lock, Plug, Settings2, Trash2, Users } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 import { StatusPill } from '@/components/StatusPill';
 import { Alert } from '@/components/ui/Alert';
@@ -8,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TextField, Toggle } from '@/components/ui/Field';
+import { TextLink } from '@/components/ui/Link';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
@@ -103,9 +103,9 @@ export function FtpPage() {
             <Alert tone="warning" title="The FTP server is not running">
               The accounts below are configured and nobody can connect until it is
               started, which is done from the{' '}
-              <Link to="/services" className="underline">
+              <TextLink to="/services">
                 Services page
-              </Link>
+              </TextLink>
               .
             </Alert>
           )}
@@ -153,9 +153,9 @@ function FirewallWarning({ status }: { status: FTPOverview }) {
           {status.settings.passive_from}-{status.settings.passive_to}
         </span>{' '}
         and port 21 on the{' '}
-        <Link to="/firewall" className="underline">
+        <TextLink to="/firewall">
           Firewall page
-        </Link>
+        </TextLink>
         .
       </p>
     </Alert>
@@ -246,7 +246,7 @@ function AccountRow({ user, supportsQuota }: { user: FTPUser; supportsQuota: boo
           </p>
 
           {user.missing_on_host && (
-            <p className="mt-0.5 text-xs text-amber-600">
+            <p className="mt-0.5 text-xs text-warn-600">
               The FTP server does not have this account. Nothing stores its
               password, so setting a new one is what puts it back.
             </p>
@@ -288,7 +288,7 @@ function AccountRow({ user, supportsQuota }: { user: FTPUser; supportsQuota: boo
       </div>
 
       {message && (
-        <p className="mt-2 text-sm text-red-600" role="alert">
+        <p className="mt-2 text-sm text-danger-600" role="alert">
           {message}
         </p>
       )}
@@ -380,7 +380,7 @@ function SessionRow({ session }: { session: FTPSession }) {
       </div>
 
       {message && (
-        <p className="mt-2 text-sm text-red-600" role="alert">
+        <p className="mt-2 text-sm text-danger-600" role="alert">
           {message}
         </p>
       )}
@@ -471,7 +471,7 @@ function ServerSettings({ status }: { status: FTPOverview }) {
             </div>
 
             {message && (
-              <p className="text-sm text-red-600" role="alert">
+              <p className="text-sm text-danger-600" role="alert">
                 {message}
               </p>
             )}

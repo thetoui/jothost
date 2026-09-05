@@ -44,7 +44,7 @@ function StatusIcon({ service }: { service: ServiceState }) {
     return <CircleSlash aria-label="Not installed" className="h-4 w-4 shrink-0 text-slate-400" />;
   }
   if (service.running) {
-    return <CircleDot aria-label="Running" className="h-4 w-4 shrink-0 text-emerald-600" />;
+    return <CircleDot aria-label="Running" className="h-4 w-4 shrink-0 text-ok-600" />;
   }
-  return <XCircle aria-label="Not running" className="h-4 w-4 shrink-0 text-rose-600" />;
+  return <XCircle aria-label="Not running" className="h-4 w-4 shrink-0 text-danger-600" />;
 }

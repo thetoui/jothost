@@ -272,20 +272,20 @@ function describeDestination(destination: BackupDestination): string {
 function describeCheck(destination: BackupDestination): JSX.Element {
   if (destination.last_check_at === null) {
     return (
-      <span className="text-amber-700">
+      <span className="text-warn-700">
         Never reached — check it before relying on it
       </span>
     );
   }
   if (destination.last_check_ok) {
     return (
-      <span className="text-emerald-700">
+      <span className="text-ok-700">
         Written to and read back {formatWhen(destination.last_check_at)}
       </span>
     );
   }
   return (
-    <span className="text-rose-700">
+    <span className="text-danger-700">
       Could not be used: {destination.last_check_detail ?? 'no reason was given'}
     </span>
   );
@@ -941,21 +941,21 @@ function describeBackup(backup: Backup): JSX.Element {
   }
   if (backup.status === 'failed') {
     return (
-      <span className="text-rose-700">
+      <span className="text-danger-700">
         Failed: {backup.error ?? backup.verify_detail ?? 'no reason was recorded'}
       </span>
     );
   }
   if (backup.verified_at !== null) {
     return (
-      <span className="inline-flex items-center gap-1 text-emerald-700">
+      <span className="inline-flex items-center gap-1 text-ok-700">
         <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5" />
         Read back and confirmed {formatWhen(backup.verified_at)}
       </span>
     );
   }
   return (
-    <span className="text-amber-700">
+    <span className="text-warn-700">
       Written, not confirmed — verify it before relying on it
     </span>
   );

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 import { Modal } from '@/components/ui/Modal';
 import { SkeletonRows } from '@/components/ui/Loading';
 import { ToolGroup, ToolTile } from '@/components/ui/ToolTile';
@@ -108,19 +109,18 @@ export function DatabasePanel({ database }: { database: Database }) {
           <dt>Size</dt>
           <dd className="font-medium text-slate-700">{formatBytes(database.size_bytes)}</dd>
           <RequirePermission permission={Permission.DatabaseManage}>
-            <button
-              type="button"
+            <IconButton
+              size="sm"
               onClick={() => refresh.mutate(database.id)}
               disabled={refresh.isPending}
-              title="Measure it again"
-              aria-label={`Re-measure ${database.name}`}
-              className="rounded p-0.5 text-slate-400 transition-colors hover:bg-surface-border hover:text-slate-700 disabled:opacity-50"
-            >
-              <RefreshCw
-                aria-hidden="true"
-                className={`h-3 w-3 ${refresh.isPending ? 'animate-spin' : ''}`}
-              />
-            </button>
+              label={`Re-measure ${database.name}`}
+              icon={
+                <RefreshCw
+                  aria-hidden="true"
+                  className={`h-3 w-3 ${refresh.isPending ? 'animate-spin' : ''}`}
+                />
+              }
+            />
           </RequirePermission>
         </div>
       </dl>

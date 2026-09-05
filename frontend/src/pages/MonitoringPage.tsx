@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SelectField, TextField, Toggle } from '@/components/ui/Field';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import {
@@ -164,16 +165,16 @@ function Services({ overview }: { overview: MonitoringOverview }) {
           {services.map((service) => (
             <li
               key={service.service}
-              className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm"
+              className="flex items-center justify-between rounded border border-surface-border px-3 py-2 text-sm"
             >
               <span className="font-medium text-slate-800">{service.service}</span>
               <span
                 className={
                   service.running
-                    ? 'text-xs text-emerald-700'
+                    ? 'text-xs text-ok-700'
                     : service.status === 'not installed'
                       ? 'text-xs text-slate-400'
-                      : 'text-xs text-rose-700'
+                      : 'text-xs text-danger-700'
                 }
               >
                 {service.status} for {formatSeconds(service.for_seconds)}
@@ -230,7 +231,7 @@ function Rules({ overview }: { overview: MonitoringOverview }) {
               <button
                 type="button"
                 onClick={() => setEditing(rule)}
-                className="flex-1 text-left"
+                className={`flex-1 rounded-sm text-left ${focusRingTight}`}
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <SeverityPill severity={rule.severity} />
@@ -538,8 +539,8 @@ function SeverityPill({ severity }: { severity: 'warning' | 'critical' }) {
     <span
       className={
         severity === 'critical'
-          ? 'rounded bg-rose-50 px-1.5 py-0.5 text-xs font-medium text-rose-700'
-          : 'rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700'
+          ? 'rounded bg-danger-50 px-1.5 py-0.5 text-xs font-medium text-danger-700'
+          : 'rounded bg-warn-50 px-1.5 py-0.5 text-xs font-medium text-warn-700'
       }
     >
       {severity}

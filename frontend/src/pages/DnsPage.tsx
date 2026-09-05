@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { ZoneEditor } from '@/features/dns/components/ZoneEditor';
@@ -260,14 +261,14 @@ function ZoneList({
               <button
                 type="button"
                 onClick={() => onOpen(zone.id)}
-                className="flex-1 text-left"
+                className={`flex-1 rounded-sm text-left ${focusRingTight}`}
               >
                 <div className="flex items-center gap-2 font-medium text-slate-900">
                   {zone.name}
                   {zone.dnssec && (
                     <span
                       title="Signed with DNSSEC"
-                      className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-normal text-emerald-700"
+                      className="inline-flex items-center gap-1 rounded bg-ok-50 px-1.5 py-0.5 text-xs font-normal text-ok-700"
                     >
                       <KeyRound aria-hidden="true" className="h-3 w-3" />
                       Signed

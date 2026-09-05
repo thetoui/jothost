@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { ChevronDown, ChevronRight, File as FileIcon, Folder, FolderOpen } from 'lucide-react';
 
 import { Spinner } from '@/components/ui/Loading';
+import { focusRingTight } from '@/components/ui/focus';
 import { useDirectory } from '@/features/files/hooks';
 import type { FileEntry } from '@/types/api';
 
@@ -130,6 +131,7 @@ function TreeNode({ entry, depth, activePath, onOpen }: TreeNodeProps) {
           title={entry.editable === false && entry.type === 'file' ? 'Too large to edit' : entry.path}
           className={[
             'flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors',
+            focusRingTight,
             isActive ? 'bg-brand-50 font-medium text-brand-800' : 'text-slate-700',
             openable || isDirectory ? 'hover:bg-surface-sunken' : 'cursor-not-allowed opacity-50',
           ].join(' ')}

@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 
+import { focusRingTight } from '@/components/ui/focus';
 import { isDirty, type EditorTab } from '@/stores/editorStore';
 
 interface EditorTabsProps {
@@ -39,7 +40,7 @@ export function EditorTabs({ tabs, activePath, onActivate, onClose }: EditorTabs
               aria-selected={active}
               onClick={() => onActivate(tab.path)}
               title={tab.path}
-              className="max-w-[14rem] truncate"
+              className={`max-w-[14rem] truncate rounded-sm ${focusRingTight}`}
             >
               {tab.name}
               {/* The marker is text, not only a colour: "which of these has
@@ -55,7 +56,7 @@ export function EditorTabs({ tabs, activePath, onActivate, onClose }: EditorTabs
               type="button"
               onClick={() => onClose(tab)}
               aria-label={`Close ${tab.name}${dirty ? ' (unsaved changes)' : ''}`}
-              className="rounded p-0.5 text-slate-400 opacity-0 transition-opacity hover:bg-surface-border hover:text-slate-700 focus:opacity-100 group-hover:opacity-100"
+              className={`rounded p-0.5 text-slate-400 opacity-0 transition-opacity hover:bg-surface-sunken hover:text-slate-700 focus:opacity-100 group-hover:opacity-100 ${focusRingTight}`}
             >
               <X aria-hidden="true" className="h-3.5 w-3.5" />
             </button>

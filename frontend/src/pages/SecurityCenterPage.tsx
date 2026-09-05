@@ -178,9 +178,9 @@ function Stat({
     value === 0
       ? 'text-slate-400'
       : tone === 'danger'
-        ? 'text-rose-700'
+        ? 'text-danger-700'
         : tone === 'warn'
-          ? 'text-amber-700'
+          ? 'text-warn-700'
           : 'text-slate-900';
   return (
     <div>
@@ -205,12 +205,12 @@ function ScannerList({ scanners }: { scanners: ScannerOutcome[] }) {
             {outcome.ran ? (
               <CheckCircle2
                 aria-hidden="true"
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok-600"
               />
             ) : (
               <AlertTriangle
                 aria-hidden="true"
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600"
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn-600"
               />
             )}
             <span className="font-medium text-slate-700">{outcome.scanner}</span>
@@ -408,9 +408,9 @@ function AcceptedRisks({ overview }: { overview: SecurityOverview }) {
 
 function SeverityBadge({ severity }: { severity: FindingSeverity }) {
   const styles: Record<FindingSeverity, string> = {
-    critical: 'bg-rose-100 text-rose-800',
-    high: 'bg-amber-100 text-amber-800',
-    medium: 'bg-sky-100 text-sky-800',
+    critical: 'bg-danger-100 text-danger-800',
+    high: 'bg-warn-100 text-warn-800',
+    medium: 'bg-info-100 text-info-800',
     low: 'bg-slate-100 text-slate-700',
     info: 'bg-slate-100 text-slate-500',
   };

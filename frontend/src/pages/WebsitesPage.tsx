@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { CreateWebsiteForm } from '@/features/websites/components/CreateWebsiteForm';
@@ -228,7 +229,7 @@ function RailLink({ to, icon, label }: { to: string; icon: React.ReactNode; labe
   return (
     <Link
       to={to}
-      className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 transition-colors hover:bg-surface-sunken hover:text-brand-700"
+      className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 transition-colors hover:bg-surface-sunken hover:text-brand-700 ${focusRingTight}`}
     >
       <span className="text-slate-400" aria-hidden="true">
         {icon}

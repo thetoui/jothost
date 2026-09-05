@@ -16,7 +16,7 @@ interface AlertListProps {
 export function AlertList({ alerts }: AlertListProps) {
   if (alerts.length === 0) {
     return (
-      <p className="flex items-center gap-2 text-sm text-emerald-700">
+      <p className="flex items-center gap-2 text-sm text-ok-700">
         <CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0" />
         No alerts. Everything looks healthy.
       </p>
@@ -36,8 +36,8 @@ export function AlertList({ alerts }: AlertListProps) {
             key={`${alert.category}-${alert.message}-${index}`}
             className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${
               critical
-                ? 'border-rose-200 bg-rose-50 text-rose-800'
-                : 'border-amber-200 bg-amber-50 text-amber-800'
+                ? 'border-danger-200 bg-danger-50 text-danger-800'
+                : 'border-warn-200 bg-warn-50 text-warn-800'
             }`}
           >
             <Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />

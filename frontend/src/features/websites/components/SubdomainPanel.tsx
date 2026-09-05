@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, ExternalLink, Layers, Plus, Trash2 } from 'lucide-react';
 
 import { StatusPill } from '@/components/StatusPill';
@@ -7,8 +6,10 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { TextLink } from '@/components/ui/Link';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { SelectField, TextField } from '@/components/ui/Field';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import {
@@ -111,7 +112,7 @@ function SubdomainRow({ parentId, subdomain }: { parentId: string; subdomain: We
           type="button"
           onClick={() => setExpanded((open) => !open)}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className={`flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left ${focusRingTight}`}
         >
           {expanded ? (
             <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-400" />
@@ -131,22 +132,18 @@ function SubdomainRow({ parentId, subdomain }: { parentId: string; subdomain: We
           {/* A wildcard has no single address to open: it answers for every
               name beneath the parent that nothing else claims. */}
           {!wildcard && (
-            <a
+            <TextLink
               href={`http://${subdomain.primary_domain}`}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center gap-1 text-xs text-brand-700 hover:underline"
+              size="xs"
+              className="inline-flex items-center gap-1"
             >
               Open
               <ExternalLink aria-hidden="true" className="h-3 w-3" />
-            </a>
+            </TextLink>
           )}
-          <Link
-            to={`/websites/${subdomain.id}`}
-            className="text-xs text-brand-700 hover:underline"
-          >
+          <TextLink to={`/websites/${subdomain.id}`} size="xs">
             Manage
-          </Link>
+          </TextLink>
           <RequirePermission permission={Permission.WebsiteDelete}>
             <Button
               variant="ghost"

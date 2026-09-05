@@ -1,5 +1,4 @@
 import { Fragment, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   ChevronDown,
   ChevronRight,
@@ -20,8 +19,13 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SelectField } from '@/components/ui/Field';
+import { IconButton } from '@/components/ui/IconButton';
+import { IconLink, TextLink } from '@/components/ui/Link';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
+import { Tabs } from '@/components/ui/Tabs';
+import { TextButton } from '@/components/ui/TextButton';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { ConsoleCard } from '@/features/databases/components/ConsoleCard';
@@ -105,14 +109,16 @@ export function DatabasesPage() {
       </header>
 
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-surface-border">
-        <div role="tablist" aria-label="Databases sections" className="flex gap-5">
-          <TabButton active={tab === 'databases'} onClick={() => setTab('databases')}>
-            Databases
-          </TabButton>
-          <TabButton active={tab === 'users'} onClick={() => setTab('users')}>
-            User Management
-          </TabButton>
-        </div>
+        <Tabs
+          label="Databases sections"
+          value={tab}
+          onChange={setTab}
+          className="border-b-0"
+          items={[
+            { value: 'databases', label: 'Databases' },
+            { value: 'users', label: 'User Management' },
+          ]}
+        />
 
         {/* Plesk puts "Database Servers" and "Backup Manager" here. Only the
             first has a counterpart in this build, and what it would show is
@@ -280,33 +286,6 @@ export function DatabasesPage() {
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={[
-        '-mb-px border-b-2 px-0.5 pb-2 text-sm transition-colors',
-        active
-          ? 'border-brand-600 font-medium text-slate-900'
-          : 'border-transparent text-slate-500 hover:text-slate-800',
-      ].join(' ')}
-    >
-      {children}
-    </button>
-  );
-}
-
 interface DatabaseTableProps {
   databases: Database[];
   expanded: string | null;
@@ -358,19 +337,19 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
                   ].join(' ')}
                 >
                   <td className="px-2 py-2 align-middle">
-                    <button
-                      type="button"
+                    <IconButton
+                      size="sm"
                       onClick={() => onToggle(database.id)}
                       aria-expanded={open}
-                      aria-label={`${open ? 'Collapse' : 'Expand'} ${database.name}`}
-                      className="rounded p-1 text-slate-400 transition-colors hover:bg-surface-border hover:text-slate-700"
-                    >
-                      {open ? (
-                        <ChevronDown aria-hidden="true" className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                      )}
-                    </button>
+                      label={`${open ? 'Collapse' : 'Expand'} ${database.name}`}
+                      icon={
+                        open ? (
+                          <ChevronDown aria-hidden="true" className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                        )
+                      }
+                    />
                   </td>
 
                   <td className="px-3 py-2">
@@ -379,7 +358,7 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
                       <button
                         type="button"
                         onClick={() => onToggle(database.id)}
-                        className="truncate font-mono font-medium text-slate-800 hover:text-brand-700 hover:underline"
+                        className={`truncate rounded-sm font-mono font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
                       >
                         {database.name}
                       </button>
@@ -408,27 +387,19 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-end gap-1">
                       {consoleURL && (
-                        <a
+                        <IconLink
                           href={consoleURL}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          aria-label={`Open ${database.name} in phpMyAdmin`}
-                          title="Open in phpMyAdmin"
-                          className="rounded p-1.5 text-slate-400 transition-colors hover:bg-surface-border hover:text-slate-700"
-                        >
-                          <Table2 aria-hidden="true" className="h-4 w-4" />
-                        </a>
+                          label={`Open ${database.name} in phpMyAdmin`}
+                          icon={<Table2 aria-hidden="true" className="h-4 w-4" />}
+                        />
                       )}
                       <RequirePermission permission={Permission.DatabaseManage}>
-                        <button
-                          type="button"
+                        <IconButton
+                          tone="danger"
                           onClick={() => onDelete(database)}
-                          aria-label={`Delete ${database.name}`}
-                          title="Delete"
-                          className="rounded p-1.5 text-slate-400 transition-colors hover:bg-danger-50 hover:text-danger-600"
-                        >
-                          <Trash2 aria-hidden="true" className="h-4 w-4" />
-                        </button>
+                          label={`Delete ${database.name}`}
+                          icon={<Trash2 aria-hidden="true" className="h-4 w-4" />}
+                        />
                       </RequirePermission>
                     </div>
                   </td>
@@ -497,22 +468,16 @@ function RelatedTo({ database }: { database: Database }) {
       {database.website_id && database.website_domain ? (
         <>
           <span className="text-slate-600">Related to</span>
-          <Link
-            to={`/websites/${database.website_id}`}
-            className="truncate text-brand-700 hover:underline"
-          >
+          <TextLink to={`/websites/${database.website_id}`} className="truncate">
             {database.website_domain}
-          </Link>
+          </TextLink>
           <RequirePermission permission={Permission.DatabaseManage}>
-            <button
-              type="button"
+            <IconButton
+              size="sm"
               onClick={() => setEditing(true)}
-              aria-label={`Change the website for ${database.name}`}
-              title="Change"
-              className="rounded p-0.5 text-slate-400 transition-colors hover:bg-surface-border hover:text-slate-700"
-            >
-              <Pencil aria-hidden="true" className="h-3 w-3" />
-            </button>
+              label={`Change the website for ${database.name}`}
+              icon={<Pencil aria-hidden="true" className="h-3 w-3" />}
+            />
           </RequirePermission>
         </>
       ) : (
@@ -520,13 +485,9 @@ function RelatedTo({ database }: { database: Database }) {
           permission={Permission.DatabaseManage}
           fallback={<span className="text-slate-400">—</span>}
         >
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="text-brand-700 hover:underline"
-          >
+          <TextButton onClick={() => setEditing(true)}>
             Assign this database to a website
-          </button>
+          </TextButton>
         </RequirePermission>
       )}
     </div>

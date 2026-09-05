@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Ban, Download, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 import { StatusPill } from '@/components/StatusPill';
 import { Alert } from '@/components/ui/Alert';
@@ -8,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SelectField, TextField, Toggle } from '@/components/ui/Field';
+import { TextLink } from '@/components/ui/Link';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
@@ -111,9 +111,9 @@ export function Fail2BanPage() {
             <Alert tone="warning" title="fail2ban is not running">
               The settings below are what it would use. Nothing is being banned until it
               is started, which is done from the{' '}
-              <Link to="/services" className="underline">
+              <TextLink to="/services">
                 Services page
-              </Link>
+              </TextLink>
               .
             </Alert>
           )}
@@ -196,7 +196,7 @@ function JailRow({ jail, running }: { jail: Fail2BanJail; running: boolean }) {
               )}
             </p>
           ) : (
-            <p className="mt-0.5 text-xs text-amber-600">{jail.reason}</p>
+            <p className="mt-0.5 text-xs text-warn-600">{jail.reason}</p>
           )}
         </div>
 

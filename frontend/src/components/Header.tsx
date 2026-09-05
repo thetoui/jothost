@@ -3,6 +3,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { ChevronRight, LogOut, PanelLeftClose, PanelLeftOpen, UserCog } from 'lucide-react';
 
 import { Button } from '@/components/ui/Button';
+import { MenuItem, MenuPanel } from '@/components/ui/Menu';
+import { focusRing, focusRingTight } from '@/components/ui/focus';
 import { useLogout, useProfile } from '@/features/auth/hooks';
 import { useApiHealth } from '@/features/system/hooks';
 import { useUiStore } from '@/stores/uiStore';
@@ -108,12 +110,15 @@ function Breadcrumbs() {
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
-      <Link to="/" className="shrink-0 text-slate-500 hover:text-slate-900">
+      <Link to="/" className={`shrink-0 rounded-sm text-slate-500 hover:text-slate-900 ${focusRingTight}`}>
         Dashboard
       </Link>
       <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-300" />
       {isDetail ? (
-        <Link to={`/${first}`} className="truncate text-slate-500 hover:text-slate-900">
+        <Link
+          to={`/${first}`}
+          className={`truncate rounded-sm text-slate-500 hover:text-slate-900 ${focusRingTight}`}
+        >
           {label}
         </Link>
       ) : (
@@ -164,7 +169,7 @@ function UserMenu({ username, roles }: { username: string; roles: string[] }) {
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-2 rounded-md py-1 pl-1 pr-2 text-sm transition-colors hover:bg-surface-sunken"
+        className={`flex items-center gap-2 rounded-md py-1 pl-1 pr-2 text-sm transition-colors hover:bg-surface-sunken ${focusRing}`}
       >
         <span
           aria-hidden="true"
@@ -176,10 +181,7 @@ function UserMenu({ username, roles }: { username: string; roles: string[] }) {
       </button>
 
       {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-40 mt-1.5 w-56 animate-fade-in overflow-hidden rounded-card border border-surface-border bg-surface shadow-menu"
-        >
+        <MenuPanel label={`Account menu for ${username}`}>
           <div className="border-b border-surface-border px-3.5 py-2.5">
             <p className="truncate text-sm font-medium text-slate-900">{username}</p>
             <p className="mt-0.5 truncate text-xs capitalize text-slate-500">
@@ -188,27 +190,22 @@ function UserMenu({ username, roles }: { username: string; roles: string[] }) {
           </div>
 
           <div className="p-1">
-            <Link
+            <MenuItem
               to="/security"
-              role="menuitem"
+              icon={<UserCog className="h-4 w-4" />}
               onClick={() => setOpen(false)}
-              className="flex items-center gap-2.5 rounded px-2.5 py-2 text-sm text-slate-700 hover:bg-surface-sunken"
             >
-              <UserCog aria-hidden="true" className="h-4 w-4 text-slate-400" />
               Account security
-            </Link>
-            <button
-              type="button"
-              role="menuitem"
+            </MenuItem>
+            <MenuItem
+              icon={<LogOut className="h-4 w-4" />}
               onClick={() => logout.mutate()}
               disabled={logout.isPending}
-              className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-sm text-slate-700 hover:bg-surface-sunken disabled:opacity-60"
             >
-              <LogOut aria-hidden="true" className="h-4 w-4 text-slate-400" />
               {logout.isPending ? 'Signing out…' : 'Sign out'}
-            </button>
+            </MenuItem>
           </div>
-        </div>
+        </MenuPanel>
       )}
     </div>
   );

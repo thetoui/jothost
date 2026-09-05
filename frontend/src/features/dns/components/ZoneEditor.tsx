@@ -465,7 +465,7 @@ function Signing({ detail }: { detail: DNSZoneDetail }) {
       )}
 
       {detail.zone.dnssec && keys.length > 0 && (
-        <div className="rounded border border-slate-200 p-3 text-sm">
+        <div className="rounded border border-surface-border p-3 text-sm">
           {keys.map((key) => (
             <p key={key.id} className="text-slate-700">
               <KeyRound aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />

@@ -146,9 +146,9 @@ function Findings({ findings }: { findings: SSHFinding[] }) {
             <span
               className={
                 finding.severity === 'high'
-                  ? 'mt-0.5 text-rose-500'
+                  ? 'mt-0.5 text-danger-500'
                   : finding.severity === 'warn'
-                    ? 'mt-0.5 text-amber-500'
+                    ? 'mt-0.5 text-warn-500'
                     : 'mt-0.5 text-slate-400'
               }
             >

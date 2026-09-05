@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { LinkButton } from '@/components/ui/Link';
 
 export function NotFoundPage() {
   return (
@@ -7,12 +7,9 @@ export function NotFoundPage() {
       <p className="mt-2 text-sm text-slate-600">
         That page does not exist in this build of the panel.
       </p>
-      <Link
-        to="/"
-        className="mt-6 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-      >
+      <LinkButton to="/" variant="primary" className="mt-6">
         Back to dashboard
-      </Link>
+      </LinkButton>
     </div>
   );
 }

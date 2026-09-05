@@ -244,6 +244,7 @@ every stored 2FA secret undecryptable, so treat it like a database password.
 | [docs/PHASE22.md](docs/PHASE22.md) | Phase 22 scope, decisions, and known limitations |
 | [docs/PHASE23.md](docs/PHASE23.md) | Phase 23 scope, decisions, and known limitations |
 | [docs/PHASE24.md](docs/PHASE24.md) | Phase 24 security audit, findings, and known limitations |
+| [docs/UI.md](docs/UI.md) | Which control to reach for, and what keeps the panel consistent |
 
 ---
 

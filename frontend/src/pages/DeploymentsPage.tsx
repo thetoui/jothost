@@ -18,6 +18,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SelectField, TextField, Toggle } from '@/components/ui/Field';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
+import { TextButton } from '@/components/ui/TextButton';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import {
@@ -131,7 +132,7 @@ function RepositoryRow({ repository }: { repository: GitRepository }) {
               {repository.branch}
             </span>
             {repository.auto_deploy && (
-              <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800">
+              <span className="ml-2 rounded bg-warn-50 px-1.5 py-0.5 text-xs text-warn-800">
                 deploys on push
               </span>
             )}
@@ -146,7 +147,7 @@ function RepositoryRow({ repository }: { repository: GitRepository }) {
           )}
 
           {status?.dirty && (
-            <p className="mt-1.5 flex gap-2 text-xs text-amber-700">
+            <p className="mt-1.5 flex gap-2 text-xs text-warn-700">
               <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
                 This working tree has uncommitted changes. Deploying resets it and they
@@ -156,7 +157,7 @@ function RepositoryRow({ repository }: { repository: GitRepository }) {
           )}
 
           {(status?.warnings ?? []).map((warning) => (
-            <p key={warning} className="mt-1.5 flex gap-2 text-xs text-amber-700">
+            <p key={warning} className="mt-1.5 flex gap-2 text-xs text-warn-700">
               <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>{warning}</span>
             </p>
@@ -196,7 +197,7 @@ function RepositoryRow({ repository }: { repository: GitRepository }) {
       </div>
 
       {deploy.isError && (
-        <p className="mt-2 text-xs text-rose-700">
+        <p className="mt-2 text-xs text-danger-700">
           {deploy.error instanceof ApiError ? deploy.error.message : 'The deployment did not start.'}
         </p>
       )}
@@ -227,7 +228,7 @@ function RepositoryDetail({ repository }: { repository: GitRepository }) {
   const rollback = useRollback();
 
   return (
-    <div className="mt-4 space-y-4 rounded-md bg-slate-50 p-4">
+    <div className="mt-4 space-y-4 rounded-md bg-surface-muted p-4">
       {repository.deploy_key_public && (
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -301,19 +302,19 @@ function RepositoryDetail({ repository }: { repository: GitRepository }) {
                     {deployment.trigger}
                   </span>
                   <RequirePermission permission={Permission.DeployManage}>
-                    <button
-                      type="button"
-                      className="shrink-0 text-xs text-brand-700 hover:underline"
+                    <TextButton
+                      size="xs"
+                      className="shrink-0"
                       onClick={() =>
                         setOpenLog(openLog === deployment.id ? null : deployment.id)
                       }
                     >
                       Log
-                    </button>
+                    </TextButton>
                     {deployment.previous_commit && (
-                      <button
-                        type="button"
-                        className="shrink-0 text-xs text-brand-700 hover:underline"
+                      <TextButton
+                        size="xs"
+                        className="shrink-0"
                         onClick={() =>
                           rollback.mutate({
                             id: repository.id,
@@ -323,18 +324,18 @@ function RepositoryDetail({ repository }: { repository: GitRepository }) {
                         title="Deploy the commit this website was on before"
                       >
                         <RotateCcw aria-hidden="true" className="inline h-3 w-3" /> Roll back
-                      </button>
+                      </TextButton>
                     )}
                   </RequirePermission>
                 </div>
                 {deployment.rolled_back && (
-                  <p className="ml-6 text-xs text-amber-700">
+                  <p className="ml-6 text-xs text-warn-700">
                     Rolled back. The source is back on the previous commit; files the
                     build wrote are still there.
                   </p>
                 )}
                 {deployment.rollback_error && (
-                  <p className="ml-6 text-xs text-rose-700">
+                  <p className="ml-6 text-xs text-danger-700">
                     The rollback failed: {deployment.rollback_error}
                   </p>
                 )}
@@ -350,10 +351,10 @@ function RepositoryDetail({ repository }: { repository: GitRepository }) {
 
 function DeploymentIcon({ status }: { status: Deployment['status'] }) {
   if (status === 'success') {
-    return <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-emerald-600" />;
+    return <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ok-600" />;
   }
   if (status === 'failed' || status === 'cancelled') {
-    return <XCircle aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-rose-600" />;
+    return <XCircle aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-danger-600" />;
   }
   return <Play aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />;
 }

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TextField } from '@/components/ui/Field';
+import { LinkButton } from '@/components/ui/Link';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import {
@@ -65,15 +66,10 @@ export function ConsoleCard() {
         }
         action={
           served && data?.url ? (
-            <a
-              href={data.url}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center gap-1.5 rounded-md border border-surface-border bg-surface px-3 py-1.5 text-sm text-slate-700 shadow-card transition-colors hover:bg-surface-muted"
-            >
+            <LinkButton href={data.url}>
               Open
               <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-            </a>
+            </LinkButton>
           ) : undefined
         }
       />

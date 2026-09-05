@@ -1,5 +1,4 @@
 import { Fragment, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   ChevronDown,
   ChevronRight,
@@ -20,8 +19,11 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { IconButton } from '@/components/ui/IconButton';
+import { IconLink, TextLink } from '@/components/ui/Link';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { CreateAppForm } from '@/features/node/components/CreateAppForm';
@@ -237,26 +239,26 @@ function AppTable({ apps, expanded, onToggle, onDelete }: AppTableProps) {
                   ].join(' ')}
                 >
                   <td className="px-2 py-2 align-middle">
-                    <button
-                      type="button"
+                    <IconButton
+                      size="sm"
                       onClick={() => onToggle(app.id)}
                       aria-expanded={open}
-                      aria-label={`${open ? 'Collapse' : 'Expand'} ${app.name}`}
-                      className="rounded p-1 text-slate-400 transition-colors hover:bg-surface-border hover:text-slate-700"
-                    >
-                      {open ? (
-                        <ChevronDown aria-hidden="true" className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                      )}
-                    </button>
+                      label={`${open ? 'Collapse' : 'Expand'} ${app.name}`}
+                      icon={
+                        open ? (
+                          <ChevronDown aria-hidden="true" className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                        )
+                      }
+                    />
                   </td>
 
                   <td className="px-3 py-2">
                     <button
                       type="button"
                       onClick={() => onToggle(app.id)}
-                      className="truncate font-mono font-medium text-slate-800 hover:text-brand-700 hover:underline"
+                      className={`truncate rounded-sm font-mono font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
                     >
                       {app.name}
                     </button>
@@ -265,23 +267,20 @@ function AppTable({ apps, expanded, onToggle, onDelete }: AppTableProps) {
                   <td className="px-3 py-2">
                     {app.website_domain ? (
                       <span className="inline-flex items-center gap-1.5">
-                        <Link
+                        <TextLink
                           to={`/websites/${app.website_id}`}
-                          className="inline-flex items-center gap-1 text-brand-700 hover:underline"
+                          className="inline-flex items-center gap-1"
                         >
                           <Globe aria-hidden="true" className="h-3.5 w-3.5" />
                           {app.website_domain}
-                        </Link>
+                        </TextLink>
                         {running && (
-                          <a
+                          <IconLink
                             href={`http://${app.website_domain}`}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            aria-label={`Open ${app.website_domain} in a new tab`}
-                            className="text-slate-400 transition-colors hover:text-brand-700"
-                          >
-                            <ExternalLink aria-hidden="true" className="h-3 w-3" />
-                          </a>
+                            size="sm"
+                            label={`Open ${app.website_domain} in a new tab`}
+                            icon={<ExternalLink aria-hidden="true" className="h-3 w-3" />}
+                          />
                         )}
                       </span>
                     ) : (
@@ -336,15 +335,12 @@ function AppTable({ apps, expanded, onToggle, onDelete }: AppTableProps) {
                             Start
                           </Button>
                         )}
-                        <button
-                          type="button"
+                        <IconButton
+                          tone="danger"
                           onClick={() => onDelete(app)}
-                          aria-label={`Remove ${app.name}`}
-                          title="Remove"
-                          className="rounded p-1.5 text-slate-400 transition-colors hover:bg-danger-50 hover:text-danger-600"
-                        >
-                          <Trash2 aria-hidden="true" className="h-4 w-4" />
-                        </button>
+                          label={`Remove ${app.name}`}
+                          icon={<Trash2 aria-hidden="true" className="h-4 w-4" />}
+                        />
                       </div>
                     </RequirePermission>
                   </td>

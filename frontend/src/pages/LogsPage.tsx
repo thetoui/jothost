@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { SelectField, TextField, Toggle } from '@/components/ui/Field';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { logsApi } from '@/features/logs/api';
@@ -170,8 +171,8 @@ function SourceButton({
       type="button"
       onClick={onSelect}
       aria-current={selected ? 'true' : undefined}
-      className={`flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm transition-colors ${
-        selected ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-50'
+      className={`flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm transition-colors ${focusRingTight} ${
+        selected ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-surface-muted'
       }`}
     >
       <span className="min-w-0">
@@ -359,9 +360,9 @@ function LogViewer({
 function toneFor(level: string): string {
   switch (level) {
     case 'error':
-      return 'text-rose-300';
+      return 'text-danger-300';
     case 'warn':
-      return 'text-amber-300';
+      return 'text-warn-300';
     case 'debug':
       return 'text-slate-400';
     default:

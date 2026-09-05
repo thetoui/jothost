@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
-import { Loader2, ShieldCheck, ShieldOff } from 'lucide-react';
+import { ShieldCheck, ShieldOff } from 'lucide-react';
 
 import { StatusPill } from '@/components/StatusPill';
+import { Button } from '@/components/ui/Button';
 import {
   errorMessage,
   useDisableTwoFactor,
@@ -68,20 +69,18 @@ function EnableTwoFactor() {
           An authenticator app generates a 6-digit code that changes every 30 seconds.
         </p>
         {setup.isError && (
-          <p role="alert" className="text-sm text-rose-700">
+          <p role="alert" className="text-sm text-danger-700">
             {errorMessage(setup.error, 'Could not start setup.')}
           </p>
         )}
-        <button
-          type="button"
+        <Button
+          variant="primary"
           onClick={() => setup.mutate()}
-          disabled={setup.isPending}
-          className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+          loading={setup.isPending}
+          icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />}
         >
-          {setup.isPending && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
-          <ShieldCheck aria-hidden="true" className="h-4 w-4" />
           Set up two-factor authentication
-        </button>
+        </Button>
       </div>
     );
   }
@@ -119,19 +118,19 @@ function EnableTwoFactor() {
       </div>
 
       {enable.isError && (
-        <p role="alert" className="text-sm text-rose-700">
+        <p role="alert" className="text-sm text-danger-700">
           {errorMessage(enable.error, 'Verification failed.')}
         </p>
       )}
 
-      <button
+      <Button
         type="submit"
-        disabled={enable.isPending || code.length !== 6}
-        className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+        variant="primary"
+        loading={enable.isPending}
+        disabled={code.length !== 6}
       >
-        {enable.isPending && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
         Enable
-      </button>
+      </Button>
     </form>
   );
 }
@@ -168,20 +167,20 @@ function DisableTwoFactor() {
       </div>
 
       {disable.isError && (
-        <p role="alert" className="text-sm text-rose-700">
+        <p role="alert" className="text-sm text-danger-700">
           {errorMessage(disable.error, 'Could not disable two-factor authentication.')}
         </p>
       )}
 
-      <button
+      <Button
         type="submit"
-        disabled={disable.isPending || password === ''}
-        className="inline-flex items-center gap-2 rounded-md border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+        variant="danger"
+        loading={disable.isPending}
+        disabled={password === ''}
+        icon={<ShieldOff aria-hidden="true" className="h-4 w-4" />}
       >
-        {disable.isPending && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
-        <ShieldOff aria-hidden="true" className="h-4 w-4" />
         Disable
-      </button>
+      </Button>
     </form>
   );
 }

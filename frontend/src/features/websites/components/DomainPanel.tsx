@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Activity,
   Clock,
@@ -20,6 +19,8 @@ import {
   Terminal,
 } from 'lucide-react';
 
+import { LinkButton, TextLink } from '@/components/ui/Link';
+import { Tabs } from '@/components/ui/Tabs';
 import { ToolGroup, ToolTile } from '@/components/ui/ToolTile';
 import type { Website } from '@/types/api';
 
@@ -48,14 +49,15 @@ export function DomainPanel({ site }: DomainPanelProps) {
         <DomainSummary site={site} />
 
         <div className="min-w-0 space-y-4">
-          <div role="tablist" aria-label={`${site.primary_domain} sections`} className="flex gap-4 border-b border-surface-border">
-            <PanelTabButton active={tab === 'dashboard'} onClick={() => setTab('dashboard')}>
-              Dashboard
-            </PanelTabButton>
-            <PanelTabButton active={tab === 'hosting'} onClick={() => setTab('hosting')}>
-              Hosting &amp; DNS
-            </PanelTabButton>
-          </div>
+          <Tabs
+            label={`${site.primary_domain} sections`}
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: 'dashboard', label: 'Dashboard' },
+              { value: 'hosting', label: 'Hosting & DNS' },
+            ]}
+          />
 
           {tab === 'dashboard' ? (
             <div className="space-y-4">
@@ -170,9 +172,9 @@ export function DomainPanel({ site }: DomainPanelProps) {
         <div className="flex gap-1.5">
           <dt>Website at</dt>
           <dd>
-            <Link to={files} className="font-mono text-slate-700 hover:text-brand-700 hover:underline">
+            <TextLink to={files} tone="neutral" className="font-mono">
               {site.document_root}
-            </Link>
+            </TextLink>
           </dd>
         </div>
         <div className="flex gap-1.5">
@@ -196,48 +198,16 @@ export function logsDirFor(documentRoot: string): string {
   return parent ? `${parent}/logs` : documentRoot;
 }
 
-function PanelTabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={[
-        '-mb-px border-b-2 px-0.5 pb-2 text-sm transition-colors',
-        active
-          ? 'border-brand-600 font-medium text-slate-900'
-          : 'border-transparent text-slate-500 hover:text-slate-800',
-      ].join(' ')}
-    >
-      {children}
-    </button>
-  );
-}
-
 function DomainSummary({ site }: { site: Website }) {
   return (
     <div className="space-y-3">
       <div className="rounded-card border border-surface-border bg-surface p-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold text-slate-900">At a glance</h4>
-          <a
-            href={`http://${site.primary_domain}`}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex items-center gap-1 text-xs text-brand-700 hover:underline"
-          >
+          <TextLink href={`http://${site.primary_domain}`} size="xs" className="inline-flex items-center gap-1">
             Open in web
             <ExternalLink aria-hidden="true" className="h-3 w-3" />
-          </a>
+          </TextLink>
         </div>
 
         <dl className="mt-2 space-y-1.5 text-sm">
@@ -251,13 +221,10 @@ function DomainSummary({ site }: { site: Website }) {
         </dl>
       </div>
 
-      <Link
-        to={`/websites/${site.id}`}
-        className="flex items-center justify-center gap-1.5 rounded-md border border-surface-border bg-surface px-3 py-1.5 text-sm text-slate-700 shadow-card transition-colors hover:bg-surface-muted"
-      >
+      <LinkButton to={`/websites/${site.id}`} className="w-full">
         <Settings2 aria-hidden="true" className="h-4 w-4" />
         Manage this site
-      </Link>
+      </LinkButton>
     </div>
   );
 }

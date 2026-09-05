@@ -299,7 +299,7 @@ function PackageTable({
               {securityKnown && (
                 <td className="py-1.5">
                   {pkg.security && (
-                    <span className="inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-700">
+                    <span className="inline-flex items-center gap-1 rounded bg-danger-50 px-1.5 py-0.5 text-xs text-danger-700">
                       <ShieldAlert aria-hidden="true" className="h-3 w-3" />
                       Security
                     </span>
@@ -554,15 +554,15 @@ function RecentRuns({ overview }: { overview: UpdateOverview }) {
         ) : (
           <ul className="space-y-3">
             {runs.map((run) => (
-              <li key={run.id} className="rounded border border-slate-200 p-3">
+              <li key={run.id} className="rounded border border-surface-border p-3">
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <span
                     className={
                       run.status === 'failed'
-                        ? 'font-medium text-rose-700'
+                        ? 'font-medium text-danger-700'
                         : run.status === 'running'
-                          ? 'font-medium text-amber-700'
-                          : 'font-medium text-emerald-700'
+                          ? 'font-medium text-warn-700'
+                          : 'font-medium text-ok-700'
                     }
                   >
                     {run.status === 'failed'
@@ -576,14 +576,14 @@ function RecentRuns({ overview }: { overview: UpdateOverview }) {
                     {run.trigger}
                   </span>
                   {run.reboot_required && (
-                    <span className="inline-flex items-center gap-1 text-xs text-amber-700">
+                    <span className="inline-flex items-center gap-1 text-xs text-warn-700">
                       <AlertTriangle aria-hidden="true" className="h-3 w-3" />
                       restart needed
                     </span>
                   )}
                 </div>
 
-                {run.error && <p className="mt-1 text-sm text-rose-700">{run.error}</p>}
+                {run.error && <p className="mt-1 text-sm text-danger-700">{run.error}</p>}
 
                 {run.changes.length > 0 ? (
                   <ul className="mt-2 space-y-0.5 font-mono text-xs text-slate-600">

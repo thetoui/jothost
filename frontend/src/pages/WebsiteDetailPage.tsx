@@ -19,6 +19,7 @@ import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, ProgressBar, Skeleton, SkeletonRows } from '@/components/ui/Loading';
 import { TextField } from '@/components/ui/Field';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { WebsitePHPPanel } from '@/features/php/components/WebsitePHPPanel';
@@ -253,7 +254,7 @@ function BackLink() {
   return (
     <Link
       to="/websites"
-      className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900"
+      className={`inline-flex items-center gap-1.5 rounded-sm text-sm font-medium text-slate-500 hover:text-slate-900 ${focusRingTight}`}
     >
       <ArrowLeft aria-hidden="true" className="h-4 w-4" />
       All websites

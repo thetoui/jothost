@@ -9,9 +9,9 @@ interface UsageBarProps {
 }
 
 const toneClasses = {
-  ok: 'bg-emerald-500',
-  warn: 'bg-amber-500',
-  error: 'bg-rose-500',
+  ok: 'bg-ok-500',
+  warn: 'bg-warn-500',
+  error: 'bg-danger-500',
 } as const;
 
 /**

@@ -20,6 +20,7 @@ import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { EmptyState, ProgressBar, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
+import { Tabs } from '@/components/ui/Tabs';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { errorMessage } from '@/features/auth/hooks';
@@ -90,31 +91,16 @@ export function TenancyPage() {
         </Alert>
       )}
 
-      <div role="tablist" aria-label="Tenancy sections" className="flex gap-1">
-        {(
-          [
-            ['subscriptions', 'Subscriptions', subscriptions.length],
-            ['plans', 'Plans', plans.length],
-            ['accounts', 'Accounts', accounts.length],
-          ] as const
-        ).map(([value, label, count]) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            aria-selected={tab === value}
-            onClick={() => setTab(value)}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-              tab === value
-                ? 'bg-brand-50 text-brand-700'
-                : 'text-slate-600 hover:bg-surface-sunken'
-            }`}
-          >
-            {label}
-            <span className="ml-1.5 text-xs text-slate-400">{count}</span>
-          </button>
-        ))}
-      </div>
+      <Tabs
+        label="Tenancy sections"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { value: 'subscriptions', label: 'Subscriptions', count: subscriptions.length },
+          { value: 'plans', label: 'Plans', count: plans.length },
+          { value: 'accounts', label: 'Accounts', count: accounts.length },
+        ]}
+      />
 
       {isPending && <SkeletonRows rows={4} />}
 

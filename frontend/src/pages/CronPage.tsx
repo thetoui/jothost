@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Clock, FileCode2, Globe, Play, Plus, ScrollText, Terminal, Trash2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 import { StatusPill } from '@/components/StatusPill';
 import { Alert } from '@/components/ui/Alert';
@@ -8,8 +7,10 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SelectField, TextField, Toggle } from '@/components/ui/Field';
+import { LinkButton } from '@/components/ui/Link';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
+import { TextButton } from '@/components/ui/TextButton';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import {
@@ -288,13 +289,10 @@ function JobRow({
             >
               {run.isPending ? 'Running…' : 'Run now'}
             </Button>
-            <Link
-              to={`/logs?source=cron.${job.id}`}
-              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-surface-border px-3 text-sm text-slate-700 hover:bg-slate-50"
-            >
+            <LinkButton to={`/logs?source=cron.${job.id}`}>
               <ScrollText aria-hidden="true" className="h-4 w-4" />
               Log
-            </Link>
+            </LinkButton>
             <Button variant="secondary" onClick={onEdit}>
               Edit
             </Button>
@@ -462,16 +460,15 @@ function JobDialog({
             value={schedule}
             onChange={(event) => setSchedule(event.target.value)}
             suffix={
-              <button
-                type="button"
-                className="text-xs text-brand-600 hover:underline"
+              <TextButton
+                size="xs"
                 onClick={() => {
                   setCustom(false);
                   setSchedule(presets[4]?.value ?? '0 0 * * *');
                 }}
               >
                 Choose from the list
-              </button>
+              </TextButton>
             }
           />
         ) : (
@@ -481,13 +478,9 @@ function JobDialog({
             value={schedule}
             onChange={(event) => setSchedule(event.target.value)}
             hint={
-              <button
-                type="button"
-                className="text-xs text-brand-600 hover:underline"
-                onClick={() => setCustom(true)}
-              >
+              <TextButton size="xs" onClick={() => setCustom(true)}>
                 Write a cron expression instead
-              </button>
+              </TextButton>
             }
           >
             {presets.map((preset) => (

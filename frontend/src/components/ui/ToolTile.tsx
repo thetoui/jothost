@@ -1,11 +1,24 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { focusRingTight } from '@/components/ui/focus';
+
+/**
+ * Tile tones are decorative and categorical: a hue that tells one *kind* of
+ * tool from another at a glance. They are deliberately the one place in the
+ * panel still named by hue, because nothing here means good or bad — "green"
+ * on a databases tile is not a claim that the databases are healthy. Status
+ * colour is named by meaning instead: see the ok / warn / danger tokens.
+ *
+ * The scale was half-migrated before, mixing `bg-ok-100` into a set of hue
+ * names, which read as though the green tile meant something the others did
+ * not.
+ */
 export type ToolTone = 'blue' | 'green' | 'violet' | 'amber' | 'slate' | 'rose';
 
 const toneClasses: Record<ToolTone, string> = {
   blue: 'bg-sky-100 text-sky-700',
-  green: 'bg-ok-100 text-ok-700',
+  green: 'bg-emerald-100 text-emerald-700',
   violet: 'bg-violet-100 text-violet-700',
   amber: 'bg-amber-100 text-amber-700',
   slate: 'bg-slate-100 text-slate-600',
@@ -81,7 +94,7 @@ export function ToolTile({
   );
 
   const shell =
-    'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors';
+    `flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors ${focusRingTight}`;
 
   if (unavailable) {
     return (

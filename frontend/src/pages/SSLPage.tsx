@@ -6,6 +6,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { EmptyState, ProgressBar, SkeletonRows } from '@/components/ui/Loading';
+import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { useCertificates, useRenewCertificate } from '@/features/ssl/hooks';
@@ -106,7 +107,7 @@ function CertificateRow({ certificate }: { certificate: SSLCertificate }) {
           <div className="min-w-0">
             <Link
               to={`/websites/${certificate.website_id}`}
-              className="truncate text-sm font-semibold text-slate-900 hover:text-brand-700"
+              className={`truncate rounded-sm text-sm font-semibold text-slate-900 hover:text-brand-700 ${focusRingTight}`}
             >
               {certificate.primary_domain}
             </Link>

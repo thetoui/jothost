@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, FileCode, Pencil, Shield, Trash2 } from 'lucide-react';
 
+import { MenuItem } from '@/components/ui/Menu';
 import type { FileEntry } from '@/types/api';
 
 export type FileAction = 'editor' | 'download' | 'rename' | 'permissions' | 'delete';
@@ -152,34 +153,24 @@ export function FileActionMenu({
         left: position?.left ?? -9999,
         width: WIDTH,
       }}
-      className="z-50 overflow-hidden rounded-md border border-surface-border bg-surface py-1 shadow-menu"
+      className="z-50 overflow-hidden rounded-md border border-surface-border bg-surface p-1 shadow-menu"
     >
       {items.map((item) => {
         const Icon = item.icon;
         const disabled = item.disabledReason !== undefined;
 
         return (
-          <button
+          <MenuItem
             key={item.action}
-            type="button"
-            role="menuitem"
+            tone={item.destructive ? 'danger' : 'neutral'}
+            separated={item.destructive ?? false}
             disabled={disabled}
-            title={item.disabledReason}
+            {...(item.disabledReason !== undefined ? { title: item.disabledReason } : {})}
             onClick={() => onSelect(item.action, entry)}
-            className={[
-              'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors',
-              item.destructive ? 'text-danger-700' : 'text-slate-700',
-              disabled
-                ? 'cursor-not-allowed opacity-45'
-                : item.destructive
-                  ? 'hover:bg-danger-50'
-                  : 'hover:bg-surface-sunken',
-              item.destructive ? 'mt-1 border-t border-surface-border pt-2' : '',
-            ].join(' ')}
+            icon={<Icon className="h-4 w-4" />}
           >
-            <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
             {item.label}
-          </button>
+          </MenuItem>
         );
       })}
     </div>

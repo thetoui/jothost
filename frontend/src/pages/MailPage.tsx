@@ -19,6 +19,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SelectField, TextField, Toggle } from '@/components/ui/Field';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
+import { TextButton } from '@/components/ui/TextButton';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import {
@@ -177,7 +178,7 @@ function Health({ overview }: { overview: MailOverview }) {
           )}
 
           {(status.warnings ?? []).map((warning) => (
-            <p key={warning} className="flex gap-2 text-xs text-amber-700">
+            <p key={warning} className="flex gap-2 text-xs text-warn-700">
               <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>{warning}</span>
             </p>
@@ -197,9 +198,9 @@ function Daemon({
 }) {
   const state = !daemon.installed ? 'not installed' : daemon.running ? 'running' : 'stopped';
   const colour = daemon.running
-    ? 'text-emerald-700'
+    ? 'text-ok-700'
     : daemon.installed
-      ? 'text-rose-700'
+      ? 'text-danger-700'
       : 'text-slate-400';
   return (
     <div>
@@ -227,9 +228,9 @@ function Ports({ status }: { status: MailStatus }) {
           key={port.port}
           className={`rounded px-2 py-1 text-xs ${
             port.listening
-              ? 'bg-emerald-50 text-emerald-800'
+              ? 'bg-ok-50 text-ok-800'
               : port.configured
-                ? 'bg-rose-50 text-rose-800'
+                ? 'bg-danger-50 text-danger-800'
                 : 'bg-slate-100 text-slate-500'
           }`}
           title={
@@ -453,7 +454,7 @@ function Domains({ overview }: { overview: MailOverview }) {
 function Publication({ domain }: { domain: MailDomain }) {
   if (!domain.dns_managed) {
     return (
-      <p className="mt-1.5 text-xs text-amber-700">
+      <p className="mt-1.5 text-xs text-warn-700">
         This host does not serve DNS for {domain.domain}, so the panel cannot check its
         mail records. They have to be added wherever its DNS is.
       </p>
@@ -469,7 +470,7 @@ function Publication({ domain }: { domain: MailDomain }) {
         <Badge label="DMARC" ok={domain.dmarc_published} skipped={domain.dmarc_policy === 'off'} />
       </div>
       {(domain.problems ?? []).map((problem) => (
-        <p key={problem} className="text-xs text-amber-700">
+        <p key={problem} className="text-xs text-warn-700">
           {problem}
         </p>
       ))}
@@ -481,8 +482,8 @@ function Badge({ label, ok, skipped }: { label: string; ok: boolean; skipped?: b
   const tone = skipped
     ? 'bg-slate-100 text-slate-500'
     : ok
-      ? 'bg-emerald-50 text-emerald-800'
-      : 'bg-amber-50 text-amber-800';
+      ? 'bg-ok-50 text-ok-800'
+      : 'bg-warn-50 text-warn-800';
   const suffix = skipped ? 'off' : ok ? 'published' : 'not published';
   return <span className={`rounded px-1.5 py-0.5 text-xs ${tone}`}>{`${label} ${suffix}`}</span>;
 }
@@ -500,7 +501,7 @@ function DomainDetail({ domain }: { domain: MailDomain }) {
   const removeAlias = useDeleteAlias();
 
   return (
-    <div className="mt-4 space-y-4 rounded-md bg-slate-50 p-4">
+    <div className="mt-4 space-y-4 rounded-md bg-surface-muted p-4">
       <div>
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -526,20 +527,17 @@ function DomainDetail({ domain }: { domain: MailDomain }) {
                 <span className="shrink-0 text-xs text-slate-500">{describeUsage(box)}</span>
                 {!box.active && <span className="shrink-0 text-xs text-slate-500">suspended</span>}
                 <RequirePermission permission={Permission.MailManage}>
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs text-brand-700 hover:underline"
-                    onClick={() => setResetting(box)}
-                  >
+                  <TextButton size="xs" className="shrink-0" onClick={() => setResetting(box)}>
                     Set password
-                  </button>
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs text-rose-700 hover:underline"
+                  </TextButton>
+                  <TextButton
+                    size="xs"
+                    tone="danger"
+                    className="shrink-0"
                     onClick={() => setRemovingBox(box)}
                   >
                     Remove
-                  </button>
+                  </TextButton>
                 </RequirePermission>
               </li>
             ))}
@@ -570,13 +568,14 @@ function DomainDetail({ domain }: { domain: MailDomain }) {
                   {alias.source}@{domain.domain} → {alias.destination}
                 </span>
                 <RequirePermission permission={Permission.MailManage}>
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs text-rose-700 hover:underline"
+                  <TextButton
+                    size="xs"
+                    tone="danger"
+                    className="shrink-0"
                     onClick={() => removeAlias.mutate(alias.id)}
                   >
                     Remove
-                  </button>
+                  </TextButton>
                 </RequirePermission>
               </li>
             ))}

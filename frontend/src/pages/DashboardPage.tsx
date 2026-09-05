@@ -6,6 +6,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { Skeleton, SkeletonText } from '@/components/ui/Loading';
+import { focusRingTight } from '@/components/ui/focus';
 import { StatTile } from '@/features/dashboard/components/StatTile';
 import { AlertList } from '@/features/dashboard/components/AlertList';
 import { MetricChart, type ChartSeries } from '@/features/dashboard/components/MetricChart';
@@ -273,7 +274,7 @@ export function DashboardPage() {
                 type="button"
                 onClick={() => setRange(option)}
                 aria-pressed={range === option}
-                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${focusRingTight} ${
                   range === option
                     ? 'bg-brand-50 text-brand-700'
                     : 'text-slate-500 hover:bg-surface-muted hover:text-slate-800'

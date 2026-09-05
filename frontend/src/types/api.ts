@@ -2421,3 +2421,191 @@ export interface GitRepositoryInput {
   /** Set once and never returned. Empty on an update leaves the existing one. */
   webhook_secret?: string;
 }
+
+// ------------------------------------------------------------------ tenancy
+
+/** Where an account sits in the hierarchy. */
+export type AccountTier = 'admin' | 'reseller' | 'customer';
+
+/** What happens when a limit is reached. */
+export type Enforcement = 'hard' | 'soft';
+
+/** Whether a plan is a plan or an add-on. */
+export type PlanKind = 'plan' | 'addon';
+
+/**
+ * Whether the host is enforcing a subscription's resource limits.
+ *
+ * "declared" is the state worth reading carefully: the limits are recorded and
+ * this host is not applying them. It is not a failure and it is not success.
+ */
+export type IsolationState = 'none' | 'applied' | 'declared' | 'failed';
+
+/**
+ * One set of quota limits.
+ *
+ * `null` means unlimited and `0` means none at all. They are opposite promises
+ * and the UI must never render one as the other.
+ */
+export interface QuotaLimits {
+  disk_mb: number | null;
+  bandwidth_mb: number | null;
+  max_websites: number | null;
+  max_databases: number | null;
+  max_mailboxes: number | null;
+  max_ftp_users: number | null;
+  max_cron_jobs: number | null;
+  max_subdomains: number | null;
+}
+
+/** The resource caps a plan carries. */
+export interface PlanIsolation {
+  cpu_percent: number | null;
+  memory_mb: number | null;
+  io_weight: number | null;
+}
+
+/** A panel account seen through the hierarchy. */
+export interface TenantAccount {
+  id: string;
+  username: string;
+  email: string | null;
+  tier: AccountTier;
+  parent_id: string | null;
+  parent_username: string | null;
+  full_name: string | null;
+  company: string | null;
+  status: string;
+  roles: string[] | null;
+  created_at: string;
+  last_login_at: string | null;
+  subscriptions: number;
+}
+
+/** A service plan or an add-on. */
+export interface ServicePlan {
+  id: string;
+  owner_user_id: string | null;
+  owner_username: string | null;
+  name: string;
+  description: string;
+  kind: PlanKind;
+  limits: QuotaLimits;
+  enforcement: Enforcement;
+  isolation: PlanIsolation;
+  subscriptions: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** An add-on attached to a subscription. */
+export interface SubscriptionAddon {
+  plan_id: string;
+  name: string;
+  quantity: number;
+  limits: QuotaLimits;
+}
+
+/**
+ * What a subscription is using.
+ *
+ * The counted figures are plain numbers because the panel wrote every row. The
+ * measured ones are nullable because the answer may be "not measured", which
+ * is not zero.
+ */
+export interface SubscriptionUsage {
+  websites: number;
+  databases: number;
+  mailboxes: number;
+  ftp_users: number;
+  cron_jobs: number;
+  subdomains: number;
+  disk_bytes: number | null;
+  bandwidth_bytes: number | null;
+  period_start: string | null;
+  measured_at: string | null;
+  measure_error: string;
+}
+
+/** A website a subscription owns. */
+export interface SubscriptionWebsite {
+  id: string;
+  primary_domain: string;
+  status: string;
+  document_root: string;
+}
+
+/** One customer's instance of a plan. */
+export interface Subscription {
+  id: string;
+  owner_user_id: string;
+  owner_username: string;
+  plan_id: string;
+  plan_name: string;
+  name: string;
+  status: 'active' | 'suspended';
+  suspended_reason: string;
+  suspended_at: string | null;
+  slice_name: string;
+  isolation_state: IsolationState;
+  isolation_detail: string;
+  isolation_applied_at: string | null;
+  enforcement: Enforcement;
+  limits: QuotaLimits;
+  isolation: PlanIsolation;
+  addons: SubscriptionAddon[];
+  usage: SubscriptionUsage;
+  websites: SubscriptionWebsite[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** One record of somebody using the panel as somebody else. */
+export interface ImpersonationRecord {
+  id: string;
+  actor_user_id: string;
+  actor_username: string;
+  subject_user_id: string;
+  subject_username: string;
+  reason: string;
+  started_at: string;
+  ended_at: string | null;
+}
+
+/** What the host can do about resource limits. */
+export interface TenancyHostStatus {
+  isolation_available: boolean;
+  isolation_detail: string;
+  /** Whether anything actually runs inside a subscription's slice. */
+  placement: boolean;
+}
+
+/** The tenancy page's opening payload. */
+export interface TenancyOverview {
+  accounts: TenantAccount[];
+  plans: ServicePlan[];
+  subscriptions: Subscription[];
+  host: TenancyHostStatus;
+  actor: { tier: AccountTier; user_id: string; impersonated: boolean };
+}
+
+/** A plan to create or replace. */
+export interface ServicePlanInput {
+  name: string;
+  description?: string;
+  kind?: PlanKind;
+  enforcement?: Enforcement;
+  limits: Partial<QuotaLimits>;
+  isolation: Partial<PlanIsolation>;
+}
+
+/** An account to create. */
+export interface TenantAccountInput {
+  username: string;
+  password: string;
+  tier: AccountTier;
+  email?: string;
+  full_name?: string;
+  company?: string;
+  parent_id?: string;
+}

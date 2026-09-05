@@ -1973,6 +1973,213 @@ push with automatic deployment off answers the same way.
 
 ---
 
+# 34. Multi-Tenancy
+
+Accounts, the plans sold to them, the subscriptions those become, and signing in
+as somebody else.
+
+Reading needs `tenant.view`. Changing needs `tenant.manage`. Impersonation is
+behind `tenant.impersonate`, which is separate from both because signing in as a
+customer is a different act from provisioning one.
+
+Everything outside the caller's part of the hierarchy answers **404**, including
+things that plainly exist: a reseller walking ids must not be able to tell "no
+such subscription" from "somebody else's subscription".
+
+## 34.1 Overview
+
+```text
+GET /api/v1/tenancy/overview
+```
+
+Returns `accounts`, `plans`, `subscriptions`, `host` and `actor` in one call.
+
+`host` says what this machine can enforce, and reports two facts rather than
+one:
+
+```text
+isolation_available   whether systemd is here to apply a resource limit
+isolation_detail      why not, in words, when it is not
+placement             whether anything actually runs inside a slice
+```
+
+`placement` is false on every host today. A slice with no processes in it is a
+limit on nothing, and the panel must not let availability imply otherwise.
+
+## 34.2 Accounts
+
+```text
+GET    /api/v1/tenancy/accounts
+POST   /api/v1/tenancy/accounts
+PATCH  /api/v1/tenancy/accounts/:id
+DELETE /api/v1/tenancy/accounts/:id
+```
+
+Create takes `username`, `password`, `tier`, and optionally `email`,
+`full_name`, `company` and `parent_id`.
+
+`tier` is `admin`, `reseller` or `customer`, and an account is created
+**strictly below** its parent — never at the same level. A reseller creating a
+reseller is 403. That rule is also what makes the hierarchy acyclic: every edge
+runs from a higher tier to a lower one.
+
+Deleting is refused while anything depends on the account: 409 for a reseller
+with customers under it, 403 for an account that still owns a subscription.
+
+## 34.3 Plans and add-ons
+
+```text
+GET    /api/v1/tenancy/plans
+POST   /api/v1/tenancy/plans
+GET    /api/v1/tenancy/plans/:id
+PUT    /api/v1/tenancy/plans/:id
+DELETE /api/v1/tenancy/plans/:id
+```
+
+A plan carries `limits`, `enforcement` and `isolation`:
+
+```text
+limits.disk_mb, bandwidth_mb, max_websites, max_databases,
+       max_mailboxes, max_ftp_users, max_cron_jobs, max_subdomains
+enforcement           hard | soft
+isolation.cpu_percent, memory_mb, io_weight
+```
+
+**Every limit is nullable, and `null` is not `0`.** `null` means unlimited; `0`
+means none at all. They are opposite promises and the API keeps them apart in
+both directions. On an add-on (`kind: "addon"`) a number is an *increment*, and
+`null` means it adds nothing to that dimension — there is nothing for an
+increment of infinity to mean.
+
+`PUT` replaces the limits rather than patching them, because a patch could not
+distinguish "unset the mailbox limit" from "leave it alone".
+
+A reseller may *sell* the administrator's published plans and may not *edit*
+them; editing one answers 403 with that sentence. Deleting a plan a
+subscription is on is 409.
+
+## 34.4 Subscriptions
+
+```text
+GET    /api/v1/tenancy/subscriptions
+POST   /api/v1/tenancy/subscriptions
+GET    /api/v1/tenancy/subscriptions/:id
+PATCH  /api/v1/tenancy/subscriptions/:id
+DELETE /api/v1/tenancy/subscriptions/:id
+POST   /api/v1/tenancy/subscriptions/:id/status
+POST   /api/v1/tenancy/subscriptions/:id/addons
+DELETE /api/v1/tenancy/subscriptions/:id/addons/:planId
+POST   /api/v1/tenancy/subscriptions/:id/websites
+DELETE /api/v1/tenancy/subscriptions/:id/websites/:websiteId
+POST   /api/v1/tenancy/subscriptions/:id/measure
+POST   /api/v1/tenancy/subscriptions/:id/isolation
+GET    /api/v1/tenancy/subscriptions/:id/quota/:dimension
+```
+
+A subscription returns its plan's limits **with add-ons already folded in**,
+what it is using, and what the host did with its resource caps:
+
+```text
+isolation_state   none | applied | declared | failed
+```
+
+`declared` means the limits are written and this host is not applying them.
+That is neither success nor failure and it has a value of its own, so a page
+cannot show a tick for a cap nobody enforces.
+
+`/status` takes `{"status": "suspended", "reason": "..."}`. A suspended
+subscription cannot grow — every quota-guarded creation is refused by name — and
+**it does not take the customer's websites offline**.
+
+`/quota/:dimension` answers whether one more would be allowed, for greying out a
+button. Asking about `disk` or `bandwidth` is a 400: those are measured on the
+host after the fact, so there is no answer to give before it.
+
+## 34.5 Quota enforcement
+
+Six routes are guarded, and the guard sits around the whole router rather than
+inside each feature:
+
+```text
+POST /api/v1/websites                       websites
+POST /api/v1/websites/:id/subdomains        subdomains
+POST /api/v1/databases                      databases
+POST /api/v1/mail/domains/:id/mailboxes     mailboxes
+POST /api/v1/ftp/users                      ftp_users
+POST /api/v1/cron                           cron_jobs
+```
+
+**The subscription charged is the one that owns the resource, not the one that
+belongs to the caller.** A reseller creating a database inside a customer's
+website spends the customer's plan; so does an administrator. A guard that
+looked at who was asking would let every limit be walked around by having
+somebody senior press the button.
+
+`POST /api/v1/websites` is the exception, because a website that does not exist
+yet cannot say who owns it. It accepts an optional `subscription_id`, which is
+both where the new site lands and whose plan is charged for it.
+
+A hard limit reached answers **409** — the caller has the right to do this and
+it is the state of the account that prevents it, which is what a conflict is.
+A soft limit lets the request through and sets a header:
+
+```text
+X-JotHost-Quota-Warning: this subscription is over its websites limit (2 of 2)
+                         and its plan allows it
+```
+
+Every refusal is written to the audit log with the dimension, the count and the
+limit.
+
+## 34.6 Measured usage
+
+`usage` carries the counted dimensions as plain numbers and the measured ones as
+nullable:
+
+```text
+websites, databases, mailboxes, ftp_users, cron_jobs, subdomains   integers
+disk_bytes, bandwidth_bytes                       null = not measured
+measured_at, period_start                         null = never measured
+measure_error                                     why, when it failed
+```
+
+**`null` is not zero.** A subscription whose disk could not be read is not one
+using no disk, and a client rendering `0` would tell a customer they are inside
+a quota nobody checked.
+
+Bandwidth is a total for the calendar month named by `period_start`, accumulated
+across log rotations. Disk is a level, not a history.
+
+## 34.7 Impersonation
+
+```text
+POST   /api/v1/tenancy/impersonation
+GET    /api/v1/tenancy/impersonation
+DELETE /api/v1/tenancy/impersonation
+GET    /api/v1/tenancy/impersonation/history
+```
+
+`POST` takes `{"user_id": "...", "reason": "..."}` and returns a token pair for
+that account. The subject must be strictly below the caller.
+
+The session it issues is an ordinary one with two differences, both refusals: it
+does not carry `tenant.view`, `tenant.manage`, `tenant.impersonate` or
+`user.manage`, and it lasts at most an hour. So an impersonated session cannot
+impersonate — a second hop's record would name the first hop's subject as the
+actor — and cannot change the account's password.
+
+`DELETE` needs no permission, deliberately: a session stripped of
+`tenant.impersonate` still has to be able to stop being one. It takes the
+session from the caller's own claims rather than from a body, because a body
+would make it an endpoint for logging somebody else out. It revokes the session
+*and* drops its access tokens, so stopping stops it now rather than at the end
+of a token's life.
+
+`GET` says whose account this session is using and who opened it, so a banner
+can name both.
+
+---
+
 # 30. Mail
 
 ```http

@@ -29,6 +29,9 @@ export const Permission = {
   UpdateManage: 'update.manage',
   MonitorManage: 'monitor.manage',
   AuditView: 'audit.view',
+  TenantView: 'tenant.view',
+  TenantManage: 'tenant.manage',
+  TenantImpersonate: 'tenant.impersonate',
   UserManage: 'user.manage',
 } as const;
 

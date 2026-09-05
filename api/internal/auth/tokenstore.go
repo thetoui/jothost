@@ -42,7 +42,18 @@ type AccessClaims struct {
 	Permissions []string  `json:"permissions"`
 	Roles       []string  `json:"roles"`
 	IssuedAt    time.Time `json:"issued_at"`
+
+	// ImpersonatorUserID is set when this session was opened by somebody
+	// signing in as this user. It is carried on the token rather than looked
+	// up per request so that every audit row the session writes can name who
+	// was actually at the keyboard — the user id says whose account acted, and
+	// this says who made it act.
+	ImpersonatorUserID string `json:"impersonator_user_id,omitempty"`
 }
+
+// Impersonated reports whether these claims belong to a session somebody
+// opened as somebody else.
+func (c AccessClaims) Impersonated() bool { return c.ImpersonatorUserID != "" }
 
 // TokenStore issues and validates opaque access tokens.
 type TokenStore struct {

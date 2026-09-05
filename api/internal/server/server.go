@@ -45,11 +45,13 @@ import (
 	"github.com/jothost/panel/api/internal/sessions"
 	sshpkg "github.com/jothost/panel/api/internal/ssh"
 	sslpkg "github.com/jothost/panel/api/internal/ssl"
+	tenancypkg "github.com/jothost/panel/api/internal/tenancy"
 	"github.com/jothost/panel/api/internal/twofactor"
 	updatespkg "github.com/jothost/panel/api/internal/updates"
 	"github.com/jothost/panel/api/internal/users"
 	webserverpkg "github.com/jothost/panel/api/internal/webserver"
 	"github.com/jothost/panel/api/internal/websites"
+	"github.com/jothost/panel/shared/validate"
 	"github.com/jothost/panel/shared/version"
 )
 
@@ -67,6 +69,10 @@ type Server struct {
 	metrics   *metrics.Repository
 	dashboard *dashboard.Handler
 	sampler   *metrics.Sampler
+
+	tenancy        *tenancypkg.Handler
+	tenancyService *tenancypkg.Service
+	quotaGuard     *tenancypkg.Guard
 
 	websites      *websites.Handler
 	webserver     *webserverpkg.Handler
@@ -453,6 +459,76 @@ func New(opts Options) (*Server, error) {
 	})
 	deploypkg.SetPanelURL(cfg.PanelURL)
 
+	// Tenancy. The hierarchy of accounts, the plans sold to them, and the
+	// enforcement of what each subscription may use.
+	tenancyRepo := tenancypkg.NewRepository(opts.Pool)
+	tenancyService := tenancypkg.NewService(tenancypkg.Dependencies{
+		Repo:     tenancyRepo,
+		Users:    userRepo,
+		RBAC:     rbacRepo,
+		Sessions: sessionRepo,
+		Agent:    agent,
+		Audit:    auditRecorder,
+		Log:      log,
+	})
+	s.tenancyService = tenancyService
+	s.tenancy = tenancypkg.NewHandler(tenancypkg.HandlerOptions{
+		Service: tenancyService,
+		Auth:    authService,
+	})
+
+	// The quota-guarded routes, in one table.
+	//
+	// This is the whole enforcement surface for counted limits, written where
+	// somebody can read it rather than spread across six services. Every entry
+	// is a route that creates one more of something a plan sells; a feature
+	// added later that sells a seventh thing has to be added here, and the
+	// list being short and visible is what makes that likely to happen.
+	//
+	// Deliberately absent are disk and bandwidth. Those are measured on the
+	// host after the fact, so there is no request that could be refused to
+	// keep one inside its limit — and NewGuard refuses to be wired with one,
+	// rather than accepting a promise nothing would keep.
+	quotaGuard, err := tenancypkg.NewGuard(tenancyService, authService,
+		map[string]tenancypkg.Rule{
+			// Creating a website charges the subscription named in the body, or
+			// the caller's own. This is the one route where a request can say
+			// which subscription it is spending, because the website does not
+			// exist yet and so cannot say for itself.
+			"POST /api/v1/websites": {
+				Dimension: validate.DimensionWebsites,
+				Subject:   tenancypkg.SubjectBodySubscription,
+			},
+			// Everything below charges whoever owns the resource being added
+			// to, not whoever is asking. A reseller creating a database inside
+			// a customer's site is spending the customer's plan.
+			"POST /api/v1/websites/{id}/subdomains": {
+				Dimension: validate.DimensionSubdomains,
+				Subject:   tenancypkg.SubjectPathWebsite,
+			},
+			"POST /api/v1/databases": {
+				Dimension: validate.DimensionDatabases,
+				Subject:   tenancypkg.SubjectBodyWebsite,
+			},
+			"POST /api/v1/mail/domains/{id}/mailboxes": {
+				Dimension: validate.DimensionMailboxes,
+				Subject:   tenancypkg.SubjectPathMailDomain,
+			},
+			"POST /api/v1/ftp/users": {
+				Dimension: validate.DimensionFTPUsers,
+				Subject:   tenancypkg.SubjectBodyWebsite,
+			},
+			"POST /api/v1/cron": {
+				Dimension: validate.DimensionCronJobs,
+				Subject:   tenancypkg.SubjectBodyWebsite,
+			},
+		})
+	if err != nil {
+		return nil, err
+	}
+	s.quotaGuard = quotaGuard
+	websiteService.SetSubscriptions(tenancyService)
+
 	s.mail = mailpkg.NewHandler(mailpkg.HandlerOptions{
 		Service: mailpkg.NewService(mailpkg.ServiceOptions{
 			Repo:     mailpkg.NewRepository(opts.Pool),
@@ -761,12 +837,21 @@ func (s *Server) routes() http.Handler {
 	s.files.Routes(mux)
 	s.databases.Routes(mux)
 	s.node.Routes(mux)
+	s.tenancy.Routes(mux)
 
 	// Anything unmatched returns the standard error envelope rather than the
 	// net/http plain-text default.
 	mux.HandleFunc("/", s.handleNotFound)
 
-	return middleware.Chain(mux,
+	// The quota guard wraps the router rather than sitting inside each
+	// feature, so the set of guarded routes is one table above rather than six
+	// checks that a seventh feature can forget to add.
+	var routed http.Handler = mux
+	if s.quotaGuard != nil {
+		routed = s.quotaGuard.Middleware(mux)
+	}
+
+	return middleware.Chain(routed,
 		middleware.RequestID(),
 		middleware.Logger(s.log),
 		middleware.Recover(s.log),
@@ -882,6 +967,19 @@ func (s *Server) Run(ctx context.Context) error {
 		s.deployService.ReleaseStale(ctx)
 	}
 
+	// An impersonation left open by a restart is one that never ends: the
+	// session went with the process, and nothing would ever write the end
+	// time. A panel that showed it as still running would be showing an
+	// operator inside a customer's account who is not there.
+	if s.tenancyService != nil {
+		if closed, err := s.tenancyService.CloseStaleImpersonations(ctx); err != nil {
+			s.log.Warn("could not close impersonations left open by a restart",
+				"error", err.Error())
+		} else if closed > 0 {
+			s.log.Info("closed impersonations left open by a restart", "count", closed)
+		}
+	}
+
 	// The job worker is what turns a queued website into a provisioned one.
 	// Without it every site would sit in "creating" indefinitely.
 	if s.worker != nil {
@@ -925,6 +1023,15 @@ func (s *Server) Run(ctx context.Context) error {
 	// wrong.
 	if s.dispatcher != nil {
 		go s.dispatcher.Run(ctx)
+	}
+
+	// Disk and bandwidth are facts about a host, not rows in this database, so
+	// somebody has to go and look. On a timer rather than when a page opens:
+	// measuring walks a customer's whole site, and a figure that only exists
+	// while somebody is watching cannot show that a customer went over their
+	// quota last Tuesday.
+	if s.tenancyService != nil {
+		go s.tenancyService.StartSampler(ctx, tenancypkg.DefaultSampleInterval)
 	}
 
 	// A schedule nobody runs is a backup page that lists intentions. This loop

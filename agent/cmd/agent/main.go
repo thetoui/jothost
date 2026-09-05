@@ -43,6 +43,7 @@ import (
 	"github.com/jothost/panel/agent/internal/socket"
 	sshpkg "github.com/jothost/panel/agent/internal/ssh"
 	"github.com/jothost/panel/agent/internal/ssl"
+	tenancypkg "github.com/jothost/panel/agent/internal/tenancy"
 	updatespkg "github.com/jothost/panel/agent/internal/updates"
 	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/protocol"
@@ -266,6 +267,14 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 				"HOME", "USER", "LOGNAME", "CI", "COMPOSER_HOME", "COMPOSER_NO_INTERACTION",
 				"NPM_CONFIG_CACHE", "NPM_CONFIG_UPDATE_NOTIFIER",
 			}},
+		// Tenancy. du measures a subscription's disk usage.
+		//
+		// It gets a name of its own rather than a shared "du" for the reason
+		// the deployment tools do: a name is owned by whichever feature
+		// claimed it first, and changing how long a quota measurement may run
+		// must not change anything else. Five minutes because a customer with
+		// a hundred thousand small files is slow to walk and is not a fault.
+		{Name: tenancypkg.CommandDu, Path: cfg.DuPath, Timeout: 5 * time.Minute},
 		// sshd, used only to *read* the effective configuration (-T) and to
 		// validate a candidate one (-t). The panel never starts the server with
 		// it: that goes through the service manager, so there is one thing on
@@ -589,6 +598,24 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		log.Info("git is not installed; websites cannot be deployed from a repository")
 	}
 
+	// Tenancy. Two jobs: measuring what a subscription uses, and writing the
+	// systemd slice for the limits it was sold.
+	//
+	// The provisioner is passed in rather than a root path, so a document root
+	// arriving from the panel is resolved by the same code that created it —
+	// one rule about what is inside the allowed root, in one place.
+	tenancyProvider := tenancypkg.NewProvider(tenancypkg.Options{
+		Runner:   runner,
+		Sites:    provisioner,
+		Services: serviceProvider,
+		Log:      log,
+		UnitDir:  cfg.TenantUnitDir,
+	})
+	if available, detail := tenancyProvider.IsolationStatus(); !available {
+		log.Info("subscription resource limits will be recorded but not enforced",
+			"reason", detail)
+	}
+
 	// The host's package updates. The provider detects apk or apt-get itself,
 	// through the same runner Phase 5 installs packages with.
 	updatesProvider := updatespkg.NewProvider(updatespkg.Options{
@@ -798,6 +825,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Updates:      updatesProvider,
 		Backup:       backupProvider,
 		Security:     securityScanner,
+		Tenancy:      tenancyProvider,
 	})
 
 	// Wired after the registry, because restarting the FTP daemon goes through

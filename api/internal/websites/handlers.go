@@ -135,6 +135,13 @@ type createBody struct {
 	// SSLEnabled is accepted so the API can reject it explicitly. Ignoring an
 	// unknown field would let a client believe SSL was configured.
 	SSLEnabled bool `json:"ssl_enabled"`
+	// SubscriptionID puts the new site inside a customer's subscription.
+	//
+	// Optional, and empty means the creator's own subscription — or none at
+	// all, which is what an administrator's sites have. It is also what the
+	// quota guard reads to decide whose plan this creation spends, so a
+	// reseller creating a site for a customer is charged to the customer.
+	SubscriptionID string `json:"subscription_id"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -150,12 +157,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	claims, _ := auth.ClaimsFromContext(r.Context())
 
 	result, err := h.service.Create(ctx, CreateRequest{
-		Domain:     body.Domain,
-		Name:       body.Name,
-		SSLEnabled: body.SSLEnabled,
-		Actor:      claims.UserID,
-		IPAddress:  clientIP(r),
-		UserAgent:  r.UserAgent(),
+		Domain:         body.Domain,
+		Name:           body.Name,
+		SSLEnabled:     body.SSLEnabled,
+		SubscriptionID: body.SubscriptionID,
+		Actor:          claims.UserID,
+		IPAddress:      clientIP(r),
+		UserAgent:      r.UserAgent(),
 	})
 	if err != nil {
 		httpx.Error(w, r, translate(err))

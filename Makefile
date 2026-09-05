@@ -143,6 +143,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-notifications
 	$(MAKE) docker-test-mail
 	$(MAKE) docker-test-deploy
+	$(MAKE) docker-test-tenancy
 	$(MAKE) docker-test-firewall
 	$(MAKE) docker-test-node
 
@@ -270,6 +271,15 @@ docker-test-deploy: create-integration-admin ## Run the Phase 27 deployment chec
 	# key pinning and the authentication are all real. A local path would have
 	# exercised none of them.
 	$(COMPOSE) exec -T agent sh /tests/integration/phase27_deploy.sh
+
+.PHONY: docker-test-tenancy
+docker-test-tenancy: create-integration-admin ## Run the Phase 22 multi-tenancy checks
+	# Every limit in here is proved by being hit. A quota that is recorded and
+	# not enforced looks identical from outside to one that works, so the
+	# checks create the website that is refused, measure real disk with du and
+	# real bandwidth from a real access log, and read the systemd slice unit
+	# off the host.
+	$(COMPOSE) exec -T agent sh /tests/integration/phase22_tenancy.sh
 
 .PHONY: docker-test-mail
 docker-test-mail: create-integration-admin ## Run the Phase 26 mail server checks

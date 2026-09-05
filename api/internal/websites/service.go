@@ -56,12 +56,38 @@ var (
 
 // Service coordinates website records with the work that realises them.
 type Service struct {
-	repo     *Repository
-	jobs     *jobs.Repository
-	audit    *audit.Recorder
-	dns      DNSPublisher
-	log      *slog.Logger
-	serverID string
+	repo          *Repository
+	jobs          *jobs.Repository
+	audit         *audit.Recorder
+	dns           DNSPublisher
+	subscriptions Subscriptions
+	log           *slog.Logger
+	serverID      string
+}
+
+// Subscriptions records which subscription a newly created website belongs to.
+//
+// An interface, and nil-able, for the reason DNSPublisher is: it keeps this
+// package from importing the tenancy package, and a panel with no tenancy
+// configured must still be able to create a website — the server's own
+// administrator owns the machine rather than a slice of it, and their sites
+// belong to no subscription.
+//
+// It matters more than it looks. Without it the quota that authorised a
+// creation would never see the site it authorised, the count would never rise,
+// and a limit of one website would let somebody create as many as they liked.
+type Subscriptions interface {
+	AssignNewWebsite(ctx context.Context, ownerUserID, subscriptionID, websiteID string) error
+}
+
+// SetSubscriptions wires the tenancy service in after construction.
+//
+// After rather than through ServiceOptions, because the tenancy service is
+// built later — it needs the Agent client, which needs configuration this
+// service is already constructed from. The alternative was reordering half of
+// server.go to satisfy one field.
+func (s *Service) SetSubscriptions(subscriptions Subscriptions) {
+	s.subscriptions = subscriptions
 }
 
 // DNSPublisher puts a subdomain's record into its parent's zone, and takes it
@@ -117,6 +143,9 @@ type CreateRequest struct {
 	Domain     string
 	Name       string
 	SSLEnabled bool
+	// SubscriptionID puts the site inside a named subscription. Empty means
+	// the creator's own, if they have one.
+	SubscriptionID string
 	// Actor is the user making the request, for the audit trail.
 	Actor     string
 	IPAddress string
@@ -192,6 +221,21 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (CreateResult, 
 				"website_id", site.ID, logger.KeyError, statusErr.Error())
 		}
 		return CreateResult{}, err
+	}
+
+	// The site joins the creator's subscription, if they have one.
+	//
+	// After the job is queued rather than before, and a failure here does not
+	// fail the creation: the site exists and is being provisioned, and a panel
+	// that unwound a working website because a membership row could not be
+	// written would be doing the customer no favours. It is logged loudly,
+	// because a site outside its subscription is a site outside its quota.
+	if s.subscriptions != nil && req.Actor != "" {
+		if err := s.subscriptions.AssignNewWebsite(ctx, req.Actor, req.SubscriptionID,
+			site.ID); err != nil {
+			s.log.Error("created a website but could not record its subscription",
+				"website_id", site.ID, "domain", domain, logger.KeyError, err.Error())
+		}
 	}
 
 	s.record(ctx, req.Actor, ActionWebsiteCreate, site.ID, audit.StatusSuccess,

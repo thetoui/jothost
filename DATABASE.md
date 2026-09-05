@@ -1013,6 +1013,209 @@ sequence of updates passes through states where two steps share a position.
 
 ---
 
+# 34. service_plans, subscriptions, subscription_addons, subscription_usage, impersonation_sessions
+
+Migration 0023. Who an account answers to, what a plan promises, what a
+subscription actually uses, and who is pretending to be whom.
+
+## 34.1 The hierarchy lives on users
+
+```sql
+ALTER TABLE users
+    ADD COLUMN tier VARCHAR(20) NOT NULL DEFAULT 'admin',
+    ADD COLUMN parent_user_id UUID REFERENCES users (id) ON DELETE RESTRICT;
+```
+
+The tier is on the account rather than derived from its role, because they
+answer different questions. A role says what somebody may *do*; a tier says
+whose accounts they may do it to. An operator and a reseller can hold identical
+permissions and still must not see each other's customers.
+
+`ON DELETE RESTRICT`, not CASCADE. Deleting a reseller must not silently delete
+every customer under them, along with their subscriptions and — through those —
+the record of which websites were theirs.
+
+Two CHECK constraints hold the shape: an admin has no parent and everybody else
+has one, and no account is its own parent. The third rule — that a parent's tier
+is *strictly above* the child's — needs a lookup and lives in Go. It is the one
+that matters most: every edge then runs from a higher tier to a lower one, so
+following parents strictly increases and must terminate. There is no cycle
+detection anywhere in this phase because a cycle cannot be built.
+
+## 34.2 One table for plans and add-ons
+
+```sql
+CREATE TABLE service_plans (
+    owner_user_id UUID REFERENCES users (id) ON DELETE CASCADE,  -- NULL = the
+                                                                 -- server's own
+    kind        VARCHAR(10) NOT NULL DEFAULT 'plan',             -- plan | addon
+    disk_mb, bandwidth_mb, max_websites, max_databases,
+    max_mailboxes, max_ftp_users, max_cron_jobs, max_subdomains  INTEGER,
+    enforcement VARCHAR(10) NOT NULL DEFAULT 'hard',             -- hard | soft
+    cpu_percent, memory_mb, io_weight                            INTEGER
+);
+```
+
+One table rather than two because the columns are the same columns, and two
+would mean two definitions of "the disk limit" that could drift apart. What
+differs is how a number is *read*: on a plan it is the limit, on an add-on it is
+an increment.
+
+`owner_user_id` cascades where the hierarchy above restricts, and the difference
+is deliberate: a plan is a price list, not a customer's data. A reseller who is
+removed should not leave plans behind that nobody can administer.
+
+## 34.3 Why every limit is nullable
+
+**`NULL` is unlimited and `0` is none, and the difference is the whole point.**
+
+A plan with no mailbox limit and a plan that includes no mailboxes are opposite
+promises, and a scheme using `0` for both cannot tell a customer which one they
+bought. The columns therefore need no sentinel, and the CHECK can refuse
+everything below zero: a negative limit is not a smaller limit, it is a typo.
+
+On an add-on, `NULL` means "adds nothing to this dimension". There is nothing
+for an increment of infinity to mean, so the two nils are read differently
+depending on which side of the sum they are on — see `tenancy.EffectiveLimits`.
+
+The isolation columns follow the same rule and default to NULL, because capping
+a customer's CPU is a decision and a panel that quietly applied one would be a
+panel whose sites are slow for a reason nobody can find. Their bounds are
+systemd's own: `CPUQuota` above 100% is meaningful on a multi-core host,
+`MemoryMax` below 16 MiB kills everything that starts, `IOWeight` is 1–10000.
+
+## 34.4 subscriptions, and the four isolation states
+
+```sql
+CREATE TABLE subscriptions (
+    owner_user_id UUID NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+    plan_id       UUID NOT NULL REFERENCES service_plans (id) ON DELETE RESTRICT,
+    status               VARCHAR(20) NOT NULL DEFAULT 'active',
+    slice_name           VARCHAR(120) NOT NULL DEFAULT '',
+    isolation_state      VARCHAR(20)  NOT NULL DEFAULT 'none',
+    isolation_detail     TEXT         NOT NULL DEFAULT ''
+);
+```
+
+`plan_id` restricts rather than setting null: a subscription whose plan vanished
+has no limits at all, which is the failure mode where a panel stops enforcing
+quotas and nobody notices.
+
+`isolation_state` has four values rather than being a boolean, and the fourth is
+what earns the column:
+
+```text
+none      this plan caps nothing, so there is no slice
+applied   the unit is installed and systemd has read it
+declared  the limits are written and this host is not applying them
+failed    the host refused, and isolation_detail says why
+```
+
+A scheme with only applied and failed would answer "is this customer capped"
+with a tick on a host that caps nothing.
+
+A suspended subscription must say since when — `subscriptions_suspension_dated`
+— because a row that is suspended and cannot say since when is one nobody can
+argue with a customer about.
+
+## 34.5 The website is the unit of tenancy
+
+```sql
+ALTER TABLE websites
+    ADD COLUMN subscription_id UUID REFERENCES subscriptions (id) ON DELETE RESTRICT;
+```
+
+This one column is what makes the whole model work. Databases, mailboxes, FTP
+accounts, scheduled jobs and git repositories all already reference a website,
+so every one of them has an owner the moment its website does — and
+`CountUsage` reaches all six through this column in a single query.
+
+One query rather than six, because six would be six moments in time: a caller
+checking a website limit while a database is being created would otherwise get
+counts that never coexisted.
+
+Nullable, because every website that existed before this migration belongs to
+the server's own administrator, who owns the machine rather than a slice of it.
+
+## 34.6 subscription_usage, and the value that is not a number
+
+```sql
+CREATE TABLE subscription_usage (
+    subscription_id UUID PRIMARY KEY REFERENCES subscriptions (id) ON DELETE CASCADE,
+    period_start        DATE NOT NULL,
+    disk_bytes          BIGINT,   -- NULL = not measured
+    bandwidth_bytes     BIGINT,
+    bandwidth_raw_bytes BIGINT,
+    measured_at         TIMESTAMPTZ,
+    measure_error       TEXT NOT NULL DEFAULT ''
+);
+```
+
+Separate from `subscriptions` because it is written by a sampler on a timer and
+read by a page, while the row above is written by people: keeping them apart
+means a measurement never contends with an edit.
+
+**`NULL` means not measured, and it is not zero.** The same distinction Phase 21
+draws about outstanding updates and Phase 19 about a probe that timed out. A
+subscription whose disk could not be read is not one using no disk, and a panel
+showing `0` would tell a customer they are inside a quota nobody checked.
+
+`bandwidth_raw_bytes` is what the host's access logs last totalled.
+Bandwidth is cumulative for the life of a log file and resets when it rotates,
+so the accumulation is done in SQL — a reading below the last means a rotation,
+and the whole reading is the delta. In SQL rather than read-modify-write in Go,
+so two samplers cannot both read the old total and both add to it.
+
+## 34.7 impersonation_sessions
+
+```sql
+CREATE TABLE impersonation_sessions (
+    actor_user_id   UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    subject_user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    session_id      UUID REFERENCES sessions (id) ON DELETE SET NULL,
+    reason          TEXT NOT NULL DEFAULT '',
+    started_at, ended_at TIMESTAMPTZ,
+    CONSTRAINT impersonation_not_self CHECK (actor_user_id <> subject_user_id)
+);
+```
+
+A table of its own rather than an audit line, because impersonation is the one
+action in the panel where the audit log's "who" would otherwise be wrong:
+without this, every row an impersonated session writes is attributed to the
+customer who did not do it. This is what lets an operator answer "who actually
+changed that" months later, and it is why an impersonation is recorded even when
+it does nothing.
+
+`session_id` sets null rather than cascading: the session is cleaned up on a
+timer and the record that somebody was impersonated must outlive it.
+
+## 34.8 audit_logs stops referencing users
+
+```sql
+ALTER TABLE audit_logs DROP CONSTRAINT audit_logs_user_id_fkey;
+```
+
+A fix to a Phase 1 table, made in this migration because this is the phase that
+first deletes an account — and the phase that found the problem by doing it.
+
+Migration 0001 gave `audit_logs.user_id` an `ON DELETE SET NULL` "so removing a
+user never erases history", and separately made the table append-only with a
+trigger refusing every UPDATE (section 25). Both are right and together they are
+impossible: the cascade *is* an UPDATE, so the trigger refuses it, so an account
+that has ever done anything auditable can never be deleted. It failed with an
+internal error naming a trigger.
+
+Dropping the constraint resolves it in the direction the append-only rule wants.
+A row saying "user X did this" must not be rewritten to "somebody did this"
+because X was later removed — that is exactly the edit the trigger exists to
+prevent, and a foreign key was quietly performing it.
+
+What is given up is referential integrity on that column: an id in the log may
+name an account that no longer exists. For an append-only record of what
+happened, that is the correct trade — the alternative is a log that forgets.
+
+---
+
 # 32. mail_settings, mail_domains, mailboxes, mail_aliases, mail_autoresponders
 
 Added by migration 0021, and not in this specification: mail is listed in PRD.md

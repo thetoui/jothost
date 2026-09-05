@@ -16,11 +16,13 @@ they are called backups, a security score that never hides how many checks it
 is built from, notifications that keep the record of
 every one they failed to deliver, a mail server that shows what it is
 configured to do next to what the world can actually verify, and deployments
-that run a customer's build as the customer's own account and never as root.
+that run a customer's build as the customer's own account and never as root,
+and quotas that are charged to whoever owns the website rather than to whoever
+pressed the button.
 
-Next is Phase 22 (Multi-Tenant). Phases are built in dependency order rather
-than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md for the
-sequence and why each phase sits where it does. The per-phase notes in
+Next is Phase 23 (Production Installer). Phases are built in dependency order
+rather than numeric order — see [Build Order](TASKS.md#build-order) in TASKS.md
+for the sequence and why each phase sits where it does. The per-phase notes in
 [docs/](docs/) say what each one does and does not include.
 
 ---

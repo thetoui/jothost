@@ -26,6 +26,7 @@ import {
   ShieldBan,
   ShieldCheck,
   UserCog,
+  Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -91,6 +92,7 @@ const navGroups: NavGroup[] = [
       { label: 'Monitoring', to: '/monitoring', icon: Activity, enabled: true },
       { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: true },
       { label: 'Notifications', to: '/notifications', icon: BellRing, enabled: true },
+      { label: 'Accounts & plans', to: '/tenancy', icon: Users, enabled: true },
       { label: 'Account security', to: '/security', icon: UserCog, enabled: true },
     ],
   },

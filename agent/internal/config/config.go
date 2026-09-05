@@ -139,6 +139,12 @@ type Config struct {
 	PHPToolPath    string
 	DeployShell    string
 	DeployStateDir string
+	// Tenancy. DuPath measures a subscription's disk; TenantUnitDir is where
+	// its systemd slice is written. du rather than a walk in Go because this
+	// panel's own backups make hard links, and a walk would count one file
+	// once per name and report a customer using several times what they have.
+	DuPath        string
+	TenantUnitDir string
 	// The read-only companions the update reporter needs on a Debian host.
 	// AptCachePath answers what versions exist, AptMarkPath which packages are
 	// held, and DpkgQueryPath what is installed on the disk.
@@ -300,6 +306,8 @@ func Load() (Config, error) {
 		PHPToolPath:        getString("AGENT_PHP_TOOL_PATH", "/usr/bin/php"),
 		DeployShell:        getString("AGENT_DEPLOY_SHELL", "/bin/sh"),
 		DeployStateDir:     getString("AGENT_DEPLOY_STATE_DIR", "/var/lib/jothost/deploy"),
+		DuPath:             getString("AGENT_DU_PATH", "/usr/bin/du"),
+		TenantUnitDir:      getString("AGENT_TENANT_UNIT_DIR", "/etc/systemd/system"),
 		AptCachePath:       getString("AGENT_APT_CACHE_PATH", "/usr/bin/apt-cache"),
 		AptMarkPath:        getString("AGENT_APT_MARK_PATH", "/usr/bin/apt-mark"),
 		DpkgQueryPath:      getString("AGENT_DPKG_QUERY_PATH", "/usr/bin/dpkg-query"),

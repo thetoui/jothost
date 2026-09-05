@@ -15,6 +15,10 @@ const (
 	RoleAdmin    = "admin"
 	RoleOperator = "operator"
 	RoleViewer   = "viewer"
+	// RoleReseller is seeded by migration 0023. It holds the tenancy
+	// permissions and nothing server-level: a reseller sells space on somebody
+	// else's machine.
+	RoleReseller = "reseller"
 )
 
 // Permission names seeded by migration 0002. Handlers reference these
@@ -84,6 +88,22 @@ const (
 	// script echoed. Seeing *that* a deployment failed is support work.
 	PermDeployView   = "deploy.view"
 	PermDeployManage = "deploy.manage"
+
+	// The tenancy permissions, split along what each one lets somebody find
+	// out rather than along what it lets them change.
+	//
+	// PermTenantView is a customer list with what each one is using.
+	// PermTenantManage creates accounts and moves quota, which is the ability
+	// to give somebody more of a server than was sold to them.
+	// PermTenantImpersonate is separate from both and is the sharpest of the
+	// three: it is not "manage a customer's site", it is *be* them — their
+	// files, their mail, their databases, with their name on everything that
+	// happens. Somebody who provisions accounts all day does not need it, and
+	// a panel that bundled it would have an audit trail that cannot tell a
+	// customer apart from their reseller.
+	PermTenantView        = "tenant.view"
+	PermTenantManage      = "tenant.manage"
+	PermTenantImpersonate = "tenant.impersonate"
 
 	PermNotificationManage = "notification.manage"
 	PermAuditView          = "audit.view"

@@ -55,15 +55,15 @@ Done, in the order they were built:
 20  Notifications
 26  Mail Server Ecosystem
 27  Git & Webhook Actions
+22  Multi-Tenant
 ```
 
 Remaining, in build order:
 
 ```text
- 1.  22   Multi-Tenant           — quota dimensions must exist first, mail included
- 2.  23   Production Installer   — installs everything, so everything must exist
- 3.  24   Production Hardening   — tests the finished system
- 4.  25   Release                — last by definition
+ 1.  23   Production Installer   — installs everything, so everything must exist
+ 2.  24   Production Hardening   — tests the finished system
+ 3.  25   Release                — last by definition
 ```
 
 Why the significant moves, in one line each:
@@ -1243,6 +1243,9 @@ Additionally required by the above:
 
 # PHASE 22 — Multi-Tenant Hierarchy & Subscriptions
 
+**Status: COMPLETE** — see [docs/PHASE22.md](docs/PHASE22.md) for the design,
+the four ideas it keeps apart, what running it found, and known limitations.
+
 **Build order: 16 of 17.** Depends on 26 (mailboxes are a quota dimension), 19
 (disk usage is another) and 12 (cgroup isolation is a systemd slice).
 **Blocks** 23 and 24.
@@ -1250,14 +1253,40 @@ Additionally required by the above:
 Built before mail, the plan builder would ship a Mailboxes limit that counts
 nothing — the retroactive edit this ordering exists to avoid.
 
-- [ ] Tiered account model: Admin -> Reseller -> Customer
-- [ ] Service Plan (Package) builder (Disk, Bandwidth, Sites, DBs, Mailboxes)
-- [ ] Add-on Plan builder
-- [ ] Subscription creation and plan assignment
-- [ ] Quota enforcement middleware (Hard & Soft limits)
-- [ ] Resource isolation per subscription via cgroups (CPU, RAM, IOPS)
-- [ ] Impersonation mechanism (Login-as-Customer / Reseller)
-- [ ] Subscription dashboard & resource tracking UI
+- [x] Tiered account model: Admin -> Reseller -> Customer
+- [x] Service Plan (Package) builder (Disk, Bandwidth, Sites, DBs, Mailboxes)
+- [x] Add-on Plan builder
+- [x] Subscription creation and plan assignment
+- [x] Quota enforcement middleware (Hard & Soft limits)
+- [x] Resource isolation per subscription via cgroups (CPU, RAM, IOPS)
+- [x] Impersonation mechanism (Login-as-Customer / Reseller)
+- [x] Subscription dashboard & resource tracking UI
+
+Additionally required by the above:
+
+- [x] **Nullable limits throughout.** `NULL` is unlimited and `0` is none — a
+  plan with no mailbox limit and a plan including no mailboxes are opposite
+  promises, and a scheme using `0` for both cannot tell a customer which one
+  they bought
+- [x] **The quota is charged to the owner, not the caller.** A reseller creating
+  a database inside a customer's website spends the customer's plan. A guard
+  reading only who is asking would let every limit be walked around by having
+  somebody senior press the button
+- [x] Measured usage sampled on a timer, with **"not measured" as a distinct
+  value from zero** — `du` for disk because hard links make a walk in Go
+  double-count, and the site's own access log for bandwidth, accumulated across
+  rotations
+- [x] Four isolation states rather than a boolean, because **"declared" — the
+  limits are written and this host is not applying them** — is neither success
+  nor failure, and `placement` reported separately because a slice with nothing
+  in it is a limit on nothing
+- [x] `tenant.impersonate` separate from `tenant.manage`, an impersonated
+  session that cannot impersonate or change a password, and a record that
+  outlives the session so the audit trail can say who was actually at the
+  keyboard
+- [x] A fix to Phase 1: `audit_logs` stops referencing `users`, because
+  `ON DELETE SET NULL` and an append-only trigger cannot both hold and no
+  account that had done anything could be deleted
 
 ---
 

@@ -27,6 +27,7 @@ import { SSHPage } from '@/pages/SSHPage';
 import { ServicesPage } from '@/pages/ServicesPage';
 import { WebserverPage } from '@/pages/WebserverPage';
 import { SSLPage } from '@/pages/SSLPage';
+import { TenancyPage } from '@/pages/TenancyPage';
 import { WebsiteDetailPage } from '@/pages/WebsiteDetailPage';
 import { WebsitesPage } from '@/pages/WebsitesPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -102,6 +103,7 @@ export const router = createBrowserRouter(
             { path: 'backups', element: <BackupsPage /> },
             { path: 'security-center', element: <SecurityCenterPage /> },
             { path: 'deployments', element: <DeploymentsPage /> },
+            { path: 'tenancy', element: <TenancyPage /> },
             { path: 'mail', element: <MailPage /> },
             { path: 'notifications', element: <NotificationsPage /> },
             { path: 'firewall', element: <FirewallPage /> },

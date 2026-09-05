@@ -33,6 +33,7 @@ import (
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/agent/internal/ssh"
 	"github.com/jothost/panel/agent/internal/ssl"
+	"github.com/jothost/panel/agent/internal/tenancy"
 	"github.com/jothost/panel/agent/internal/updates"
 	"github.com/jothost/panel/shared/protocol"
 )
@@ -171,6 +172,11 @@ type Dependencies struct {
 	// log reading is unavailable rather than unrestricted — a path check that
 	// fails open would turn a log viewer into a file reader.
 	Logs *logs.Provider
+
+	// Tenancy measures what a subscription uses and applies the caps it was
+	// sold. Nil means the panel reports that this host enforces nothing rather
+	// than showing a limit nobody is applying.
+	Tenancy *tenancy.Provider
 }
 
 // Registry maps allowlisted operations to their handlers.
@@ -314,6 +320,11 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationDeployKeyRemove, r.handleDeployKeyRemove)
 	r.mustRegister(protocol.OperationDeployRun, r.handleDeployRun)
 	r.mustRegister(protocol.OperationDeployUnlink, r.handleDeployUnlink)
+
+	r.mustRegister(protocol.OperationTenantStatus, r.handleTenantStatus)
+	r.mustRegister(protocol.OperationTenantUsage, r.handleTenantUsage)
+	r.mustRegister(protocol.OperationTenantIsolationApply, r.handleTenantIsolationApply)
+	r.mustRegister(protocol.OperationTenantIsolationRemove, r.handleTenantIsolationRemove)
 
 	r.mustRegister(protocol.OperationMailStatus, r.handleMailStatus)
 	r.mustRegister(protocol.OperationMailInstall, r.handleMailInstall)

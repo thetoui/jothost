@@ -144,6 +144,42 @@ mode was `AH01630: client denied by server configuration` on a correct site.
 **4. Wildcard names cannot reach a filename.** The same rule as Phase 4.1: the
 vhost for `*.example.com` is written as `jothost-_wildcard.example.com.conf`.
 
+**5. Apache will not have a wildcard as a `ServerName`,** and the vhost said so
+for as long as the hybrid arrangement existed. Found later, while running the
+Phase 4.1 regressions for Phase 22 with the host left in hybrid mode:
+
+```text
+Invalid ServerName "*.p41.integration.test" use ServerAlias to set multiple
+server names.
+```
+
+nginx and Apache disagree about wildcards, and the disagreement is not a matter
+of spelling. nginx's `server_name` is purely a matching rule, so
+`*.example.com` is an ordinary entry. Apache's `ServerName` is also the name the
+server calls *itself* — it appears in self-referential URLs and in default error
+pages — so a wildcard there is meaningless, and httpd refuses the file outright.
+`ServerAlias`, which is only ever a matching rule, does take one.
+
+So a wildcard site is now written with the **base name as its `ServerName` and
+the wildcard as an alias**, which is what Apache's own error message recommends
+and leaves the matching behaviour identical. Using the base name is safe even
+though the parent usually exists as a vhost of its own, because each site
+listens on its own loopback port: nginx has already chosen the backend before
+Apache sees the request, so no two vhosts ever compete to match a name.
+
+What `ServerName` still decides is self-referential URLs, so the template now
+pins `UseCanonicalName Off` — Apache's default, made explicit because a wildcard
+site's `ServerName` is deliberately not the name the visitor used. With it `On`,
+a visitor asking for `shop.example.com/dir` would be redirected to
+`example.com/dir/` — a different site. That is measured rather than assumed:
+the check in the suite flips the directive and watches the redirect move.
+
+**The unit test asserted the defect and passed.** `TestRenderAcceptsAWildcardName`
+required `ServerName *.example.test`, which is exactly what Apache rejects, and
+it agreed with the template because neither had ever been shown to httpd. That
+is why the replacement check lives in the integration suite, where the generated
+file is put in front of the real server.
+
 Two were faults in the suite itself, both of which would have made a check pass
 while proving nothing:
 
@@ -162,7 +198,7 @@ while proving nothing:
 make docker-test-hybrid
 ```
 
-42 checks against the running stack, from inside the agent container so it can
+55 checks against the running stack, from inside the agent container so it can
 see the configuration files, the processes and the logs.
 
 The shape of it: one site is created and served by nginx, with a `.htaccess`
@@ -181,6 +217,9 @@ Also verified:
 - the vhost is removed and Apache stopped when the last site leaves
 - the backend port is kept for next time
 - an application cannot take a backend port, and the refusal says why
+- a wildcard subdomain is created, served and removed in hybrid mode: no
+  wildcard reaches `ServerName`, the alias catches a name nothing claims, and a
+  redirect keeps the name the visitor used rather than bouncing to the parent
 
 Every earlier suite still passes, which is what the worker change above had to
 be measured against.

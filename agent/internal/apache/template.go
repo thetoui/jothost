@@ -3,6 +3,7 @@ package apache
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"text/template"
 
 	"github.com/jothost/panel/shared/validate"
@@ -10,8 +11,12 @@ import (
 
 // SiteConfig is everything the Apache vhost template needs.
 type SiteConfig struct {
-	// PrimaryDomain is the canonical name, and the vhost's ServerName. nginx
-	// passes the client's Host through, so this is what selects the vhost.
+	// PrimaryDomain is the site's canonical name. nginx passes the client's
+	// Host through, so this is what selects the vhost.
+	//
+	// It is usually the vhost's ServerName and is not always: a wildcard site's
+	// canonical name is "*.example.com", which Apache refuses as a ServerName.
+	// serverNames below does the splitting, and says why.
 	PrimaryDomain string
 	// Aliases are the other names this site answers to. They must be listed
 	// here as well as in nginx: nginx decides what reaches Apache, and Apache
@@ -63,10 +68,21 @@ var siteTemplate = template.Must(template.New("apache-site").Parse(
 Listen 127.0.0.1:{{ .BackendPort }}
 
 <VirtualHost 127.0.0.1:{{ .BackendPort }}>
-    ServerName {{ .PrimaryDomain }}
-{{- range .Aliases }}
+    ServerName {{ .ServerName }}
+{{- range .ServerAliases }}
     ServerAlias {{ . }}
 {{- end }}
+
+    # Self-referential URLs — the redirect Apache generates for a directory
+    # requested without its trailing slash, chiefly — come from the request's
+    # own Host header rather than from ServerName above.
+    #
+    # This is Apache's default, and it is pinned here because a wildcard site's
+    # ServerName is *not* the name the visitor asked for: it cannot be, since
+    # Apache refuses a wildcard there. With this Off the visitor is redirected
+    # within the name they used; with it On, every wildcard site would bounce
+    # its visitors to the parent domain.
+    UseCanonicalName Off
 
     DocumentRoot "{{ .DocumentRoot }}"
 
@@ -140,6 +156,64 @@ Listen 127.0.0.1:{{ .BackendPort }}
 </VirtualHost>
 `))
 
+// siteView is SiteConfig as the template needs it.
+//
+// It exists for one field. A SiteConfig's PrimaryDomain is the site's canonical
+// name, which for a wildcard site is "*.example.com" — and that is not a thing
+// Apache will accept as a ServerName. The split happens here, at rendering,
+// rather than in SiteConfig, so that every other part of the panel goes on
+// calling the site by its real name.
+type siteView struct {
+	SiteConfig
+	ServerName    string
+	ServerAliases []string
+}
+
+// serverNames splits a site's names the way Apache requires.
+//
+// Apache and nginx disagree about wildcards, and the disagreement is not a
+// matter of syntax. nginx's server_name is purely a matching rule, so
+// "*.example.com" is an ordinary entry. Apache's ServerName is also the name
+// the server calls *itself* — it appears in self-referential URLs and in the
+// default error pages — so a wildcard there is meaningless and Apache refuses
+// it outright:
+//
+//	Invalid ServerName "*.example.com" use ServerAlias to set multiple server
+//	names.
+//
+// ServerAlias, which is only ever a matching rule, does take wildcards. So a
+// wildcard site is written with the base name as its ServerName and the
+// wildcard as an alias — which is exactly what Apache's own error message
+// recommends, and which leaves the matching behaviour identical: the alias is
+// what catches "anything.example.com".
+//
+// Using the base name is safe here even though the parent site usually exists
+// as a vhost of its own, because each site listens on its own loopback port:
+// nginx has already chosen the backend by the time Apache sees the request, so
+// no two vhosts are ever competing to match a name. What ServerName still
+// decides is self-referential URLs, and UseCanonicalName Off in the template
+// above takes those from the request instead.
+func serverNames(primary string, aliases []string) (string, []string) {
+	if !validate.IsWildcard(primary) {
+		return primary, aliases
+	}
+
+	base := strings.TrimPrefix(primary, validate.WildcardPrefix)
+
+	// The wildcard goes first: it is the name this site was created for, and
+	// an operator reading the file should see it above the rest.
+	out := make([]string, 0, len(aliases)+1)
+	seen := map[string]struct{}{base: {}}
+	for _, name := range append([]string{primary}, aliases...) {
+		if _, duplicate := seen[name]; duplicate {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return base, out
+}
+
 // Render produces the Apache configuration for one site.
 //
 // Every value is re-validated here even though callers validate too: this is
@@ -175,8 +249,14 @@ func Render(cfg SiteConfig) (string, error) {
 		return "", fmt.Errorf("%w: a negative body limit", ErrInvalidConfig)
 	}
 
+	name, aliases := serverNames(cfg.PrimaryDomain, cfg.Aliases)
+
 	var out bytes.Buffer
-	if err := siteTemplate.Execute(&out, cfg); err != nil {
+	if err := siteTemplate.Execute(&out, siteView{
+		SiteConfig:    cfg,
+		ServerName:    name,
+		ServerAliases: aliases,
+	}); err != nil {
 		return "", fmt.Errorf("render apache config: %w", err)
 	}
 	return out.String(), nil

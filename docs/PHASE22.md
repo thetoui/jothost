@@ -308,11 +308,12 @@ Four defects, three of them mine, and none would have failed against a mock.
   returns immediately with a queued job; the directory only appears once the
   worker has run.
 
-Also found, and **not** this phase's to fix: a wildcard subdomain cannot be
-created while the host is in the Phase 4.5 hybrid arrangement, because Apache
-refuses a wildcard `ServerName` and wants `ServerAlias`. It is a Phase 4.1/4.5
-interaction, it predates this work, and phase discipline says it is not repaired
-here.
+Also found, and **not** this phase's to fix: a wildcard subdomain could not be
+created while the host was in the Phase 4.5 hybrid arrangement, because Apache
+refuses a wildcard `ServerName` and wants `ServerAlias`. It was a Phase 4.1/4.5
+interaction, it predated this work, and phase discipline said it was not
+repaired here. It has since been fixed in its own phase — see
+[docs/PHASE4.5.md](PHASE4.5.md) §3.
 
 ---
 

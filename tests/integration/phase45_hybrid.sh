@@ -180,6 +180,22 @@ set_mode() {
 }
 
 purge() {
+  # The wildcard subdomain goes first, and the order is not incidental: a
+  # parent with subdomains cannot be deleted, so leaving it until afterwards
+  # would leave the parent behind too.
+  purge_wildcard="$(site_id "$(api GET '/api/v1/websites?include_subdomains=true')" "*.$SITE_DOMAIN")"
+  if [ -n "$purge_wildcard" ]; then
+    api DELETE "/api/v1/subdomains/$purge_wildcard" >/dev/null 2>&1 || true
+    waited=0
+    while [ "$waited" -lt 40 ]; do
+      if [ -z "$(site_id "$(api GET '/api/v1/websites?include_subdomains=true')" "*.$SITE_DOMAIN")" ]; then
+        break
+      fi
+      sleep 2
+      waited=$((waited + 2))
+    done
+  fi
+
   purge_site="$(site_id "$(api GET '/api/v1/websites?include_subdomains=true')" "$SITE_DOMAIN")"
   if [ -n "$purge_site" ]; then
     api DELETE "/api/v1/websites/$purge_site" >/dev/null 2>&1 || true
@@ -192,8 +208,13 @@ purge() {
       waited=$((waited + 2))
     done
   fi
+
+  # A vhost left behind would go on catching names for a site that is gone.
   rm -rf "/var/www/$SITE_DOMAIN"
-  rm -f "$APACHE_CONF_DIR/jothost-$SITE_DOMAIN.conf" "$NGINX_SITES_DIR/$SITE_DOMAIN.conf"
+  rm -f "$APACHE_CONF_DIR/jothost-$SITE_DOMAIN.conf" \
+        "$APACHE_CONF_DIR/jothost-_wildcard.$SITE_DOMAIN.conf" \
+        "$NGINX_SITES_DIR/$SITE_DOMAIN.conf" \
+        "$NGINX_SITES_DIR/_wildcard.$SITE_DOMAIN.conf"
 }
 
 # ------------------------------------------------------------------ the run
@@ -388,10 +409,154 @@ else
   fail "the .htaccess file itself is not servable (got HTTP $code)"
 fi
 
-# --- 5. the backend is a backend -----------------------------------------
+# --- 5. a wildcard subdomain, which Apache spells differently -------------
 
 log ''
-log '5. The backend is not a front end'
+log '5. A wildcard subdomain'
+
+# The gap this section exists to close.
+#
+# nginx and Apache disagree about wildcards, and the disagreement is not
+# cosmetic. nginx's server_name is purely a matching rule, so "*.example.com"
+# is an ordinary entry; Apache's ServerName is also the name the server calls
+# itself, so a wildcard there is meaningless and httpd refuses to start:
+#
+#   Invalid ServerName "*.p45.integration.test" use ServerAlias to set multiple
+#   server names.
+#
+# The unit test for the template asserted the wildcard belonged in ServerName
+# and passed, because neither the assertion nor the template had ever been
+# shown to Apache. So this check is here rather than there: it puts the
+# generated file in front of the real httpd, in the arrangement that reads it.
+
+wildcard_domain="*.$SITE_DOMAIN"
+wildcard_conf="$APACHE_CONF_DIR/jothost-_wildcard.$SITE_DOMAIN.conf"
+
+wildcard="$(api POST "/api/v1/websites/$SITE/subdomains" '{"name":"*"}')"
+WILDCARD_ID="$(json_field "$wildcard" 'id')"
+
+if [ -n "$WILDCARD_ID" ]; then
+  pass 'a wildcard subdomain can be created in hybrid mode'
+else
+  fail "a wildcard subdomain can be created in hybrid mode ($(printf '%s' "$wildcard" | head -c 200))"
+fi
+
+# Active is the check that would have caught the defect on its own: Apache
+# rejects the configuration, the Agent refuses to install it, and the site is
+# recorded as failed rather than served.
+wildcard_state=''
+waited=0
+while [ "$waited" -lt 120 ]; do
+  wildcard_state="$(json_field "$(api GET "/api/v1/websites/$WILDCARD_ID")" 'status')"
+  case "$wildcard_state" in
+    active|failed) break ;;
+  esac
+  sleep 2
+  waited=$((waited + 2))
+done
+if [ "$wildcard_state" = 'active' ]; then
+  pass 'the wildcard subdomain is served rather than left failed'
+else
+  fail "the wildcard subdomain is served rather than left failed (it is $wildcard_state)"
+fi
+
+# Apache's own opinion of what is installed.
+#
+# This is not the check that catches a bad vhost — the Agent validates before
+# installing, so a rejected file never lands here and the site is marked failed
+# instead, which the check above is for. This one catches the worse case: a
+# file that did get installed and leaves httpd unable to start. `httpd -t`
+# reads every config in the directory, so it covers the arrangement rather than
+# the one file.
+if command -v httpd >/dev/null 2>&1; then
+  syntax="$(httpd -t 2>&1 || true)"
+elif command -v apache2ctl >/dev/null 2>&1; then
+  syntax="$(apache2ctl -t 2>&1 || true)"
+else
+  syntax='Syntax OK'
+fi
+contains 'Apache accepts the configuration it was given' "$syntax" 'Syntax OK'
+
+vhost="$(cat "$wildcard_conf" 2>/dev/null || true)"
+if [ -z "$vhost" ]; then
+  fail "the wildcard has an Apache virtual host at $wildcard_conf"
+else
+  pass 'the wildcard has an Apache virtual host'
+
+  # The shape Apache requires: a real name to call itself by, and the wildcard
+  # as an alias — which is a matching rule and does take one.
+  not_contains 'no wildcard reaches ServerName, which httpd would refuse' \
+    "$vhost" 'ServerName *.'
+  contains 'the base name is the ServerName' "$vhost" "ServerName $SITE_DOMAIN"
+  contains 'the wildcard is served as an alias' "$vhost" "ServerAlias $wildcard_domain"
+  # ServerName is no longer the name the visitor asked for, so a redirect has
+  # to come from the request instead.
+  contains 'self-referential URLs come from the request' "$vhost" 'UseCanonicalName Off'
+fi
+
+# The point of a wildcard: a name nobody registered is still served — and here,
+# served by Apache rather than by nginx.
+unclaimed="nothing-claims-this.$SITE_DOMAIN"
+body=''
+waited=0
+while [ "$waited" -lt 30 ]; do
+  body="$(curl -s --max-time 20 -H "Host: $unclaimed" http://127.0.0.1/ 2>/dev/null || true)"
+  case "$body" in
+    *"$wildcard_domain"*) break ;;
+  esac
+  sleep 1
+  waited=$((waited + 1))
+done
+contains 'a name nothing claims is caught by the wildcard' "$body" "$wildcard_domain"
+
+# And the parent is not swallowed by its own wildcard.
+body="$(await_body 'SERVED')"
+contains 'the parent still serves its own content' "$body" "SERVED $SITE_DOMAIN"
+
+# What UseCanonicalName Off is for, proved rather than asserted: Apache
+# redirects a directory requested without its trailing slash, and with the
+# directive On it would send every wildcard visitor to the parent domain
+# instead of the name they asked for.
+wildcard_root="$(json_field "$(api GET "/api/v1/websites/$WILDCARD_ID")" 'document_root')"
+if [ -n "$wildcard_root" ] && [ -d "$wildcard_root" ]; then
+  mkdir -p "$wildcard_root/dir" && printf 'inside\n' > "$wildcard_root/dir/index.html"
+  location="$(curl -s -o /dev/null -D - --max-time 20 -H "Host: $unclaimed" \
+    http://127.0.0.1/dir 2>/dev/null | tr -d '\r' | sed -n 's/^[Ll]ocation: //p')"
+  case "$location" in
+    *"$unclaimed"*) pass 'a redirect keeps the name the visitor used' ;;
+    '') fail 'a redirect keeps the name the visitor used (no redirect was issued)' ;;
+    *) fail "a redirect keeps the name the visitor used (it went to $location)" ;;
+  esac
+  rm -rf "$wildcard_root/dir"
+else
+  fail 'the wildcard has a document root on this host'
+fi
+
+# Removing it must leave the parent exactly as it was, and must take the vhost
+# with it: a stale wildcard vhost would keep catching names after the site that
+# owned it was deleted.
+api DELETE "/api/v1/subdomains/$WILDCARD_ID" >/dev/null
+waited=0
+while [ "$waited" -lt 60 ]; do
+  [ -f "$wildcard_conf" ] || break
+  sleep 2
+  waited=$((waited + 2))
+done
+if [ -f "$wildcard_conf" ]; then
+  fail 'removing the wildcard removes its Apache virtual host'
+else
+  pass 'removing the wildcard removes its Apache virtual host'
+fi
+WILDCARD_ID=''
+
+body="$(await_body 'SERVED')"
+contains 'the parent is unchanged by the wildcard coming and going' \
+  "$body" "SERVED $SITE_DOMAIN"
+
+# --- 6. the backend is a backend -----------------------------------------
+
+log ''
+log '6. The backend is not a front end'
 
 listening="$(netstat -ltn 2>/dev/null || ss -ltn 2>/dev/null || true)"
 if printf '%s' "$listening" | grep -q "127.0.0.1:$PORT"; then
@@ -427,10 +592,10 @@ else
   contains 'the log records the real client address' "$access_log" '203.0.113.42'
 fi
 
-# --- 6. PHP through the backend ------------------------------------------
+# --- 7. PHP through the backend ------------------------------------------
 
 log ''
-log '6. PHP'
+log '7. PHP'
 
 versions="$(api GET /api/v1/php/versions)"
 case "$versions" in
@@ -479,10 +644,10 @@ PHP
     ;;
 esac
 
-# --- 7. switching back ----------------------------------------------------
+# --- 8. switching back ----------------------------------------------------
 
 log ''
-log '7. Switching back to nginx'
+log '8. Switching back to nginx'
 
 set_mode nginx
 
@@ -526,10 +691,10 @@ else
   fail "the site keeps its backend port for next time (was $PORT, now '$kept')"
 fi
 
-# --- 8. refusals ----------------------------------------------------------
+# --- 9. refusals ----------------------------------------------------------
 
 log ''
-log '8. Refusals'
+log '9. Refusals'
 
 code="$(api_status PUT /api/v1/webserver '{"mode":"apache"}')"
 expect_status 'an arrangement that does not exist is refused' 422 "$code"

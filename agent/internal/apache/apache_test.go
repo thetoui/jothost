@@ -166,7 +166,21 @@ func TestRenderRefusesValuesThatWouldEscapeADirective(t *testing.T) {
 	}
 }
 
-func TestRenderAcceptsAWildcardName(t *testing.T) {
+// A wildcard site is served by an alias, because Apache will not have one as a
+// ServerName.
+//
+// This test previously asserted the opposite — "ServerName *.example.test" —
+// and passed, which is how the defect survived: the assertion and the template
+// agreed with each other and neither had ever been shown to Apache, which
+// answers
+//
+//	Invalid ServerName "*.example.test" use ServerAlias to set multiple server
+//	names.
+//
+// and refuses to start. The suite that catches it now is the hybrid-mode half
+// of tests/integration/phase41_subdomains.sh, which puts the file in front of
+// the real httpd.
+func TestRenderServesAWildcardThroughAnAliasNotAServerName(t *testing.T) {
 	cfg := validSite()
 	cfg.PrimaryDomain = "*.example.test"
 
@@ -174,8 +188,101 @@ func TestRenderAcceptsAWildcardName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if !strings.Contains(out, "ServerName *.example.test") {
-		t.Errorf("the wildcard name is not served:\n%s", out)
+
+	if strings.Contains(out, "ServerName *.") {
+		t.Errorf("Apache refuses a wildcard ServerName and will not start:\n%s", out)
+	}
+	if !strings.Contains(out, "ServerName example.test\n") {
+		t.Errorf("the wildcard's base name should be the ServerName:\n%s", out)
+	}
+	// The matching behaviour has to be unchanged: the alias is what catches
+	// anything.example.test.
+	if !strings.Contains(out, "ServerAlias *.example.test") {
+		t.Errorf("the wildcard is not served at all:\n%s", out)
+	}
+	// And the site's other names are still there.
+	if !strings.Contains(out, "ServerAlias www.example.test") {
+		t.Errorf("an alias was dropped when the names were split:\n%s", out)
+	}
+	// ServerName is no longer the name the visitor asked for, so a redirect
+	// must come from the request instead — or every wildcard site would bounce
+	// its visitors to the parent domain.
+	if !strings.Contains(out, "UseCanonicalName Off") {
+		t.Errorf("self-referential URLs would come from ServerName:\n%s", out)
+	}
+}
+
+// An ordinary site is untouched by the split: its canonical name is still its
+// ServerName, and it gains no alias it did not have.
+func TestRenderLeavesAnOrdinaryNameAlone(t *testing.T) {
+	out, err := Render(validSite())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(out, "ServerName example.test\n") {
+		t.Errorf("the canonical name is not the ServerName:\n%s", out)
+	}
+	if strings.Count(out, "ServerAlias ") != 1 {
+		t.Errorf("expected exactly the one configured alias:\n%s", out)
+	}
+}
+
+// The split is a function, and these are the cases worth pinning about it.
+func TestServerNames(t *testing.T) {
+	cases := []struct {
+		name        string
+		primary     string
+		aliases     []string
+		wantName    string
+		wantAliases []string
+	}{
+		{
+			name:        "an ordinary site is unchanged",
+			primary:     "example.test",
+			aliases:     []string{"www.example.test"},
+			wantName:    "example.test",
+			wantAliases: []string{"www.example.test"},
+		},
+		{
+			name:        "a wildcard becomes its base plus an alias",
+			primary:     "*.example.test",
+			aliases:     []string{"www.example.test"},
+			wantName:    "example.test",
+			wantAliases: []string{"*.example.test", "www.example.test"},
+		},
+		{
+			// The base is the ServerName, so listing it again as an alias
+			// would be Apache being told the same thing twice.
+			name:        "the base is not repeated as an alias",
+			primary:     "*.example.test",
+			aliases:     []string{"example.test", "www.example.test"},
+			wantName:    "example.test",
+			wantAliases: []string{"*.example.test", "www.example.test"},
+		},
+		{
+			name:        "a wildcard with no other names",
+			primary:     "*.example.test",
+			aliases:     nil,
+			wantName:    "example.test",
+			wantAliases: []string{"*.example.test"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotName, gotAliases := serverNames(tc.primary, tc.aliases)
+			if gotName != tc.wantName {
+				t.Errorf("ServerName = %q, want %q", gotName, tc.wantName)
+			}
+			if len(gotAliases) != len(tc.wantAliases) {
+				t.Fatalf("aliases = %v, want %v", gotAliases, tc.wantAliases)
+			}
+			for i, want := range tc.wantAliases {
+				if gotAliases[i] != want {
+					t.Errorf("alias %d = %q, want %q", i, gotAliases[i], want)
+				}
+			}
+		})
 	}
 }
 

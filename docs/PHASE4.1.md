@@ -97,6 +97,13 @@ The asterisk never reaches the filesystem. Its directory is
 walks those directories — a backup, an archive, an rsync, a shell loop over
 `*.conf`.
 
+The heading is true of nginx and not of Apache, which matters once the Phase
+4.5 hybrid arrangement is on. Apache's `ServerName` is also the name the server
+calls itself, so it refuses a wildcard there and wants a `ServerAlias` instead;
+the Apache side is written with the base name as its `ServerName` and the
+wildcard as an alias. See [docs/PHASE4.5.md](PHASE4.5.md) §3, which is also
+where the reason that took a while to find is recorded.
+
 Only the leading form is written. nginx also accepts `www.*` and
 `.example.com`; each additional shape is another thing that has to agree with
 the certificate, the DNS record, and the panel's idea of which site answers a

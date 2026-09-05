@@ -176,6 +176,29 @@ describe('UI consistency', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('never names a development phase in text a user will read', () => {
+    // "Added in Phase 14" is meaningless to anybody outside this repository,
+    // and it rots: every one of these named a release that had already
+    // happened, so the panel was telling people to wait for features sitting
+    // in the menu beside them. Phase numbers belong in TASKS.md and in code
+    // comments, not on screen.
+    const offenders: string[] = [];
+    const phrase = /Phase\s+\d/;
+
+    for (const file of files) {
+      const source = code(readFileSync(file, 'utf8'));
+      for (const line of source.split(String.fromCharCode(10))) {
+        // Only string and JSX content. A `phase` prop or a variable named for
+        // one is not text anybody reads.
+        if (!phrase.test(line)) continue;
+        if (!/['"`>]/.test(line)) continue;
+        offenders.push(`${name(file)}: ${line.trim().slice(0, 90)}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
   it('keeps one implementation of tabbed sections', () => {
     // Three of these existed: underline tabs on the databases page, slightly
     // different underline tabs on the website panel, and pills on the tenancy

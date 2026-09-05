@@ -89,7 +89,7 @@ const navGroups: NavGroup[] = [
       { label: 'SSH', to: '/ssh', icon: KeyRound, enabled: true },
       { label: 'Intrusion prevention', to: '/fail2ban', icon: ShieldBan, enabled: true },
       { label: 'System updates', to: '/updates', icon: PackageSearch, enabled: true },
-      { label: 'Server', to: '/server', icon: Server, enabled: false },
+      { label: 'Server', to: '/server', icon: Server, enabled: true },
       { label: 'Monitoring', to: '/monitoring', icon: Activity, enabled: true },
       { label: 'Security Center', to: '/security-center', icon: ShieldCheck, enabled: true },
       { label: 'Notifications', to: '/notifications', icon: BellRing, enabled: true },

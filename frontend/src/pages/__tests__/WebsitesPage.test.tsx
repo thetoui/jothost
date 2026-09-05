@@ -307,16 +307,28 @@ describe('WebsitesPage domain panel', () => {
   });
 
   // A tool this build does not have is shown inert with the reason. Hiding it
-  // makes the panel look complete and leaves someone hunting.
-  it('marks tools that are not built yet', async () => {
+  // makes the panel look complete and leaves someone hunting. But the reason
+  // has to be true: these tiles named release numbers for features that had
+  // shipped, so the panel was telling people to wait for something already
+  // sitting in the menu beside them.
+  it('marks tools that are not built yet, and links the ones that are', async () => {
     const user = userEvent.setup();
     listing();
 
     renderWithProviders(<WebsitesPage />);
     await user.click(await screen.findByRole('button', { name: 'example.test' }));
 
-    expect(await screen.findByText('Added in Phase 14')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Backup & restore/ })).not.toBeInTheDocument();
+    // Backups shipped, so it is a link — in the panel's tool grid and in the
+    // server rail beside it, which is why there are two.
+    const backups = await screen.findAllByRole('link', { name: /Backup & restore/ });
+    expect(backups).toHaveLength(2);
+    for (const link of backups) {
+      expect(link).toHaveAttribute('href', '/backups');
+    }
+    // What is genuinely absent says so without naming a release.
+    expect(
+      screen.getByText('This panel does not manage these yet'),
+    ).toBeInTheDocument();
     // Databases stopped being a future phase in Phase 8, so it is now a real
     // link rather than a greyed placeholder — in the panel's tool grid and in
     // the server rail beside it.

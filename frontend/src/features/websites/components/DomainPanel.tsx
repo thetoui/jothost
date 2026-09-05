@@ -86,17 +86,23 @@ export function DomainPanel({ site }: DomainPanelProps) {
                 <ToolTile
                   icon={<Plug className="h-4 w-4" />}
                   label="Connection info"
-                  unavailable="Needs FTP, added later"
+                  detail="FTP and paths for this site"
+                  tone="slate"
+                  to={detail}
                 />
                 <ToolTile
                   icon={<Package className="h-4 w-4" />}
                   label="Backup & restore"
-                  unavailable="Added in Phase 14"
+                  detail="Take and restore backups"
+                  tone="amber"
+                  to="/backups"
                 />
                 <ToolTile
                   icon={<Terminal className="h-4 w-4" />}
                   label="FTP"
-                  unavailable="Not part of this build"
+                  detail="Accounts for this site"
+                  tone="blue"
+                  to={detail}
                 />
               </ToolGroup>
 
@@ -118,17 +124,23 @@ export function DomainPanel({ site }: DomainPanelProps) {
                 <ToolTile
                   icon={<Clock className="h-4 w-4" />}
                   label="Scheduled tasks"
-                  unavailable="Added in Phase 10"
+                  detail="Cron jobs on this host"
+                  tone="slate"
+                  to="/cron"
                 />
                 <ToolTile
                   icon={<Activity className="h-4 w-4" />}
                   label="Monitoring"
-                  unavailable="Added in Phase 19"
+                  detail="Alert rules and history"
+                  tone="rose"
+                  to="/monitoring"
                 />
                 <ToolTile
                   icon={<GitBranch className="h-4 w-4" />}
                   label="Git"
-                  unavailable="Not part of this build"
+                  detail="Deploy from a repository"
+                  tone="violet"
+                  to="/deployments"
                 />
                 <ToolTile
                   icon={<Globe className="h-4 w-4" />}
@@ -150,12 +162,12 @@ export function DomainPanel({ site }: DomainPanelProps) {
                 <ToolTile
                   icon={<KeyRound className="h-4 w-4" />}
                   label="Password-protected directories"
-                  unavailable="Not part of this build"
+                  unavailable="This panel does not manage these yet"
                 />
                 <ToolTile
                   icon={<ShieldCheck className="h-4 w-4" />}
                   label="Web application firewall"
-                  unavailable="Added in Phase 16"
+                  unavailable="Not available — the host firewall is under Firewall"
                 />
               </ToolGroup>
             </div>
@@ -259,7 +271,8 @@ function HostingFacts({ site }: { site: Website }) {
 
       <p className="flex items-center gap-1.5 rounded-md bg-surface-sunken px-3 py-2 text-xs text-slate-500">
         <FileText aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-        DNS records are managed outside the panel in this build. Phase 13 adds them.
+        DNS records for this site are managed from its settings page, and the host's zones
+        under DNS.
       </p>
     </div>
   );

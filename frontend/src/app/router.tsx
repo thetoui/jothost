@@ -18,6 +18,7 @@ import { BackupsPage } from '@/pages/BackupsPage';
 import { DeploymentsPage } from '@/pages/DeploymentsPage';
 import { MailPage } from '@/pages/MailPage';
 import { AuditPage } from '@/pages/AuditPage';
+import { ServerPage } from '@/pages/ServerPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { SecurityCenterPage } from '@/pages/SecurityCenterPage';
 import { MonitoringPage } from '@/pages/MonitoringPage';
@@ -108,6 +109,7 @@ export const router = createBrowserRouter(
             { path: 'mail', element: <MailPage /> },
             { path: 'notifications', element: <NotificationsPage /> },
             { path: 'audit', element: <AuditPage /> },
+            { path: 'server', element: <ServerPage /> },
             { path: 'firewall', element: <FirewallPage /> },
             { path: 'databases', element: <DatabasesPage /> },
             { path: 'node', element: <NodePage /> },

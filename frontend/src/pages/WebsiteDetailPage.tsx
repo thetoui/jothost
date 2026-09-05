@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -19,6 +19,7 @@ import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState, ProgressBar, Skeleton, SkeletonRows } from '@/components/ui/Loading';
 import { TextField, Toggle } from '@/components/ui/Field';
+import { TextButton } from '@/components/ui/TextButton';
 import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
@@ -26,6 +27,7 @@ import { WebsitePHPPanel } from '@/features/php/components/WebsitePHPPanel';
 import { WebsiteDNSPanel } from '@/features/dns/components/WebsiteDNSPanel';
 import { WebsiteFTPPanel } from '@/features/ftp/components/WebsiteFTPPanel';
 import { WebsiteSSLPanel } from '@/features/ssl/components/WebsiteSSLPanel';
+import { activityPreviewCount, groupActivity } from '@/features/websites/activity';
 import { SubdomainPanel } from '@/features/websites/components/SubdomainPanel';
 import { HtaccessPanel } from '@/features/websites/components/HtaccessPanel';
 import {
@@ -310,12 +312,35 @@ function Detail({ label, value, mono, icon }: DetailProps) {
   );
 }
 
-/** ActivityCard lists the work run against this site, newest first. */
+/**
+ * ActivityCard lists the work run against this site, newest first.
+ *
+ * Runs of identical entries are collapsed and the list is capped, because an
+ * unfolded history is mostly the same line repeated: a site whose settings
+ * have been edited a dozen times showed a dozen "Update configuration — Done"
+ * rows, and pushed everything that differed off the bottom of the card. A
+ * history is read to find the entry that is *not* like the others.
+ */
 function ActivityCard({ jobs }: { jobs: Job[] }) {
+  const [showAll, setShowAll] = useState(false);
+
+  const groups = useMemo(() => groupActivity(jobs), [jobs]);
+  const visible = showAll ? groups : groups.slice(0, activityPreviewCount);
+  const hidden = groups.length - visible.length;
+
   return (
     <Card className="h-fit">
       <CardHeader
         title="Activity"
+        description={
+          jobs.length === 0
+            ? undefined
+            : groups.length === jobs.length
+              ? `${jobs.length} ${jobs.length === 1 ? 'entry' : 'entries'}`
+              : // Both numbers, because the collapsed one is the one a reader
+                // would otherwise think was the whole history.
+                `${groups.length} of ${jobs.length} entries, repeats grouped`
+        }
         icon={<TintedIcon icon={<History className="h-4 w-4" />} />}
       />
 
@@ -326,38 +351,66 @@ function ActivityCard({ jobs }: { jobs: Job[] }) {
           description="Changes to this site will appear here."
         />
       ) : (
-        <ul className="divide-y divide-surface-border">
-          {jobs.map((job) => {
-            const pill = jobStatusPill(job.status);
-            const running = isJobRunning(job);
+        <>
+          <ul className="divide-y divide-surface-border">
+            {visible.map((group) => {
+              const { job, repeats } = group;
+              const pill = jobStatusPill(job.status);
+              const running = isJobRunning(job);
 
-            return (
-              <li key={job.id} className="px-5 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-slate-900">{jobLabel(job.type)}</span>
-                  <StatusPill label={pill.label} tone={pill.tone} dot pulse={running} />
-                </div>
+              return (
+                <li key={job.id} className="px-5 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                      {jobLabel(job.type)}
+                      {repeats > 1 && (
+                        <span
+                          className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-xs font-medium text-slate-500"
+                          title={`${repeats} identical entries, most recently ${new Date(job.created_at).toLocaleString()}`}
+                        >
+                          ×{repeats}
+                        </span>
+                      )}
+                    </span>
+                    <StatusPill label={pill.label} tone={pill.tone} dot pulse={running} />
+                  </div>
 
-                {running && (
-                  <ProgressBar
-                    // Progress is only meaningful once the host has reported
-                    // some; before that an indeterminate bar is the honest
-                    // shape, rather than a bar pinned at zero.
-                    {...(job.progress > 0 ? { value: job.progress } : {})}
-                    label={`${jobLabel(job.type)} progress`}
-                    className="mt-2"
-                  />
-                )}
+                  {running && (
+                    <ProgressBar
+                      // Progress is only meaningful once the host has reported
+                      // some; before that an indeterminate bar is the honest
+                      // shape, rather than a bar pinned at zero.
+                      {...(job.progress > 0 ? { value: job.progress } : {})}
+                      label={`${jobLabel(job.type)} progress`}
+                      className="mt-2"
+                    />
+                  )}
 
-                {job.message && <p className="mt-1.5 text-xs text-slate-500">{job.message}</p>}
-                {job.error && <p className="mt-1.5 text-xs text-danger-600">{job.error}</p>}
-                <p className="mt-1 text-xs text-slate-400">
-                  {new Date(job.created_at).toLocaleString()}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+                  {job.message && <p className="mt-1.5 text-xs text-slate-500">{job.message}</p>}
+                  {job.error && <p className="mt-1.5 text-xs text-danger-600">{job.error}</p>}
+                  <p className="mt-1 text-xs text-slate-400">
+                    {new Date(job.created_at).toLocaleString()}
+                    {repeats > 1 && (
+                      <>
+                        {' '}
+                        <span className="text-slate-300">·</span> earliest{' '}
+                        {new Date(group.oldest.created_at).toLocaleString()}
+                      </>
+                    )}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+
+          {(hidden > 0 || showAll) && (
+            <div className="border-t border-surface-border px-5 py-2.5">
+              <TextButton size="xs" onClick={() => setShowAll(!showAll)}>
+                {showAll ? 'Show recent only' : `Show ${hidden} older ${hidden === 1 ? 'entry' : 'entries'}`}
+              </TextButton>
+            </div>
+          )}
+        </>
       )}
     </Card>
   );

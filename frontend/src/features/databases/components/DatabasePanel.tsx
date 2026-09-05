@@ -64,17 +64,21 @@ export function DatabasePanel({ database }: { database: Database }) {
         <ToolTile
           icon={<Download className="h-4 w-4" />}
           label="Export dump"
-          unavailable="Added in Phase 14"
+          detail="Back up this database"
+          tone="amber"
+          to="/backups"
         />
         <ToolTile
           icon={<Upload className="h-4 w-4" />}
           label="Import dump"
-          unavailable="Added in Phase 14"
+          detail="Restore from a backup"
+          tone="amber"
+          to="/backups"
         />
         <ToolTile
           icon={<CopyPlus className="h-4 w-4" />}
           label="Copy database"
-          unavailable="Not part of this build"
+          unavailable="This panel does not copy databases yet"
         />
         <ToolTile
           icon={<Wrench className="h-4 w-4" />}

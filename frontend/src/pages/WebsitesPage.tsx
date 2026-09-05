@@ -21,6 +21,8 @@ import { Modal } from '@/components/ui/Modal';
 import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
+import { useFail2BanStatus } from '@/features/fail2ban/hooks';
+import { useFirewall } from '@/features/firewall/hooks';
 import { CreateWebsiteForm } from '@/features/websites/components/CreateWebsiteForm';
 import { DomainList } from '@/features/websites/components/DomainList';
 import { useWebsites } from '@/features/websites/hooks';
@@ -174,6 +176,13 @@ function ServerRail({ sites }: { sites: Website[] }) {
   const system = dashboard.data?.system;
   const info = system?.available ? system.data : undefined;
 
+  // What the host's own protections are actually doing, rather than a
+  // hard-coded "off". These used to read Off with a phase number beside them,
+  // for two features that had already shipped — so the panel was reporting a
+  // firewall as absent while the Firewall page configured it.
+  const { data: firewall } = useFirewall();
+  const { data: fail2ban } = useFail2BanStatus();
+
   const withPHP = sites.filter((site) => site.php_version !== null).length;
   const withTLS = sites.filter((site) => site.ssl_enabled).length;
 
@@ -186,8 +195,8 @@ function ServerRail({ sites }: { sites: Website[] }) {
           <RailLink to="/php" icon={<FileCode2 className="h-4 w-4" />} label="PHP" />
           <RailLink to="/ssl" icon={<Lock className="h-4 w-4" />} label="SSL/TLS" />
           <RailLink to="/databases" icon={<Database className="h-4 w-4" />} label="Databases" />
-          <RailDisabled icon={<Clock className="h-4 w-4" />} label="Scheduled tasks" phase="Phase 10" />
-          <RailDisabled icon={<HardDrive className="h-4 w-4" />} label="Backup & restore" phase="Phase 14" />
+          <RailLink to="/cron" icon={<Clock className="h-4 w-4" />} label="Scheduled tasks" />
+          <RailLink to="/backups" icon={<HardDrive className="h-4 w-4" />} label="Backup & restore" />
         </nav>
       </Card>
 
@@ -216,8 +225,22 @@ function ServerRail({ sites }: { sites: Website[] }) {
           <ul className="space-y-1.5 text-xs">
             <SecurityRow label="Per-site system accounts" on />
             <SecurityRow label="HTTPS on every site" on={withTLS === sites.length && sites.length > 0} />
-            <SecurityRow label="Firewall" on={false} note="Phase 16" />
-            <SecurityRow label="Fail2Ban" on={false} note="Phase 18" />
+            <SecurityRow
+              label="Firewall"
+              on={firewall?.enabled ?? false}
+              note={firewall === undefined ? 'Checking' : firewall.available ? 'Off' : 'Not installed'}
+            />
+            <SecurityRow
+              label="Fail2Ban"
+              on={fail2ban?.running ?? false}
+              note={
+                fail2ban === undefined
+                  ? 'Checking'
+                  : fail2ban.available
+                    ? 'Stopped'
+                    : 'Not installed'
+              }
+            />
           </ul>
         </div>
       </Card>
@@ -236,27 +259,6 @@ function RailLink({ to, icon, label }: { to: string; icon: React.ReactNode; labe
       </span>
       {label}
     </Link>
-  );
-}
-
-function RailDisabled({
-  icon,
-  label,
-  phase,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  phase: string;
-}) {
-  return (
-    <span
-      title={`Added in ${phase}`}
-      className="flex cursor-not-allowed items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-400"
-    >
-      <span aria-hidden="true">{icon}</span>
-      {label}
-      <span className="ml-auto text-[11px]">{phase}</span>
-    </span>
   );
 }
 

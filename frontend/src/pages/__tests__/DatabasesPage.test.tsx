@@ -185,10 +185,21 @@ describe('DatabasesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Expand shop' }));
 
     expect(await screen.findByText('Connection info')).toBeInTheDocument();
-    // A tool this build does not have is named with the phase that adds it,
-    // rather than hidden.
-    // Both Export and Import dump name the phase that adds them.
-    expect(screen.getAllByText('Added in Phase 14')).toHaveLength(2);
+    // Export and import are the backup feature, which shipped, so both are
+    // real links now. They used to be greyed with "Added in Phase 14" beside
+    // them — a release number meaningless outside this repository, naming a
+    // release that had already happened.
+    expect(screen.getByRole('link', { name: /Export dump/ })).toHaveAttribute(
+      'href',
+      '/backups',
+    );
+    expect(screen.getByRole('link', { name: /Import dump/ })).toHaveAttribute(
+      'href',
+      '/backups',
+    );
+    // What genuinely is not built says so as a fact about the panel, without
+    // a phase number.
+    expect(screen.getByText('This panel does not copy databases yet')).toBeInTheDocument();
     // The facts strip answers "who can reach this" without opening anything.
     expect(await screen.findByText('shop', { selector: 'dd' })).toBeInTheDocument();
   });

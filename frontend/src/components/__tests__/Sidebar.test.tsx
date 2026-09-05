@@ -38,9 +38,11 @@ describe('Sidebar', () => {
       'href',
       '/security-center',
     );
-    // Future-phase modules are visible but must not be clickable links.
-    expect(screen.queryByRole('link', { name: 'Server' })).not.toBeInTheDocument();
-    expect(screen.getByTitle('Server — not yet implemented')).toBeInTheDocument();
+    // Server was the last entry that went nowhere. It is a real destination
+    // now, so the navigation has no dead links left at all — which is the
+    // property worth asserting, rather than the presence of a particular one.
+    expect(screen.getByRole('link', { name: 'Server' })).toHaveAttribute('href', '/server');
+    expect(document.querySelectorAll('[aria-disabled="true"]')).toHaveLength(0);
   });
 
   it('collapses in response to UI state', () => {

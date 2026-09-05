@@ -2649,3 +2649,33 @@ export interface AuditActionList {
   actions: string[];
   count: number;
 }
+
+// ------------------------------------------------------------------ server
+
+/** One process on the host. */
+export interface HostProcess {
+  pid: number;
+  ppid: number;
+  name: string;
+  /** The single-letter kernel state: R, S, D, Z, T. */
+  state: string;
+  /** The account name, or the numeric uid when it will not resolve. */
+  user: string;
+  uid: number;
+  memory_rss_bytes: number;
+  memory_percent: number;
+  /**
+   * Cumulative CPU time, not a rate. A per-process percentage needs two
+   * samples and a one-shot listing cannot provide one, so this is seconds of
+   * CPU used since the process started rather than how busy it is now.
+   */
+  cpu_time_seconds: number;
+  threads: number;
+  /** The full command line, truncated. Host data: render it as untrusted. */
+  command: string;
+}
+
+export interface ProcessList {
+  processes: HostProcess[];
+  count: number;
+}

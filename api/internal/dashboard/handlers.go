@@ -3,6 +3,7 @@ package dashboard
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,6 +72,44 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/servers", guarded(h.listServers))
 	mux.Handle("GET /api/v1/servers/{id}", guarded(h.getServer))
 	mux.Handle("GET /api/v1/servers/{id}/metrics", guarded(h.serverMetrics))
+	// The host's processes. Same permission as the rest: what is running on a
+	// machine says a great deal about it, and this is the one part of the
+	// PRD's Server module the panel had collected but never shown.
+	mux.Handle("GET /api/v1/server/processes", guarded(h.processes))
+}
+
+func (h *Handler) processes(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := contextWithTimeout(r, snapshotTimeout)
+	defer cancel()
+
+	query := r.URL.Query()
+
+	limit := 0
+	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			httpx.Error(w, r, httpx.BadRequest("limit must be a positive integer"))
+			return
+		}
+		limit = parsed
+	}
+
+	sortBy := strings.ToLower(strings.TrimSpace(query.Get("sort")))
+	// Refused rather than quietly corrected: a caller asking for an ordering
+	// this host does not have should be told, not handed a different one and
+	// left to believe it was honoured.
+	if sortBy != "" && !ValidProcessSort(sortBy) {
+		httpx.Error(w, r, httpx.BadRequest("sort must be memory or cpu"))
+		return
+	}
+
+	result, err := h.service.Processes(ctx, httpx.RequestIDFromContext(r.Context()), limit, sortBy)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	httpx.OK(w, r, result)
 }
 
 func (h *Handler) dashboard(w http.ResponseWriter, r *http.Request) {

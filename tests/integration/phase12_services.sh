@@ -327,6 +327,63 @@ dashboard="$(api GET /api/v1/dashboard)"
 contains 'the dashboard reports services' "$dashboard" '"services":'
 contains 'and names nginx among them' "$dashboard" 'nginx'
 
+# --- 6. surviving a reboot ------------------------------------------------
+
+log ''
+log '6. What comes back after a reboot'
+
+# The panel started daemons on demand for several phases and never made any of
+# them persistent: only Node.js applications called Enable. A host would serve
+# perfectly until it was restarted, then come up with nothing running and the
+# panel reporting it healthy until somebody looked.
+#
+# Note the order. Section 4 above deliberately disables and re-enables units to
+# test the controls, so this cannot assume it starts from a tidy host — which is
+# the point of a sweep. It repairs first, then proves the repair settles.
+boot="$(jothost-agent -call service.boot-audit -payload '{}' 2>/dev/null || true)"
+
+case "$boot" in
+  *'"findings"'*) pass 'the Agent can report what would survive a reboot' ;;
+  *) fail "the boot audit did not answer: $(printf '%s' "$boot" | head -c 200)" ;;
+esac
+
+# A finding must always say what it concluded, whichever way it went: an entry
+# with no at_risk field is one this suite cannot read and must not pass.
+case "$boot" in
+  *'"at_risk"'*) pass 'and says of each one whether it would come back' ;;
+  *) fail 'the audit reported findings with no conclusion in them' ;;
+esac
+
+# First sweep: put right whatever is wrong, including what section 4 left.
+first="$(jothost-agent -call service.boot-persist -payload '{}' 2>/dev/null || true)"
+case "$first" in
+  *'"enabled"'*) pass 'the sweep runs and reports what it changed' ;;
+  *) fail "the sweep did not answer: $(printf '%s' "$first" | head -c 200)" ;;
+esac
+
+# Second sweep: nothing left to do. This is the property that makes it safe to
+# run at every Agent start — one that did work on a correct host would rewrite
+# the init configuration on every restart.
+again="$(jothost-agent -call service.boot-persist -payload '{}' 2>/dev/null || true)"
+case "$again" in
+  *'"enabled": []'*|*'"enabled":[]'*) pass 'and running it again changes nothing' ;;
+  *) fail "the sweep was not idempotent: $(printf '%s' "$again" | head -c 250)" ;;
+esac
+
+# And after it, nothing running is left at risk — unless this host has no init
+# system at all, which is the one honest exception and says so.
+after="$(jothost-agent -call service.boot-audit -payload '{}' 2>/dev/null || true)"
+at_risk=$(printf '%s' "$after" | grep -c '"at_risk": true' || true)
+unmanaged=$(printf '%s' "$after" | sed -n 's/.*"unmanaged": \([0-9]*\).*/\1/p' | head -n 1)
+
+if [ "${at_risk:-0}" = "0" ]; then
+  pass 'every running service would come back after a reboot'
+elif [ "${unmanaged:-0}" != "0" ]; then
+  pass 'this host has no init system, and says so rather than claiming health'
+else
+  fail "$at_risk running service(s) would not start after a reboot"
+fi
+
 # --- summary --------------------------------------------------------------
 
 log ''

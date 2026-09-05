@@ -150,3 +150,22 @@ func (r *Registry) phpFPMDefinitions(ctx context.Context) []services.Definition 
 	}
 	return services.PHPFPMDefinitions(names)
 }
+
+// handleServiceBootAudit reports which running services would not come back.
+func (r *Registry) handleServiceBootAudit(ctx context.Context, _ protocol.Request,
+	_ *jobs.Reporter) (map[string]any, error) {
+	report := r.deps.Services.BootAudit(ctx, r.phpFPMDefinitions(ctx), r.deps.Collector)
+	return structToMap(report)
+}
+
+// handleServiceBootPersist enables every running service that would not.
+//
+// Separate from the audit, and a write rather than a read, because it changes
+// what the machine does at boot. The panel shows the audit and offers this;
+// the Agent also runs it at startup, so a host that was already wrong is put
+// right by a restart rather than waiting for somebody to notice.
+func (r *Registry) handleServiceBootPersist(ctx context.Context, _ protocol.Request,
+	_ *jobs.Reporter) (map[string]any, error) {
+	report := r.deps.Services.EnsureBootPersistence(ctx, r.phpFPMDefinitions(ctx), r.deps.Collector)
+	return structToMap(report)
+}

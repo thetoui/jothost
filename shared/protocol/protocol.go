@@ -30,6 +30,9 @@ const (
 	OperationMetricsNetwork OperationType = "metrics.network"
 	OperationMetricsLoad    OperationType = "metrics.load"
 	OperationProcessList    OperationType = "process.list"
+	// Boot persistence: what would not survive a reboot, and making it.
+	OperationServiceBootAudit   OperationType = "service.boot-audit"
+	OperationServiceBootPersist OperationType = "service.boot-persist"
 	// service.detect reports what this host actually has, and service.action
 	// starts, stops, restarts, enables or disables one of them. The action
 	// names a catalogue key rather than a unit: see operations/services_manage.go.
@@ -265,6 +268,8 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationMetricsNetwork:        {},
 	OperationMetricsLoad:           {},
 	OperationProcessList:           {},
+	OperationServiceBootAudit:      {},
+	OperationServiceBootPersist:    {},
 	OperationServiceDetect:         {},
 	OperationServiceAction:         {},
 	OperationServiceList:           {},

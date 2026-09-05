@@ -186,3 +186,38 @@ services carry an `Essential` flag and only those raise one.
   controls, naming their owner: offering to stop them from here would give one
   process two owners, and the panel would show a state matching neither.
   Routing those lifecycles through this package is the eventual fix.
+
+
+---
+
+## Surviving a reboot
+
+Everything running now should be running after a restart. That was not true
+for most of this panel's life: only Node.js applications ever called `Enable`,
+so every daemon installed on demand — Apache for the hybrid arrangement, BIND,
+the mail server, fail2ban, the FTP server, each PHP-FPM version — was started
+and never made persistent. The host served perfectly until it was rebooted,
+came back with nothing running, and the panel reported it healthy until
+somebody looked.
+
+`BootAudit` reports which running services would not come back;
+`EnsureBootPersistence` enables them. The Agent runs the sweep at every start,
+so a host that is already wrong is put right by restarting the Agent rather
+than waiting for the reboot that would expose it.
+
+Three rules make it safe:
+
+- **Running, not installed.** Apache is *meant* to be stopped on a host serving
+  everything from nginx, and PHP-FPM 8.2 on a host running only 8.4. Enabling
+  everything installed would start daemons at boot that somebody deliberately
+  turned off.
+- **Unknown is not "no".** A unit whose init system will not say whether it
+  starts at boot — a systemd `static` unit, for instance — is reported and left
+  alone. Acting on it would enable units on a guess.
+- **A host with no init system is reported once.** Every running daemon there
+  is at risk for the same single reason, and repeating it per service buries
+  the one fact that matters.
+
+`make docker-test-services` covers it, and the sweep is asserted to be
+idempotent — it runs at every Agent start, so one that did work on a correct
+host would rewrite the init configuration on every restart.

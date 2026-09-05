@@ -496,6 +496,15 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	auditSiteOwnership(provisioner, log)
 
 	phpDetector := php.NewDetector(php.DetectorOptions{Runner: runner})
+
+	// Everything running now should be running after a reboot. Only Node.js
+	// applications ever enabled themselves, so every daemon the panel installs
+	// on demand — Apache for the hybrid arrangement, BIND, the mail server,
+	// fail2ban, the FTP server, each PHP-FPM version — was started and left to
+	// disappear at the next restart. Doing this at startup means a host that is
+	// already wrong is put right by restarting the Agent, rather than staying
+	// wrong until somebody reboots and finds out.
+	persistServiceBoot(serviceProvider, collector, phpDetector, log)
 	phpPools := php.NewProvider(php.ProviderOptions{Detector: phpDetector})
 	phpInstaller := php.NewInstaller(runner)
 
@@ -992,4 +1001,52 @@ func repairSiteOwnership(cfg config.Config) int {
 	log.Info("site directory ownership repaired",
 		"reassigned", len(repaired), "needing_review", len(findings)-len(repaired))
 	return 0
+}
+
+// persistServiceBoot makes sure what is running now comes back after a reboot.
+//
+// Reported at every start, whether or not anything needed changing: an
+// operator who has just restarted the Agent to fix this should see that it
+// found nothing to fix, rather than silence they cannot tell apart from the
+// sweep never having run.
+func persistServiceBoot(provider *services.Provider, collector *collectors.Collector,
+	detector *php.Detector, log *slog.Logger) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// PHP-FPM units are per-version and are not in the static catalogue, so
+	// they have to be described before they can be swept — which is the whole
+	// point: a host running three PHP versions has three units to persist.
+	var extra []services.Definition
+	if detector != nil && detector.Available() {
+		versions := detector.Detect(ctx)
+		names := make([]string, 0, len(versions))
+		for _, version := range versions {
+			names = append(names, version.Version)
+		}
+		extra = services.PHPFPMDefinitions(names)
+	}
+
+	report := provider.EnsureBootPersistence(ctx, extra, collector)
+
+	if len(report.Enabled) > 0 {
+		log.Info("services were not set to start at boot and now are",
+			"services", report.Enabled)
+	}
+	for key, reason := range report.Failed {
+		log.Warn("a running service could not be made to start at boot",
+			"service", key, logger.KeyError, reason)
+	}
+	if report.Unmanaged > 0 {
+		// One line for the host, not one per service: on a machine with no
+		// init system every running daemon is in this state, and it is a fact
+		// about the machine rather than about any of them.
+		log.Warn("services are running that nothing will start at boot",
+			"count", report.Unmanaged,
+			"detail", "this host has no init system, so a reboot leaves it serving nothing")
+	}
+	if len(report.Enabled) == 0 && len(report.Failed) == 0 && report.Unmanaged == 0 {
+		log.Info("every running service is set to start at boot",
+			"checked", len(report.Findings))
+	}
 }

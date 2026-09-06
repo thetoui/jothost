@@ -25,9 +25,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -41,25 +44,6 @@ var (
 
 // DaemonName is what the service layer knows Grafana by.
 const DaemonName = "grafana"
-
-// Fixed locations the panel owns.
-//
-// Everything the panel writes goes in the provisioning directories, which
-// Grafana reads at startup and never writes back to. Editing a provisioned
-// dashboard in the Grafana UI is refused by Grafana itself, which is what keeps
-// the panel's copy and the running copy from drifting apart.
-const (
-	ConfigDir       = "/etc/grafana"
-	ProvisioningDir = "/etc/grafana/provisioning"
-	// DatasourceFile and DashboardFile are marked as the panel's in their own
-	// contents, so an operator reading them knows what rewrites them.
-	DatasourceFile = "provisioning/datasources/jothost.yaml"
-	DashboardFile  = "provisioning/dashboards/jothost.yaml"
-	DashboardJSON  = "dashboards/jothost-host.json"
-	// OverrideFile carries the settings the panel needs and nothing else, so
-	// grafana.ini stays the operator's.
-	OverrideFile = "conf/jothost.ini"
-)
 
 // DefaultPort is where Grafana listens. Loopback only: it is reached through
 // the vhost the panel writes, not directly.
@@ -121,17 +105,23 @@ func NewManager(opts Options) *Manager {
 	if log == nil {
 		log = slog.Default()
 	}
-	dir := opts.ConfigDir
-	if dir == "" {
-		dir = ConfigDir
-	}
+	// Empty means "discover it". Only a test sets this, and it sets it to a
+	// temporary directory: assuming a path on a real host is exactly the
+	// mistake paths.go exists to record.
 	return &Manager{
 		installer: opts.Installer,
 		services:  opts.Services,
 		log:       log,
-		configDir: dir,
+		configDir: opts.ConfigDir,
 	}
 }
+
+// SetServices supplies the daemon controller after construction.
+//
+// The same shape the mail provider uses, and for the same reason: resolving a
+// catalogue key to a unit belongs to the operations registry, which does not
+// exist yet when this manager is built.
+func (m *Manager) SetServices(s Services) { m.services = s }
 
 // binaries are where the distributions put the server.
 var binaries = []string{
@@ -178,14 +168,28 @@ func (m *Manager) Status(ctx context.Context) Status {
 	return status
 }
 
-// provisioned reports whether the panel's own files are in place.
+// provisioned reports whether the panel's own files are in place, where this
+// host's Grafana would look for them.
 func (m *Manager) provisioned() bool {
-	for _, name := range []string{DatasourceFile, DashboardFile, DashboardJSON} {
-		if _, err := os.Stat(filepath.Join(m.configDir, name)); err != nil {
+	layout, err := m.layout()
+	if err != nil {
+		return false
+	}
+	for _, path := range []string{
+		filepath.Join(layout.ProvisioningDir, "datasources", "jothost.yaml"),
+		filepath.Join(layout.ProvisioningDir, "dashboards", "jothost.yaml"),
+		filepath.Join(layout.DashboardDir, "jothost-host.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
 			return false
 		}
 	}
-	return true
+	// The settings block has to be in the file Grafana reads, not beside it.
+	content, err := os.ReadFile(layout.ConfigFile)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(content), blockStart)
 }
 
 // Provision writes the datasource, the dashboard and the embedding settings.
@@ -193,6 +197,10 @@ func (m *Manager) provisioned() bool {
 // It is idempotent and rewrites all three every time: they are the panel's
 // files, they carry a header saying so, and reconciling them on every run is
 // what keeps a hand-edited copy from surviving unnoticed.
+//
+// Everything is written where this host's Grafana actually reads from, which is
+// discovered rather than assumed — see paths.go for what that cost the first
+// time round.
 func (m *Manager) Provision(ctx context.Context, cfg DatasourceConfig, report func(int, string)) error {
 	progress := func(percent int, message string) {
 		if report != nil {
@@ -204,29 +212,53 @@ func (m *Manager) Provision(ctx context.Context, cfg DatasourceConfig, report fu
 		return err
 	}
 
+	layout, err := m.layout()
+	if err != nil {
+		return err
+	}
+
+	progress(30, "Writing Grafana's datasource and dashboard")
+
 	files := []struct {
-		name    string
+		path    string
 		content []byte
 		mode    os.FileMode
 	}{
 		// The datasource holds a database password, so it is the one file here
 		// that is not world-readable. Grafana runs as its own account and
 		// reads it as that account.
-		{DatasourceFile, renderDatasource(cfg), 0o640},
-		{DashboardFile, renderDashboardProvider(), 0o644},
-		{DashboardJSON, renderDashboard(), 0o644},
-		{OverrideFile, renderOverride(cfg.RootURL), 0o644},
+		{filepath.Join(layout.ProvisioningDir, "datasources", "jothost.yaml"),
+			renderDatasource(cfg), 0o640},
+		{filepath.Join(layout.ProvisioningDir, "dashboards", "jothost.yaml"),
+			renderDashboardProvider(layout.DashboardDir), 0o644},
+		{filepath.Join(layout.DashboardDir, "jothost-host.json"),
+			renderDashboard(), 0o644},
 	}
 
-	progress(40, "Writing Grafana's configuration")
 	for _, file := range files {
-		path := filepath.Join(m.configDir, file.name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
+		if err := os.MkdirAll(filepath.Dir(file.path), 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", filepath.Dir(file.path), err)
 		}
-		if err := os.WriteFile(path, file.content, file.mode); err != nil {
-			return fmt.Errorf("write %s: %w", path, err)
+		if err := os.WriteFile(file.path, file.content, file.mode); err != nil {
+			return fmt.Errorf("write %s: %w", file.path, err)
 		}
+	}
+
+	// Grafana reads its provisioning as its own account, and the panel writes
+	// as root. A datasource it cannot open is a datasource it does not have.
+	if err := m.ownProvisioning(ctx, layout); err != nil {
+		m.log.Warn("Grafana's provisioning files could not be given to its account",
+			"error", err.Error())
+	}
+
+	progress(55, "Applying Grafana's settings")
+	existing, err := os.ReadFile(layout.ConfigFile)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", layout.ConfigFile, err)
+	}
+	merged := mergeSettings(existing, renderSettings(cfg.RootURL))
+	if err := os.WriteFile(layout.ConfigFile, merged, 0o640); err != nil {
+		return fmt.Errorf("write %s: %w", layout.ConfigFile, err)
 	}
 
 	if m.services == nil {
@@ -247,6 +279,48 @@ func (m *Manager) Provision(ctx context.Context, cfg DatasourceConfig, report fu
 			"error", err.Error())
 	}
 	return nil
+}
+
+// layout returns the discovered paths, or the override a test supplied.
+func (m *Manager) layout() (Layout, error) {
+	if m.configDir != "" {
+		// A test points everything at one temporary directory. The shape is
+		// the same; only the discovery is skipped.
+		return Layout{
+			ConfigFile:      filepath.Join(m.configDir, "grafana.ini"),
+			ProvisioningDir: filepath.Join(m.configDir, "provisioning"),
+			DashboardDir:    filepath.Join(m.configDir, "provisioning", "jothost-dashboards"),
+			Source:          "an explicit configuration directory",
+		}, nil
+	}
+	return DiscoverLayout()
+}
+
+// ownProvisioning hands the files to the account Grafana runs as.
+func (m *Manager) ownProvisioning(ctx context.Context, layout Layout) error {
+	account, err := user.Lookup("grafana")
+	if err != nil {
+		// No such account is not a failure on a host where Grafana runs as
+		// something else; the files stay root-owned and world-readable where
+		// they are meant to be.
+		return nil
+	}
+	uid, err := strconv.Atoi(account.Uid)
+	if err != nil {
+		return err
+	}
+	gid, err := strconv.Atoi(account.Gid)
+	if err != nil {
+		return err
+	}
+
+	return filepath.WalkDir(layout.ProvisioningDir, func(path string, _ fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		// Lchown, following no link: this walks a directory tree as root.
+		return os.Lchown(path, uid, gid)
+	})
 }
 
 // Install puts Grafana on the host.

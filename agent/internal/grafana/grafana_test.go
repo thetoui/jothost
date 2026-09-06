@@ -35,6 +35,13 @@ func testConfig() DatasourceConfig {
 func provisionInto(t *testing.T, services Services) (string, error) {
 	t.Helper()
 	dir := t.TempDir()
+	// Grafana takes one config file and reads no other, so the panel's
+	// settings are merged into it rather than written beside it. The file has
+	// to exist for that, exactly as it does on a host with Grafana installed.
+	if err := os.WriteFile(filepath.Join(dir, "grafana.ini"),
+		[]byte("[server]\n; the operator's own settings\nrouter_logging = true\n"), 0o644); err != nil {
+		t.Fatalf("seed grafana.ini: %v", err)
+	}
 	manager := NewManager(Options{ConfigDir: dir, Services: services})
 	return dir, manager.Provision(context.Background(), testConfig(), nil)
 }
@@ -47,6 +54,14 @@ func read(t *testing.T, dir, name string) string {
 	}
 	return string(data)
 }
+
+// Where the files land under a test's temporary directory. The real paths come
+// from DiscoverLayout; these mirror the shape.
+const (
+	testConfigFile = "grafana.ini"
+	testDatasource = "provisioning/datasources/jothost.yaml"
+	testDashboards = "provisioning/dashboards/jothost.yaml"
+)
 
 // TestAnonymousAccessIsOff is the security property this whole arrangement
 // rests on.
@@ -61,8 +76,8 @@ func TestAnonymousAccessIsOff(t *testing.T) {
 		t.Fatalf("Provision: %v", err)
 	}
 
-	override := read(t, dir, OverrideFile)
-	section := override[strings.Index(override, "[auth.anonymous]"):]
+	config := read(t, dir, testConfigFile)
+	section := config[strings.Index(config, "[auth.anonymous]"):]
 	if !strings.Contains(section, "enabled = false") {
 		t.Fatalf("anonymous access must be off:\n%s", section)
 	}
@@ -79,9 +94,9 @@ func TestGrafanaListensOnLoopbackOnly(t *testing.T) {
 		t.Fatalf("Provision: %v", err)
 	}
 
-	override := read(t, dir, OverrideFile)
-	if !strings.Contains(override, "http_addr = 127.0.0.1") {
-		t.Fatalf("Grafana must listen on loopback only:\n%s", override)
+	config := read(t, dir, testConfigFile)
+	if !strings.Contains(config, "http_addr = 127.0.0.1") {
+		t.Fatalf("Grafana must listen on loopback only:\n%s", config)
 	}
 }
 
@@ -92,7 +107,7 @@ func TestEmbeddingIsEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Provision: %v", err)
 	}
-	if !strings.Contains(read(t, dir, OverrideFile), "allow_embedding = true") {
+	if !strings.Contains(read(t, dir, testConfigFile), "allow_embedding = true") {
 		t.Fatal("embedding is not enabled, so no panel would render")
 	}
 }
@@ -107,7 +122,7 @@ func TestTheDatasourcePasswordIsNotWorldReadable(t *testing.T) {
 		t.Fatalf("Provision: %v", err)
 	}
 
-	info, err := os.Stat(filepath.Join(dir, DatasourceFile))
+	info, err := os.Stat(filepath.Join(dir, testDatasource))
 	if err != nil {
 		t.Fatalf("stat datasource: %v", err)
 	}
@@ -153,10 +168,10 @@ func TestProvisionedFilesAreNotEditableInGrafana(t *testing.T) {
 		t.Fatalf("Provision: %v", err)
 	}
 
-	if !strings.Contains(read(t, dir, DatasourceFile), "editable: false") {
+	if !strings.Contains(read(t, dir, testDatasource), "editable: false") {
 		t.Error("the datasource can be edited in Grafana and would then differ from this file")
 	}
-	if !strings.Contains(read(t, dir, DashboardFile), "allowUiUpdates: false") {
+	if !strings.Contains(read(t, dir, testDashboards), "allowUiUpdates: false") {
 		t.Error("the dashboard can be edited in Grafana and would then differ from this file")
 	}
 }
@@ -184,18 +199,17 @@ func TestProvisionRestartsAndPersistsGrafana(t *testing.T) {
 // TestProvisionIsIdempotent. It runs on every install and every settings
 // change, so a second run must produce the same files rather than appending.
 func TestProvisionIsIdempotent(t *testing.T) {
-	dir := t.TempDir()
-	manager := NewManager(Options{ConfigDir: dir, Services: &stubServices{}})
-
-	if err := manager.Provision(context.Background(), testConfig(), nil); err != nil {
+	dir, err := provisionInto(t, &stubServices{})
+	if err != nil {
 		t.Fatalf("first provision: %v", err)
 	}
-	first := read(t, dir, OverrideFile)
+	first := read(t, dir, testConfigFile)
+	manager := NewManager(Options{ConfigDir: dir, Services: &stubServices{}})
 
 	if err := manager.Provision(context.Background(), testConfig(), nil); err != nil {
 		t.Fatalf("second provision: %v", err)
 	}
-	if second := read(t, dir, OverrideFile); second != first {
+	if second := read(t, dir, testConfigFile); second != first {
 		t.Fatalf("a second provision changed the file:\n%s", second)
 	}
 }
@@ -224,5 +238,77 @@ func TestTheDatasourceNeedsSomewhereToConnect(t *testing.T) {
 	err := manager.Provision(context.Background(), DatasourceConfig{Host: "127.0.0.1"}, nil)
 	if err == nil {
 		t.Fatal("a datasource with no database was accepted")
+	}
+}
+
+// TestSettingsGoIntoTheFileGrafanaReads.
+//
+// The failure this replaces is worth writing down. The first version of this
+// package wrote its settings to conf/jothost.ini beside grafana.ini. Every test
+// here passed — the file had the right contents — and Grafana read none of it,
+// because Grafana takes one config file and a second one next to it is a file
+// nothing opens. The datasource list on a provisioned host was empty.
+//
+// So this asserts the settings are in grafana.ini itself, and that the
+// operator's own lines survive.
+func TestSettingsGoIntoTheFileGrafanaReads(t *testing.T) {
+	dir, err := provisionInto(t, &stubServices{})
+	if err != nil {
+		t.Fatalf("Provision: %v", err)
+	}
+
+	config := read(t, dir, testConfigFile)
+	if !strings.Contains(config, "allow_embedding = true") {
+		t.Fatalf("the panel's settings are not in the file Grafana reads:\n%s", config)
+	}
+	// Everything outside the panel's block is the operator's and stays.
+	if !strings.Contains(config, "router_logging = true") {
+		t.Fatalf("provisioning discarded the operator's own settings:\n%s", config)
+	}
+	if !strings.Contains(config, blockStart) || !strings.Contains(config, blockEnd) {
+		t.Fatal("the panel's block is not fenced, so a later run cannot find it")
+	}
+}
+
+// TestMergingTheBlockTwiceReplacesIt rather than appending. This runs on every
+// provision, and a file that grew a copy of the block each time would end with
+// Grafana reading the last of a dozen.
+func TestMergingTheBlockTwiceReplacesIt(t *testing.T) {
+	first := mergeSettings([]byte("[server]\nrouter_logging = true\n"), renderSettings("https://a.test"))
+	second := mergeSettings(first, renderSettings("https://b.test"))
+
+	if count := strings.Count(string(second), blockStart); count != 1 {
+		t.Fatalf("the block appears %d times, want 1", count)
+	}
+	if strings.Contains(string(second), "https://a.test") {
+		t.Fatal("the previous block survived the merge")
+	}
+	if !strings.Contains(string(second), "https://b.test") {
+		t.Fatal("the new block was not applied")
+	}
+	if !strings.Contains(string(second), "router_logging = true") {
+		t.Fatal("merging discarded the operator's settings")
+	}
+}
+
+// TestAStartMarkerWithNoEndIsTakenAsThePanels.
+//
+// A file somebody edited halfway through. There is no honest way to tell where
+// the panel's block stopped, so everything from the marker on is replaced —
+// which is recoverable, where leaving a half-block in place would mean the
+// panel's settings silently stopped being applied.
+func TestAStartMarkerWithNoEndIsTakenAsThePanels(t *testing.T) {
+	damaged := []byte("[server]\nrouter_logging = true\n" + blockStart + "\nhttp_addr = 0.0.0.0\n")
+
+	merged := string(mergeSettings(damaged, renderSettings("")))
+
+	if strings.Contains(merged, "http_addr = 0.0.0.0") {
+		t.Fatal("a half-written block survived and would still be applied")
+	}
+	if !strings.Contains(merged, "router_logging = true") {
+		t.Fatal("the operator's settings above the marker were lost")
+	}
+	if strings.Count(merged, blockStart) != 1 {
+		t.Fatal("the repaired file does not have exactly one block")
 	}
 }

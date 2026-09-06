@@ -29,6 +29,7 @@ import (
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
 	ftppkg "github.com/jothost/panel/agent/internal/ftp"
+	"github.com/jothost/panel/agent/internal/grafana"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/logs"
 	mailpkg "github.com/jothost/panel/agent/internal/mail"
@@ -735,6 +736,14 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	// phpMyAdmin is not installed here, only made installable. It stays absent
 	// until an operator asks for it, because a database console reachable by
 	// default is a database console someone else finds first.
+	// Grafana draws the panel's metrics. It is served the way phpMyAdmin is —
+	// on a hostname an operator names, authenticating its own visitors — and
+	// the alert engine is untouched by it.
+	grafanaManager := grafana.NewManager(grafana.Options{
+		Installer: phpInstaller,
+		Log:       log,
+	})
+
 	phpMyAdmin := pma.NewManager(pma.Options{
 		Installer: phpInstaller,
 		FPM:       phpInstaller,
@@ -840,6 +849,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		SSL:          sslManager,
 		Databases:    databaseManager,
 		PHPMyAdmin:   phpMyAdmin,
+		Grafana:      grafanaManager,
 		Node:         nodeManager,
 		Files:        fileManager,
 		Logs:         logProvider,
@@ -861,6 +871,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	ftpProvider.SetReloader(operations.FTPReloaderFor(registry))
 	dnsProvider.SetService(operations.DNSServiceFor(registry))
 	mailProvider.SetServices(operations.MailServicesFor(registry))
+	grafanaManager.SetServices(operations.GrafanaServicesFor(registry))
 
 	return registry, jobRunner, nil
 }

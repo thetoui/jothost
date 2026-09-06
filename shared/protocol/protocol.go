@@ -31,6 +31,10 @@ const (
 	OperationMetricsLoad    OperationType = "metrics.load"
 	OperationProcessList    OperationType = "process.list"
 	// Boot persistence: what would not survive a reboot, and making it.
+	// Grafana renders the panel's metrics; the alert engine still owns alerts.
+	OperationGrafanaStatus    OperationType = "grafana.status"
+	OperationGrafanaInstall   OperationType = "grafana.install"
+	OperationGrafanaProvision OperationType = "grafana.provision"
 	OperationServiceBootAudit   OperationType = "service.boot-audit"
 	OperationServiceBootPersist OperationType = "service.boot-persist"
 	// service.detect reports what this host actually has, and service.action
@@ -268,6 +272,9 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationMetricsNetwork:        {},
 	OperationMetricsLoad:           {},
 	OperationProcessList:           {},
+	OperationGrafanaStatus:         {},
+	OperationGrafanaInstall:        {},
+	OperationGrafanaProvision:      {},
 	OperationServiceBootAudit:      {},
 	OperationServiceBootPersist:    {},
 	OperationServiceDetect:         {},

@@ -52,7 +52,7 @@ func renderDatasource(cfg DatasourceConfig) []byte {
 }
 
 // renderDashboardProvider tells Grafana where to find the dashboard JSON.
-func renderDashboardProvider() []byte {
+func renderDashboardProvider(dashboardDir string) []byte {
 	var out strings.Builder
 	out.WriteString(header)
 	out.WriteString("apiVersion: 1\n\n")
@@ -64,19 +64,52 @@ func renderDashboardProvider() []byte {
 	// with no sign of it anywhere the panel can see.
 	out.WriteString("    allowUiUpdates: false\n")
 	out.WriteString("    options:\n")
-	fmt.Fprintf(&out, "      path: %s\n", yamlString(ConfigDir+"/dashboards"))
+	fmt.Fprintf(&out, "      path: %s\n", yamlString(dashboardDir))
 	return []byte(out.String())
 }
 
-// renderOverride carries the settings embedding needs.
+// Markers around the block the panel owns inside grafana.ini.
 //
-// A file of its own rather than edits to grafana.ini. grafana.ini belongs to
-// the operator and to the distribution; a panel that rewrote it would discard
-// their settings on every provision, and one that appended to it would grow it
-// without bound.
-func renderOverride(rootURL string) []byte {
+// The first version of this package wrote its settings to conf/jothost.ini and
+// Grafana read none of them: it takes one config file, and a second one beside
+// it is a file nothing opens. So the settings go into the ini Grafana actually
+// reads, fenced, and everything outside the fence is left exactly as the
+// operator and the distribution left it.
+const (
+	blockStart = "; ---- JotHost Panel: managed settings. Do not edit inside this block. ----"
+	blockEnd   = "; ---- End of JotHost Panel settings ----"
+)
+
+// mergeSettings puts the panel's block into an existing ini.
+//
+// Replaces the block if it is there and appends it if it is not, so running
+// this twice produces the same file and an operator's own settings above it
+// are never touched. Grafana takes the last value for a key, which is why the
+// block goes at the end: it has to win over the defaults it is overriding.
+func mergeSettings(existing []byte, block string) []byte {
+	text := string(existing)
+
+	if start := strings.Index(text, blockStart); start >= 0 {
+		if end := strings.Index(text[start:], blockEnd); end >= 0 {
+			finish := start + end + len(blockEnd)
+			return []byte(text[:start] + block + text[finish:])
+		}
+		// A start marker with no end is a file somebody edited halfway
+		// through. Everything from the marker on is the panel's, because
+		// there is no honest way to tell where its block stopped.
+		return []byte(text[:start] + block)
+	}
+
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	return []byte(text + "\n" + block + "\n")
+}
+
+// renderSettings is the block itself.
+func renderSettings(rootURL string) string {
 	var out strings.Builder
-	out.WriteString(header)
+	out.WriteString(blockStart)
 	out.WriteString("\n[server]\n")
 	// Loopback only. Grafana is reached through the vhost the panel writes,
 	// which is where the operator decides who may see it; a Grafana listening
@@ -113,7 +146,11 @@ func renderOverride(rootURL string) []byte {
 	// able to is given the role in Grafana deliberately, rather than getting it
 	// by being the first person to sign in.
 	out.WriteString("auto_assign_org_role = Viewer\n")
-	return []byte(out.String())
+	// No trailing newline: the block ends exactly at its end marker, so a
+	// replacement is byte-for-byte and the file does not gain a blank line on
+	// every provision. The append path adds the newline instead.
+	out.WriteString(blockEnd)
+	return out.String()
 }
 
 // yamlString quotes a value so nothing in it is read as YAML.

@@ -21,6 +21,7 @@ import (
 	"github.com/jothost/panel/agent/internal/files"
 	"github.com/jothost/panel/agent/internal/firewall"
 	"github.com/jothost/panel/agent/internal/ftp"
+	"github.com/jothost/panel/agent/internal/grafana"
 	"github.com/jothost/panel/agent/internal/jobs"
 	"github.com/jothost/panel/agent/internal/logs"
 	"github.com/jothost/panel/agent/internal/mail"
@@ -109,6 +110,11 @@ type Dependencies struct {
 	// PHPMyAdmin installs and serves the database console. Nil where the host
 	// cannot run it, which handlers report as unsupported.
 	PHPMyAdmin *pma.Manager
+
+	// Grafana renders the panel's metrics. Nil on a host where it is not
+	// wired up, which handlers report as unsupported rather than failing
+	// obscurely.
+	Grafana *grafana.Manager
 
 	// Node runs Node.js applications. Nil where the host has no runtime,
 	// which handlers report as unsupported.
@@ -204,6 +210,9 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationMetricsNetwork, r.handleMetricsNetwork)
 	r.mustRegister(protocol.OperationMetricsLoad, r.handleMetricsLoad)
 	r.mustRegister(protocol.OperationProcessList, r.handleProcessList)
+	r.mustRegister(protocol.OperationGrafanaStatus, r.handleGrafanaStatus)
+	r.mustRegister(protocol.OperationGrafanaInstall, r.handleGrafanaInstall)
+	r.mustRegister(protocol.OperationGrafanaProvision, r.handleGrafanaProvision)
 	r.mustRegister(protocol.OperationServiceBootAudit, r.handleServiceBootAudit)
 	r.mustRegister(protocol.OperationServiceBootPersist, r.handleServiceBootPersist)
 

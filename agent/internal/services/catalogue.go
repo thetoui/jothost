@@ -91,6 +91,23 @@ const (
 // stop.
 var catalogue = []Definition{
 	{
+		Key:   "grafana",
+		Label: "Grafana",
+		Summary: "Draws the panel's metrics. Nothing depends on it: the alert " +
+			"engine reads the same data and keeps working while it is down.",
+		Role:      RoleSystem,
+		Units:     []string{"grafana.service", "grafana-server.service"},
+		Processes: []string{"grafana", "grafana-server"},
+		Binaries: []string{
+			"/usr/sbin/grafana-server", "/usr/bin/grafana-server",
+			"/usr/share/grafana/bin/grafana-server", "/usr/bin/grafana",
+		},
+		// Not essential. Websites do not stop working when a dashboard does,
+		// and an alert that fired every time somebody stopped Grafana would be
+		// noise about the thing that draws the alerts.
+		Essential: false,
+	},
+	{
 		Key:       "nginx",
 		Label:     "nginx",
 		Role:      RoleWeb,

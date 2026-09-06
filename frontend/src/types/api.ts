@@ -1399,6 +1399,15 @@ export interface DNSSettings {
 }
 
 /** A remote DNS provider the panel can publish to. */
+/** What an import brought in from a provider. */
+export interface DNSImportResult {
+  imported: number;
+  /** How many of the panel's own records were discarded, zero unless replacing. */
+  replaced: number;
+  /** Records the panel will not hold, with the reason. */
+  skipped: string[];
+}
+
 export interface DNSProvider {
   id: string;
   server_id: string;

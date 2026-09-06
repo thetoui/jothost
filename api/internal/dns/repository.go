@@ -563,6 +563,23 @@ func (r *Repository) DeleteManagedRecords(ctx context.Context, zoneID, name stri
 	return int(tag.RowsAffected()), nil
 }
 
+// DeleteUnmanagedRecords clears a zone's records for an import that replaces
+// them.
+//
+// Managed records are kept. They are the NS and A records the panel writes for
+// its own subdomains, and they are regenerated from the panel's own records
+// rather than typed — so a provider's copy has no opinion about them worth
+// acting on, and removing them here would break the delegation the panel
+// maintains.
+func (r *Repository) DeleteUnmanagedRecords(ctx context.Context, zoneID string) (int, error) {
+	tag, err := r.pool.Exec(ctx,
+		`DELETE FROM dns_records WHERE zone_id = $1::uuid AND NOT managed`, zoneID)
+	if err != nil {
+		return 0, fmt.Errorf("clear DNS records for an import: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
 // Settings returns a host's name server settings, or the defaults.
 func (r *Repository) Settings(ctx context.Context, serverID string) (Settings, error) {
 	row := r.pool.QueryRow(ctx, `

@@ -76,6 +76,12 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/dns/providers", guarded(rbac.PermDNSManage, h.addProvider))
 	mux.Handle("DELETE /api/v1/dns/providers/{id}", guarded(rbac.PermDNSManage, h.removeProvider))
 	mux.Handle("POST /api/v1/dns/zones/{id}/sync", guarded(rbac.PermDNSManage, h.sync))
+	// The other direction, and its own route rather than a flag on the one
+	// above. A push and an import are opposite operations on the same records,
+	// and one endpoint that did either depending on a boolean is how somebody
+	// eventually sends the wrong boolean and overwrites the side they meant to
+	// keep.
+	mux.Handle("POST /api/v1/dns/zones/{id}/import", guarded(rbac.PermDNSManage, h.importZone))
 
 	// The website's own DNS tab.
 	mux.Handle("GET /api/v1/websites/{id}/dns", guarded(rbac.PermServerView, h.forWebsite))
@@ -431,6 +437,39 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 			ZoneID:     r.PathValue("id"),
 			ProviderID: strings.TrimSpace(body.ProviderID),
 			Prune:      body.Prune,
+		})
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+	httpx.OK(w, r, result)
+}
+
+// importBody asks for a provider's copy of a zone.
+type importBody struct {
+	ProviderID string `json:"provider_id"`
+	// Replace discards what the panel holds and takes the provider's copy as
+	// it stands. Without it the import only adds what is missing.
+	Replace bool `json:"replace"`
+}
+
+func (h *Handler) importZone(w http.ResponseWriter, r *http.Request) {
+	// The same bound as a sync: this is one call to somebody else's API and
+	// then a write per record.
+	ctx, cancel := context.WithTimeout(r.Context(), syncTimeout)
+	defer cancel()
+
+	var body importBody
+	if err := decode(r, &body); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	result, err := h.service.ImportZone(ctx, actorFrom(r), httpx.RequestIDFromContext(ctx),
+		ImportRequest{
+			ZoneID:     r.PathValue("id"),
+			ProviderID: strings.TrimSpace(body.ProviderID),
+			Replace:    body.Replace,
 		})
 	if err != nil {
 		httpx.Error(w, r, translate(err))

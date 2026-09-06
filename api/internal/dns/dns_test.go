@@ -266,3 +266,114 @@ func TestDefaultSettingsAreAnAuthoritativeServersDefaults(t *testing.T) {
 		t.Errorf("default TTL = %d", settings.DefaultTTL)
 	}
 }
+
+// TestFetchZoneReadsTheProvidersCopy is the import's own half of the round
+// trip: the panel can now read a zone it did not write.
+func TestFetchZoneReadsTheProvidersCopy(t *testing.T) {
+	stub := &stubCloudflare{records: []cfRecord{
+		{ID: "r1", Type: "A", Name: "www.example.com", Content: "203.0.113.1", TTL: 1},
+		{ID: "r2", Type: "MX", Name: "example.com", Content: "mail.example.com", TTL: 3600,
+			Priority: intPtr(10)},
+	}}
+	server := httptest.NewServer(stub.handler(t))
+	defer server.Close()
+
+	previous := cloudflareAPI
+	cloudflareAPI = server.URL
+	defer func() { cloudflareAPI = previous }()
+
+	client := NewCloudflare("test-token", "")
+	records, err := client.FetchZone(context.Background(), "example.com")
+	if err != nil {
+		t.Fatalf("FetchZone: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("got %d records, want 2: %+v", len(records), records)
+	}
+
+	byName := map[string]RemoteRecord{}
+	for _, record := range records {
+		byName[record.Name] = record
+	}
+
+	// Cloudflare's automatic TTL is 1, which is its way of saying "we decide".
+	// The panel says the same thing with 0, and importing a literal one-second
+	// TTL would be a lie the next push would send straight back.
+	if got := byName["www.example.com"].TTL; got != 0 {
+		t.Errorf("automatic TTL came back as %d, want 0", got)
+	}
+	if got := byName["example.com"].TTL; got != 3600 {
+		t.Errorf("a real TTL was not preserved: %d", got)
+	}
+	if got := byName["example.com"].Priority; got != 10 {
+		t.Errorf("MX priority = %d, want 10", got)
+	}
+}
+
+// TestFetchZoneLeavesTheProvidersOwnRecordsBehind.
+//
+// A zone's SOA and its apex NS belong to whoever serves it. Importing
+// Cloudflare's would put records in the panel that it shows as editable and
+// that every later push refuses.
+func TestFetchZoneLeavesTheProvidersOwnRecordsBehind(t *testing.T) {
+	stub := &stubCloudflare{records: []cfRecord{
+		{ID: "r1", Type: "SOA", Name: "example.com", Content: "ns.cloudflare.com ...", TTL: 1},
+		{ID: "r2", Type: "NS", Name: "example.com", Content: "kim.ns.cloudflare.com", TTL: 1},
+		// An NS below the apex is a delegation the zone's owner made, and it is
+		// theirs to keep.
+		{ID: "r3", Type: "NS", Name: "sub.example.com", Content: "ns1.elsewhere.test", TTL: 1},
+		{ID: "r4", Type: "A", Name: "www.example.com", Content: "203.0.113.1", TTL: 1},
+	}}
+	server := httptest.NewServer(stub.handler(t))
+	defer server.Close()
+
+	previous := cloudflareAPI
+	cloudflareAPI = server.URL
+	defer func() { cloudflareAPI = previous }()
+
+	client := NewCloudflare("test-token", "")
+	records, err := client.FetchZone(context.Background(), "example.com")
+	if err != nil {
+		t.Fatalf("FetchZone: %v", err)
+	}
+
+	for _, record := range records {
+		if record.Type == "SOA" {
+			t.Errorf("the provider's SOA was imported")
+		}
+		if record.Type == "NS" && record.Name == "example.com" {
+			t.Errorf("the provider's own apex NS was imported")
+		}
+	}
+	// The delegation below the apex is the owner's and must survive.
+	var kept bool
+	for _, record := range records {
+		if record.Type == "NS" && record.Name == "sub.example.com" {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Error("a delegation below the apex was dropped")
+	}
+}
+
+// TestRelativeToIsQualifyInReverse.
+//
+// The panel stores names relative to the zone and providers address them
+// absolutely, so an import that got this wrong would write "www.example.com"
+// as a label inside example.com and produce www.example.com.example.com.
+func TestRelativeToIsQualifyInReverse(t *testing.T) {
+	cases := map[string]string{
+		"example.com":     "@",
+		"example.com.":    "@",
+		"www.example.com": "www",
+		"WWW.EXAMPLE.COM": "www",
+		"a.b.example.com": "a.b",
+		"elsewhere.test":  "elsewhere.test",
+	}
+	for input, want := range cases {
+		if got := relativeTo(input, "example.com"); got != want {
+			t.Errorf("relativeTo(%q) = %q, want %q", input, got, want)
+		}
+	}
+}

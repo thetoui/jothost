@@ -177,3 +177,24 @@ export function useSyncDNSZone(zoneId: string) {
     },
   });
 }
+
+/**
+ * useImportDNSZone reads a provider's copy of a zone into the panel.
+ *
+ * The opposite direction from useSyncDNSZone, and a separate hook rather than
+ * an option on it: a push and an import are opposite operations on the same
+ * records, and one call that did either depending on an argument is how the
+ * wrong argument eventually overwrites the side somebody meant to keep.
+ */
+export function useImportDNSZone(zoneId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: { provider_id: string; replace?: boolean }) =>
+      dnsApi.importZone(zoneId, body),
+    onSuccess: () => {
+      // The zone's records have changed, so everything showing them is stale.
+      void queryClient.invalidateQueries({ queryKey: dnsKeys.all });
+    },
+  });
+}

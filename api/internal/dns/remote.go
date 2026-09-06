@@ -61,6 +61,8 @@ type SyncResult struct {
 type Remote interface {
 	// SyncZone makes the provider's copy of a zone hold these records.
 	SyncZone(ctx context.Context, zone string, records []RemoteRecord, prune bool) (SyncResult, error)
+	// FetchZone reads the provider's copy, for an import.
+	FetchZone(ctx context.Context, zone string) ([]RemoteRecord, error)
 }
 
 // RemoteFactory builds a client for a provider kind.
@@ -379,4 +381,61 @@ func (c *Cloudflare) do(ctx context.Context, method, path string, body any) (jso
 		return nil, fmt.Errorf("Cloudflare refused the request: %s", strings.Join(messages, "; "))
 	}
 	return envelope.Result, nil
+}
+
+// FetchZone reads a provider's copy of a zone.
+//
+// The other direction, and deliberately a separate method rather than a flag on
+// SyncZone. A push and an import are opposite operations on the same data, and
+// a single entry point that did one or the other depending on an argument is
+// how somebody eventually passes the wrong argument and overwrites the side
+// they meant to keep.
+func (c *Cloudflare) FetchZone(ctx context.Context, zone string) ([]RemoteRecord, error) {
+	id, err := c.zoneID(ctx, zone)
+	if err != nil {
+		return nil, err
+	}
+
+	remote, err := c.listRecords(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]RemoteRecord, 0, len(remote))
+	for _, item := range remote {
+		// SOA and the zone's own NS records belong to whoever serves it.
+		// Cloudflare's name servers are not the panel's to hold, and importing
+		// them would produce records the panel shows as editable and every
+		// later push refuses.
+		if item.Type == "SOA" {
+			continue
+		}
+		if item.Type == "NS" && strings.EqualFold(strings.TrimSuffix(item.Name, "."),
+			strings.TrimSuffix(zone, ".")) {
+			continue
+		}
+
+		record := RemoteRecord{
+			Name:     item.Name,
+			Type:     item.Type,
+			TTL:      item.TTL,
+			Value:    contentOf(item),
+			Priority: deref(item.Priority),
+		}
+		// Cloudflare's automatic TTL is 1, which is its way of saying "we
+		// decide". The panel stores that as zero, its own way of saying "the
+		// zone's default" — importing it as a literal one-second TTL would be
+		// a lie the next push would send straight back.
+		if record.TTL == 1 {
+			record.TTL = 0
+		}
+		if item.Data != nil {
+			record.Weight = deref(item.Data.Weight)
+			record.Port = deref(item.Data.Port)
+			record.Flags = deref(item.Data.Flags)
+			record.Tag = item.Data.Tag
+		}
+		records = append(records, record)
+	}
+	return records, nil
 }

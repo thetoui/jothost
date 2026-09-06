@@ -1,5 +1,6 @@
 import { request } from '@/services/apiClient';
 import type {
+  DNSImportResult,
   DNSOverview,
   DNSProvider,
   DNSRecord,
@@ -71,6 +72,12 @@ export const dnsApi = {
 
   removeProvider: (id: string) =>
     request<{ deleted: boolean }>(`/dns/providers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  importZone: (zoneId: string, body: { provider_id: string; replace?: boolean }) =>
+    request<DNSImportResult>(`/dns/zones/${encodeURIComponent(zoneId)}/import`, {
+      method: 'POST',
+      body,
+    }),
 
   sync: (zoneId: string, body: { provider_id: string; prune?: boolean }) =>
     request<DNSSyncResult>(`/dns/zones/${encodeURIComponent(zoneId)}/sync`, {

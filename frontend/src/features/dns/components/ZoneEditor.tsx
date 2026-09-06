@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound, Pencil, Plus, Trash2, UploadCloud } from 'lucide-react';
+import { DownloadCloud, KeyRound, Pencil, Plus, Trash2, UploadCloud } from 'lucide-react';
 
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -13,6 +13,7 @@ import {
   useDNSOverview,
   useDNSZone,
   useDeleteDNSRecord,
+  useImportDNSZone,
   useSyncDNSZone,
   useUpdateDNSRecord,
   useUpdateDNSZone,
@@ -538,13 +539,22 @@ function Transfers({ detail }: { detail: DNSZoneDetail }) {
   );
 }
 
-/** RemoteSync pushes the zone to a provider somewhere else. */
+/**
+ * RemoteSync moves the zone between the panel and a provider.
+ *
+ * Two buttons, deliberately, and never one control with a direction picker.
+ * Publishing overwrites the provider and importing overwrites the panel; a
+ * single button whose meaning depended on a dropdown is how somebody
+ * eventually presses it with the dropdown they did not read.
+ */
 function RemoteSync({ detail }: { detail: DNSZoneDetail }) {
   const overview = useDNSOverview();
   const sync = useSyncDNSZone(detail.zone.id);
+  const importZone = useImportDNSZone(detail.zone.id);
   const providers = overview.data?.providers ?? [];
   const [providerId, setProviderId] = useState('');
   const [prune, setPrune] = useState(false);
+  const [replace, setReplace] = useState(false);
 
   if (providers.length === 0) {
     return null;
@@ -593,6 +603,58 @@ function RemoteSync({ detail }: { detail: DNSZoneDetail }) {
           {sync.error.message}
         </Alert>
       )}
+
+      <div className="space-y-3 border-t border-surface-border pt-3">
+        <div>
+          <h4 className="text-sm font-medium text-slate-900">Import from the provider</h4>
+          <p className="mt-0.5 text-xs text-slate-500">
+            The other direction, for a zone that already exists there. Nothing runs this on its
+            own — publishing never decides to import instead.
+          </p>
+        </div>
+
+        <Toggle
+          id="dns-import-replace"
+          label="Replace what the panel holds"
+          description="Off by default: the import only adds records the panel does not already have. On, the panel's copy of this zone becomes the provider's copy exactly."
+          checked={replace}
+          onChange={setReplace}
+        />
+
+        <RequirePermission permission={Permission.DNSManage}>
+          <Button
+            loading={importZone.isPending}
+            disabled={!providerId}
+            icon={<DownloadCloud aria-hidden="true" className="h-4 w-4" />}
+            onClick={() => importZone.mutate({ provider_id: providerId, replace })}
+          >
+            Import
+          </Button>
+        </RequirePermission>
+
+        {importZone.error instanceof ApiError && (
+          <Alert tone="danger" title="The zone could not be imported">
+            {importZone.error.message}
+          </Alert>
+        )}
+        {importZone.data && (
+          <Alert tone="success" title="Imported">
+            {importZone.data.imported} record(s) added
+            {importZone.data.replaced > 0 && `, ${importZone.data.replaced} replaced`}.
+            {importZone.data.skipped.length > 0 && (
+              <>
+                {' '}
+                {importZone.data.skipped.length} were not brought in:
+                <ul className="ml-4 mt-1 list-disc text-xs">
+                  {importZone.data.skipped.slice(0, 5).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Alert>
+        )}
+      </div>
       {result && (
         <Alert tone="success" title="Published">
           {result.created} created, {result.updated} updated, {result.deleted} removed,{' '}

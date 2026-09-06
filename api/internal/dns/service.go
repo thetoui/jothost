@@ -30,6 +30,10 @@ const (
 	ActionProviderAdd    = "dns.provider.add"
 	ActionProviderRemove = "dns.provider.remove"
 	ActionSync           = "dns.sync"
+	// ActionImport is the opposite direction and is recorded as its own
+	// action, not as a sync: a trail that called both "dns.sync" could not
+	// answer which way somebody moved the records.
+	ActionImport = "dns.import"
 
 	ResourceTypeZone     = "dns_zone"
 	ResourceTypeRecord   = "dns_record"

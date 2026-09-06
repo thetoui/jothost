@@ -181,6 +181,32 @@ release: dist ## Build the release archive and its checksum into release/
 		echo ""; \
 		echo "Verify it with:  cd $(RELEASE_DIR) && sha256sum -c $$name.tar.gz.sha256"
 
+.PHONY: release-images
+release-images: ## Build and tag the release container images
+	# The same version, commit and build date the binaries carry, passed in as
+	# build args. An image tagged 0.1.0 whose binary reports something else is
+	# the thing this exists to prevent, so the tag is checked against what the
+	# image says about itself before either is considered built.
+	@version=$$(cat VERSION); \
+		commit=$$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown); \
+		built=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+		for part in api agent; do \
+			echo "Building jothost/$$part:$$version"; \
+			docker build -f docker/$$part.Dockerfile \
+				--build-arg VERSION=$$version \
+				--build-arg COMMIT=$$commit \
+				--build-arg BUILD_DATE=$$built \
+				-t jothost/$$part:$$version -t jothost/$$part:latest . ; \
+		done; \
+		for part in api agent; do \
+			reported=$$(docker run --rm --entrypoint /usr/local/bin/jothost-$$part \
+				jothost/$$part:$$version version 2>/dev/null || true); \
+			case "$$reported" in \
+				*$$version*) echo "  ok   jothost/$$part:$$version reports $$reported" ;; \
+				*) echo "  FAIL jothost/$$part:$$version reports '$$reported', not $$version"; exit 1 ;; \
+			esac; \
+		done
+
 .PHONY: release-verify
 release-verify: ## Check the release archive against what it claims to be
 	# A release that says one version and ships another is the kind of thing

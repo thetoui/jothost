@@ -352,13 +352,20 @@ Dedicated isolated PHP-FPM pool & socket per subdomain
 Two items belong to phases that do not exist yet, and building them here would
 mean building those phases. They are deferred rather than dropped:
 
-- [ ] Apache VirtualHost generation — **Phase 4.5**, which is where the Apache
-  provider is. This phase writes the nginx vhost, which is what the host runs
-  today; when the hybrid engine lands, a subdomain is a vhost like any other.
-- [ ] Automatic DNS record injection (A / AAAA / CNAME) into the parent's zone —
-  **Phase 13**, which is where a zone exists at all. A subdomain needs no DNS
-  from this panel to work: it is reached through whatever already resolves the
-  parent.
+- [x] Apache VirtualHost generation — **Phase 4.5** landed, and a subdomain did
+  turn out to be a vhost like any other: the hybrid engine is a host-wide mode
+  (`PUT /api/v1/webserver`), not a per-site choice, so every site the panel
+  provisions gets an Apache backend when it is on and none when it is off.
+  There is no separate subdomain path to build.
+  **Not covered by a test:** `phase41_subdomains.sh` never runs with hybrid on,
+  so this is true by construction rather than by demonstration.
+- [x] Automatic DNS record injection (A / AAAA / CNAME) into the parent's zone —
+  **Phase 13** landed and this is wired: creating a subdomain calls
+  `EnsureSubdomainRecords` against the parent's zone, and deleting one calls
+  `RemoveSubdomainRecords`, which removes what the panel added and leaves a
+  record somebody else put at the same name alone. Both are skipped when the
+  panel manages no zone, which is still a valid configuration — a subdomain
+  needs no DNS from this panel to work.
 
 A subdomain is a website row with a parent, not a separate table, which is why
 SSL, PHP, files, databases and Node apply to one unchanged. See docs/PHASE4.1.md
@@ -1413,17 +1420,33 @@ Additionally required by the above:
 
 **Build order: 19 of 17.** Last by definition.
 
-- [ ] Versioning
-- [ ] Release build
-- [ ] Docker image
-- [ ] Linux binary
-- [ ] Installer
-- [ ] Upgrade script
-- [ ] Migration system
-- [ ] Documentation
-- [ ] Changelog
-- [ ] Security documentation
-- [ ] Recovery documentation
+- [x] Versioning — `VERSION` at the root is the single source; compiled into
+      both binaries with `-ldflags` and used to name the archive and the
+      images, so there is no second place to update.
+- [x] Release build — `make release` produces
+      `jothost-<version>-linux-amd64.tar.gz` and a SHA256 beside it.
+- [x] Docker image — `make release-images` builds and tags `jothost/api` and
+      `jothost/agent`, then runs each and fails if the image disagrees with
+      its own tag.
+- [x] Linux binary — statically linked, checked on Debian rather than the
+      Alpine that built it.
+- [x] Installer — `install.sh install|update|repair|uninstall|status`,
+      exercised on a clean host by `tests/integration/phase23_installer.sh`.
+- [x] Upgrade script — `install.sh update`, which keeps the encryption key,
+      the Agent token and the database password.
+- [x] Migration system — paired up and down migrations, applied at startup in
+      a transaction; `migrate up|down|status` by hand.
+- [x] Documentation — [docs/PHASE25.md](docs/PHASE25.md), plus the security
+      and recovery documents below.
+- [x] Changelog — [CHANGELOG.md](CHANGELOG.md), including known limitations.
+- [x] Security documentation — [docs/SECURITY.md](docs/SECURITY.md), which
+      states what is *not* implemented as plainly as what is.
+- [x] Recovery documentation — [docs/RECOVERY.md](docs/RECOVERY.md), whose
+      first section is exercised by the Phase 24 recovery drills.
+
+**Verified by** `make release-verify`: unpacks the archive, runs the binaries
+on a host that did not build them, and asks them their version. It caught two
+real defects on its first run — see docs/PHASE25.md.
 
 ---
 

@@ -550,11 +550,18 @@ contains 'installing phpMyAdmin is queued as a job' "$job" '"type":"phpmyadmin.i
 
 # The worker runs it against the Agent; installing a package and its extensions
 # takes longer than any other operation in this suite.
+# Waiting for the name that was asked for, not merely for "served".
+#
+# On a host where phpMyAdmin was already installed under another name, served
+# is true the moment this starts looking - so the wait ended before the job it
+# had just queued had done anything, and the checks below then reported the
+# previous install's name as a failure of the panel. The panel had done exactly
+# the right thing; the wait had not waited.
 waited=0
 while [ "$waited" -lt 180 ]; do
   status="$(api GET /api/v1/databases/console)"
   case "$status" in
-    *'"served":true'*) break ;;
+    *"\"server_name\":\"$PMA_HOST\""*) break ;;
   esac
   sleep 3
   waited=$((waited + 3))

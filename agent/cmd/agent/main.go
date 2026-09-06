@@ -241,6 +241,9 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		{Name: mailpkg.CommandDovecot, Path: cfg.DovecotPath, Timeout: 20 * time.Second},
 		{Name: mailpkg.CommandRspamadm, Path: cfg.RspamadmPath, Timeout: 30 * time.Second},
 		{Name: mailpkg.CommandRspamc, Path: cfg.RspamcPath, Timeout: 30 * time.Second},
+		// The signature database is hundreds of megabytes and this is the one
+		// command in the panel whose honest timeout is measured in minutes.
+		{Name: mailpkg.CommandFreshclam, Path: cfg.FreshclamPath, Timeout: 20 * time.Minute},
 		{Name: mailpkg.CommandSievec, Path: cfg.SievecPath, Timeout: 20 * time.Second},
 		// Deployment.
 		//

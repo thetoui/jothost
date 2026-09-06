@@ -12,7 +12,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { Alert as AlertBanner } from '@/components/ui/Alert';
+import { Alert, Alert as AlertBanner } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -22,20 +22,7 @@ import { Modal } from '@/components/ui/Modal';
 import { TextButton } from '@/components/ui/TextButton';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
-import {
-  useAliases,
-  useCreateAlias,
-  useCreateMailDomain,
-  useCreateMailbox,
-  useDeleteAlias,
-  useDeleteMailDomain,
-  useDeleteMailbox,
-  useMailOverview,
-  useMailboxes,
-  useRotateDKIM,
-  useSaveMailSettings,
-  useSetMailboxPassword,
-} from '@/features/mail/hooks';
+import { useAliases, useCreateAlias, useCreateMailDomain, useCreateMailbox, useDeleteAlias, useDeleteMailDomain, useDeleteMailbox, useInstallMail, useMailOverview, useMailboxes, useRotateDKIM, useSaveMailSettings, useSetMailboxPassword } from '@/features/mail/hooks';
 import { ApiError } from '@/services/apiClient';
 import type {
   Mailbox,
@@ -106,11 +93,7 @@ function Health({ overview }: { overview: MailOverview }) {
   const status = overview.status;
 
   if (!status.available) {
-    return (
-      <AlertBanner tone="warning" title="This host has no mail server">
-        {status.reason ?? 'Postfix and Dovecot are not installed.'}
-      </AlertBanner>
-    );
+    return <InstallMailServer status={status} />;
   }
 
   const unsigned = (overview.domains ?? []).filter(
@@ -217,6 +200,88 @@ function Daemon({
  * The two differ in exactly the case somebody needs to see: a daemon that
  * failed to start leaves every port configured and none of them answering.
  */
+/**
+ * InstallMailServer offers to put a mail server on a host that has none.
+ *
+ * The panel could install one from the first day of Phase 26 — the operation,
+ * the API route and the hook all existed — and nothing ever called it, so the
+ * page said "this host has no mail server" and stopped there. Which is true,
+ * and useless.
+ */
+function InstallMailServer({ status }: { status: MailStatus }) {
+  const install = useInstallMail();
+  const [filtering, setFiltering] = useState(true);
+  const [antivirus, setAntivirus] = useState(false);
+
+  if (!status.can_install) {
+    return (
+      <AlertBanner tone="warning" title="This host has no mail server">
+        {status.reason ??
+          'Postfix and Dovecot are not installed, and this host has no package manager the panel can install them with.'}
+      </AlertBanner>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        icon={<TintedIcon tone="brand" icon={<Server className="h-4 w-4" />} />}
+        title="This host has no mail server"
+        description="Postfix carries the mail and Dovecot holds the mailboxes. Both are installed together."
+      />
+      <CardBody className="space-y-4">
+        <Toggle
+          id="mail-install-filtering"
+          label="Install spam filtering"
+          description="Rspamd scores each message and rejects what it is confident about."
+          checked={filtering}
+          onChange={(next) => {
+            setFiltering(next);
+            // Virus scanning is scored and acted on by Rspamd, so it cannot be
+            // installed without it. Turning filtering off takes it with it
+            // rather than leaving a checkbox that would silently do nothing.
+            if (!next) setAntivirus(false);
+          }}
+          disabled={install.isPending}
+        />
+        <Toggle
+          id="mail-install-antivirus"
+          label="Install virus scanning"
+          description="ClamAV, scored through Rspamd. The signature database is several hundred megabytes and is downloaded during the install, so this takes a few minutes longer."
+          checked={antivirus}
+          onChange={setAntivirus}
+          disabled={install.isPending || !filtering}
+        />
+
+        {install.isError && (
+          <Alert tone="danger" title="The mail server could not be installed">
+            {install.error instanceof Error
+              ? install.error.message
+              : 'The host refused the install.'}
+          </Alert>
+        )}
+
+        <div className="flex items-center gap-3">
+          <Button
+            variant="primary"
+            loading={install.isPending}
+            onClick={() => install.mutate({ filtering, antivirus })}
+          >
+            Install the mail server
+          </Button>
+          {install.isPending && (
+            <span className="text-xs text-slate-500">
+              {antivirus
+                ? 'Installing, and downloading virus signatures. This can take several minutes.'
+                : 'Installing. This takes a moment.'}
+            </span>
+          )}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
 function Ports({ status }: { status: MailStatus }) {
   const ports = status.ports ?? [];
   if (ports.length === 0) return null;

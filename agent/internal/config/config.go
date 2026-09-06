@@ -118,6 +118,9 @@ type Config struct {
 	DovecotPath   string
 	RspamadmPath  string
 	RspamcPath    string
+	// FreshclamPath fetches the virus database. Without it an installed
+	// scanner has nothing to scan with and never starts.
+	FreshclamPath string
 	SievecPath    string
 	// MailConfigDir, DovecotConfigDir and RspamdConfigDir are the three
 	// configuration roots; MailRoot is where Maildirs live and MailStateDir is
@@ -298,6 +301,7 @@ func Load() (Config, error) {
 		DovecotPath:        getString("AGENT_DOVECOT_PATH", "/usr/sbin/dovecot"),
 		RspamadmPath:       getString("AGENT_RSPAMADM_PATH", "/usr/bin/rspamadm"),
 		RspamcPath:         getString("AGENT_RSPAMC_PATH", "/usr/bin/rspamc"),
+		FreshclamPath:      getString("AGENT_FRESHCLAM_PATH", "/usr/bin/freshclam"),
 		SievecPath:         getString("AGENT_SIEVEC_PATH", "/usr/bin/sievec"),
 		MailConfigDir:      getString("AGENT_MAIL_CONFIG_DIR", "/etc/postfix"),
 		DovecotConfigDir:   getString("AGENT_DOVECOT_CONFIG_DIR", "/etc/dovecot"),

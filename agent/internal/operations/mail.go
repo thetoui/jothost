@@ -228,19 +228,70 @@ func (r *Registry) handleMailInstall(ctx context.Context, req protocol.Request,
 		packages = append(packages, "rspamd", "rspamd-client")
 	}
 	if payload.Antivirus {
-		packages = append(packages, "clamav", "clamav-daemon")
+		// freshclam is named explicitly because the distributions disagree
+		// about whether it comes with the daemon, and a host without it has a
+		// scanner that can never obtain a database.
+		packages = append(packages, "clamav", "clamav-daemon", "clamav-freshclam")
 	}
 
 	for _, name := range packages {
 		if err := r.deps.PHPInstaller.InstallPackage(ctx, name, reporterFunc(reporter)); err != nil {
-			return nil, err
+			// One package that does not exist under that name on this
+			// distribution must not abandon the rest: clamav-freshclam is part
+			// of the clamav package on Alpine and separate on Debian, and
+			// asking for both is how the panel covers each without knowing
+			// which host it is on.
+			if !optionalPackage(name) {
+				return nil, err
+			}
+			r.log.Info("an optional package is not available under that name here",
+				"package", name, "error", err.Error())
 		}
 	}
 
 	if r.deps.Mail == nil {
 		return map[string]any{"available": true}, nil
 	}
+
+	// Installing ClamAV is the easy half. A freshly installed scanner has no
+	// virus database, and clamd exits rather than starting without one — so
+	// without this the panel would report virus scanning as available while
+	// every message went through unscanned.
+	if payload.Antivirus {
+		prep := r.deps.Mail.PrepareAntivirus(ctx, reporterFunc(reporter))
+		if prep.Detail != "" {
+			r.log.Warn("the virus scanner was installed but is not scanning",
+				"detail", prep.Detail)
+		}
+		status, err := structToMap(r.deps.Mail.Status(ctx, r.canInstallPackages()))
+		if err != nil {
+			return nil, err
+		}
+		// Reported alongside the status rather than folded into it: "the
+		// scanner is not running" and "the scanner is not running because the
+		// signature download failed" are different answers, and only the
+		// second one tells an operator what to do.
+		status["antivirus_preparation"] = prep
+		return status, nil
+	}
+
 	return structToMap(r.deps.Mail.Status(ctx, r.canInstallPackages()))
+}
+
+// optionalPackage reports whether a missing package name is survivable.
+//
+// The mail server's own components are not: a host with Postfix and no Dovecot
+// offers mailboxes nothing delivers into. The antivirus pieces are, because
+// their packaging differs between distributions and asking for every spelling
+// is how the panel installs on all of them without a table of package names
+// per distribution that would go stale.
+func optionalPackage(name string) bool {
+	switch name {
+	case "clamav-daemon", "clamav-freshclam":
+		return true
+	default:
+		return false
+	}
 }
 
 // handleMailReconcile makes the host serve exactly the mail the panel records.

@@ -4,6 +4,7 @@ import {
   Download,
   FileCode2,
   Globe,
+  Mails,
   ScrollText,
   Search,
   Server,
@@ -27,6 +28,7 @@ import type { LogSource } from '@/types/api';
 const groups: { key: LogSource['group']; title: string; icon: React.ReactNode }[] = [
   { key: 'web', title: 'Web', icon: <Globe className="h-4 w-4" /> },
   { key: 'runtime', title: 'Runtimes', icon: <FileCode2 className="h-4 w-4" /> },
+  { key: 'mail', title: 'Mail', icon: <Mails className="h-4 w-4" /> },
   { key: 'system', title: 'System', icon: <Server className="h-4 w-4" /> },
   { key: 'panel', title: 'Panel', icon: <ShieldCheck className="h-4 w-4" /> },
 ];

@@ -603,7 +603,7 @@ export interface LogSource {
   key: string;
   label: string;
   summary: string;
-  group: 'web' | 'runtime' | 'system' | 'panel';
+  group: 'web' | 'runtime' | 'system' | 'panel' | 'mail';
   format: string;
   /** Where the Agent found it, so an operator can look at the same file over
    *  SSH. Empty when this host does not have it. */

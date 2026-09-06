@@ -32,6 +32,11 @@ const (
 	GroupRuntime = "runtime"
 	GroupSystem  = "system"
 	GroupPanel   = "panel"
+	// GroupMail is its own section rather than part of the system group. Mail
+	// is several daemons handing one message along — Postfix accepts it,
+	// rspamd judges it, ClamAV scans it, Dovecot files it — and "why did this
+	// message not arrive" is answered by reading them together.
+	GroupMail = "mail"
 )
 
 // Formats a log can be in. The format decides how a line's severity is read;
@@ -139,6 +144,81 @@ func Catalogue() []Source {
 			Paths: []string{
 				"/var/log/proftpd/xferlog",
 				"/var/log/xferlog",
+			},
+		},
+		{
+			Key:   "mail",
+			Label: "Mail server",
+			Summary: "Everything the mail server did: what it accepted, what it " +
+				"refused, what it delivered and what bounced.",
+			Group: GroupMail,
+			// One file, several daemons. Postfix, Dovecot and rspamd all write
+			// here through syslog, which is what makes it the right place to
+			// answer "what happened to this message" — the alternative is
+			// reading three files and reconstructing the order by timestamp.
+			Format: FormatSyslog,
+			Paths: []string{
+				"/var/log/maillog",
+				"/var/log/mail.log",
+			},
+		},
+		{
+			Key:     "mail.error",
+			Label:   "Mail errors",
+			Summary: "Only what the mail server could not do.",
+			Group:   GroupMail,
+			Format:  FormatSyslog,
+			Paths: []string{
+				"/var/log/mail.err",
+				"/var/log/mail/errors",
+			},
+		},
+		{
+			Key:   "mail.dovecot",
+			Label: "Dovecot",
+			Summary: "IMAP and POP3: who connected, from where, and whether " +
+				"they were let in.",
+			Group:  GroupMail,
+			Format: FormatSyslog,
+			Paths: []string{
+				"/var/log/dovecot.log",
+				"/var/log/dovecot/dovecot.log",
+			},
+		},
+		{
+			Key:   "mail.rspamd",
+			Label: "Spam filter",
+			Summary: "What rspamd scored each message and why it was accepted, " +
+				"rejected or greylisted.",
+			Group:  GroupMail,
+			Format: FormatSyslog,
+			Paths: []string{
+				"/var/log/rspamd/rspamd.log",
+				"/var/log/rspamd.log",
+			},
+		},
+		{
+			Key:   "mail.clamav",
+			Label: "Virus scanner",
+			Summary: "What ClamAV found in mail, and whether its signatures " +
+				"are current.",
+			Group:  GroupMail,
+			Format: FormatSyslog,
+			Paths: []string{
+				"/var/log/clamav/clamd.log",
+				"/var/log/clamd.log",
+			},
+		},
+		{
+			Key:   "mail.clamav.updates",
+			Label: "Virus signatures",
+			Summary: "freshclam's record of signature updates. A scanner with " +
+				"stale signatures is worse than none, because it reports clean.",
+			Group:  GroupMail,
+			Format: FormatSyslog,
+			Paths: []string{
+				"/var/log/clamav/freshclam.log",
+				"/var/log/freshclam.log",
 			},
 		},
 		{

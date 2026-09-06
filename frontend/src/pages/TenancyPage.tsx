@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Boxes,
   Building2,
@@ -9,6 +9,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Pencil,
   Trash2,
   UserCog,
 } from 'lucide-react';
@@ -29,6 +30,7 @@ import {
   useAddAddon,
   useCreateAccount,
   useCreatePlan,
+  useUpdatePlan,
   useCreateSubscription,
   useDeletePlan,
   useDeleteSubscription,
@@ -477,6 +479,7 @@ function NewSubscriptionDialog({
 
 function PlansTab({ plans }: { plans: ServicePlan[] }) {
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<ServicePlan | null>(null);
   const remove = useDeletePlan();
 
   return (
@@ -545,32 +548,123 @@ function PlansTab({ plans }: { plans: ServicePlan[] }) {
               </div>
 
               <RequirePermission permission={Permission.TenantManage}>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => remove.mutate(plan.id)}
-                  disabled={remove.isPending || plan.subscriptions > 0}
-                  title={plan.subscriptions > 0 ? 'Subscriptions are on this plan' : undefined}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  {/* A plan with subscriptions on it can be edited but not
+                      deleted: changing what a plan includes is how an
+                      operator raises a limit for everybody on it, and
+                      refusing that would leave them creating a second plan
+                      and moving people across by hand. */}
+                  <Button size="sm" variant="secondary" onClick={() => setEditing(plan)}>
+                    <Pencil className="h-4 w-4" />
+                    <span className="sr-only">Edit {plan.name}</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => remove.mutate(plan.id)}
+                    disabled={remove.isPending || plan.subscriptions > 0}
+                    title={plan.subscriptions > 0 ? 'Subscriptions are on this plan' : undefined}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Delete {plan.name}</span>
+                  </Button>
+                </div>
               </RequirePermission>
             </li>
           ))}
         </ul>
       )}
 
-      <NewPlanDialog open={creating} onClose={() => setCreating(false)} />
+      <PlanDialog open={creating} onClose={() => setCreating(false)} />
+      {/* Keyed on the plan so the dialog's state is rebuilt when a different
+          one is opened, rather than carrying the last plan's numbers. */}
+      {editing && (
+        <PlanDialog
+          key={editing.id}
+          open
+          plan={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </Card>
   );
 }
 
-function NewPlanDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+/**
+ * numbersOf turns a plan's limits and isolation back into the strings the form
+ * edits.
+ *
+ * null is an empty box, not "0". They are different answers — no limit against
+ * none of that thing — and the dialog says so. Round-tripping them as the same
+ * string would quietly turn every unlimited plan into a plan of zero.
+ */
+function numbersOf(plan: ServicePlan): Record<string, string> {
+  const out: Record<string, string> = {};
+  const put = (key: string, value: number | null) => {
+    out[key] = value === null ? '' : String(value);
+  };
+  put('max_websites', plan.limits.max_websites);
+  put('max_subdomains', plan.limits.max_subdomains);
+  put('max_databases', plan.limits.max_databases);
+  put('max_mailboxes', plan.limits.max_mailboxes);
+  put('max_ftp_users', plan.limits.max_ftp_users);
+  put('max_cron_jobs', plan.limits.max_cron_jobs);
+  put('disk_mb', plan.limits.disk_mb);
+  put('bandwidth_mb', plan.limits.bandwidth_mb);
+  put('cpu_percent', plan.isolation.cpu_percent);
+  put('memory_mb', plan.isolation.memory_mb);
+  put('io_weight', plan.isolation.io_weight);
+  return out;
+}
+
+/**
+ * PlanDialog creates a plan, or edits one.
+ *
+ * One dialog rather than two. A plan's limits are the same fields whichever
+ * you are doing, and a second copy of eleven numeric inputs is a second place
+ * for them to drift — the edit form would gain a limit the create form did not
+ * have, and nobody would notice until a plan could not express something.
+ */
+function PlanDialog({
+  open,
+  onClose,
+  plan,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** The plan being edited. Absent means a new one. */
+  plan?: ServicePlan;
+}) {
   const create = useCreatePlan();
+  const update = useUpdatePlan();
+  const editing = plan !== undefined;
+  const saving = editing ? update : create;
+
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'plan' | 'addon'>('plan');
   const [enforcement, setEnforcement] = useState<'hard' | 'soft'>('hard');
   const [fields, setFields] = useState<Record<string, string>>({});
+
+  // Reset on each open rather than on mount: the dialog is not remounted
+  // between plans, so an edit opened after another would otherwise show the
+  // previous plan's numbers.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setName(plan?.name ?? '');
+    setKind(plan?.kind ?? 'plan');
+    setEnforcement(plan?.enforcement ?? 'hard');
+    setFields(plan ? numbersOf(plan) : {});
+    // Clears a failure left from the last time this dialog was open, so a new
+    // attempt does not start under an old error message.
+    //
+    // The mutation is deliberately not a dependency: TanStack returns a fresh
+    // object every render, so depending on it would re-run this effect
+    // forever and wipe the operator's typing as they went.
+    saving.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, plan]);
 
   const numeric = (key: string): number | null => {
     const raw = fields[key];
@@ -596,20 +690,25 @@ function NewPlanDialog({ open, onClose }: { open: boolean; onClose: () => void }
     <Modal
       open={open}
       onClose={onClose}
-      title={kind === 'addon' ? 'New add-on' : 'New plan'}
+      title={
+        editing
+          ? `Edit ${plan.name}`
+          : kind === 'addon'
+            ? 'New add-on'
+            : 'New plan'
+      }
       description="Leave a box empty for no limit. Enter 0 to include none of that thing — they are not the same."
       size="lg"
       busy={create.isPending}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={create.isPending}>
+          <Button variant="secondary" onClick={onClose} disabled={saving.isPending}>
             Cancel
           </Button>
           <Button
-            disabled={!name.trim() || create.isPending}
-            onClick={() =>
-              create.mutate(
-                {
+            disabled={!name.trim() || saving.isPending}
+            onClick={() => {
+              const body = {
                   name,
                   kind,
                   enforcement,
@@ -623,31 +722,35 @@ function NewPlanDialog({ open, onClose }: { open: boolean; onClose: () => void }
                     disk_mb: numeric('disk_mb'),
                     bandwidth_mb: numeric('bandwidth_mb'),
                   },
-                  isolation: {
-                    cpu_percent: numeric('cpu_percent'),
-                    memory_mb: numeric('memory_mb'),
-                    io_weight: numeric('io_weight'),
-                  },
+                isolation: {
+                  cpu_percent: numeric('cpu_percent'),
+                  memory_mb: numeric('memory_mb'),
+                  io_weight: numeric('io_weight'),
                 },
-                {
-                  onSuccess: () => {
-                    setName('');
-                    setFields({});
-                    onClose();
-                  },
+              };
+              const done = {
+                onSuccess: () => {
+                  setName('');
+                  setFields({});
+                  onClose();
                 },
-              )
-            }
+              };
+              if (editing) {
+                update.mutate({ id: plan.id, body }, done);
+              } else {
+                create.mutate(body, done);
+              }
+            }}
           >
-            Create
+            {editing ? 'Save' : 'Create'}
           </Button>
         </>
       }
     >
       <div className="space-y-3">
-        {create.isError && (
-          <Alert tone="danger" title="The plan was not created">
-            {errorMessage(create.error)}
+        {saving.isError && (
+          <Alert tone="danger" title={editing ? 'The plan was not saved' : 'The plan was not created'}>
+            {errorMessage(saving.error)}
           </Alert>
         )}
 

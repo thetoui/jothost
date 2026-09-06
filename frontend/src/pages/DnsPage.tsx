@@ -20,6 +20,7 @@ import {
   useInstallDNS,
   useSaveDNSSettings,
 } from '@/features/dns/hooks';
+import { ProviderCard } from '@/features/dns/components/ProviderCard';
 import { ApiError } from '@/services/apiClient';
 import type { DNSOverview, DNSZone } from '@/types/api';
 
@@ -110,6 +111,7 @@ export function DnsPage() {
             overview={data}
             onOpen={(id) => setOpenZone(id)}
           />
+          <ProviderCard overview={data} />
           <ServerSettings overview={data} />
         </>
       )}

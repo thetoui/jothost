@@ -584,7 +584,9 @@ func (s *Service) Update(ctx context.Context, id string, params UpdateParams,
 		return Website{}, err
 	}
 
-	if params.AllowOverride == nil {
+	// Only the settings the host actually reads queue a rewrite. Renaming a
+	// site changes a label in the panel and nothing on the machine.
+	if params.AllowOverride == nil && params.NginxDirectives == nil {
 		return site, nil
 	}
 
@@ -593,12 +595,25 @@ func (s *Service) Update(ctx context.Context, id string, params UpdateParams,
 		return Website{}, err
 	}
 
+	metadata := map[string]any{
+		"domain": site.PrimaryDomain,
+		"job_id": job.ID,
+	}
+	if params.AllowOverride != nil {
+		metadata["allow_override"] = *params.AllowOverride
+	}
+	if params.NginxDirectives != nil {
+		// The length and whether it is now empty, not the directives
+		// themselves. An audit entry is read by more people than the setting
+		// is, and a server configuration block pasted into it would be copied
+		// into support tickets and log aggregators along with whatever the
+		// operator put in it.
+		metadata["nginx_directives_bytes"] = len(*params.NginxDirectives)
+		metadata["nginx_directives_cleared"] = *params.NginxDirectives == ""
+	}
+
 	s.record(ctx, actor.Actor, ActionWebsiteUpdate, site.ID, audit.StatusSuccess,
-		map[string]any{
-			"domain":         site.PrimaryDomain,
-			"allow_override": *params.AllowOverride,
-			"job_id":         job.ID,
-		}, actor.IPAddress, actor.UserAgent)
+		metadata, actor.IPAddress, actor.UserAgent)
 
 	return site, nil
 }

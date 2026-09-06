@@ -102,6 +102,9 @@ type CreateRequest struct {
 	// MaxBodyBytes caps uploads at the Apache layer. Zero means Apache's own
 	// default; nginx has its own limit from MaxBodySize.
 	MaxBodyBytes int64
+	// Directives is the operator's own nginx configuration for this site,
+	// written into its server block after everything the panel generates.
+	Directives string
 }
 
 // CreateResult is what provisioning produced.
@@ -208,6 +211,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 		PHPSocket:     serve.phpSocket,
 		ProxyPort:     serve.proxyPort,
 		SSL:           req.SSL,
+		Directives:    req.Directives,
 	})
 	if err != nil {
 		return CreateResult{}, err
@@ -509,6 +513,8 @@ type UpdateRequest struct {
 	AllowOverride bool
 	// MaxBodyBytes caps uploads at the Apache layer.
 	MaxBodyBytes int64
+	// Directives is the operator's own nginx configuration for this site.
+	Directives string
 }
 
 // UpdateResult reports what was rewritten.
@@ -582,6 +588,7 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 		PHPSocket:     serve.phpSocket,
 		ProxyPort:     serve.proxyPort,
 		SSL:           req.SSL,
+		Directives:    req.Directives,
 	})
 	if err != nil {
 		return UpdateResult{}, err

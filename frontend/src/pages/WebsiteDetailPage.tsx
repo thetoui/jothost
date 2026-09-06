@@ -28,6 +28,7 @@ import { WebsiteDNSPanel } from '@/features/dns/components/WebsiteDNSPanel';
 import { WebsiteFTPPanel } from '@/features/ftp/components/WebsiteFTPPanel';
 import { WebsiteSSLPanel } from '@/features/ssl/components/WebsiteSSLPanel';
 import { activityPreviewCount, groupActivity } from '@/features/websites/activity';
+import { NginxDirectivesPanel } from '@/features/websites/components/NginxDirectivesPanel';
 import { SubdomainPanel } from '@/features/websites/components/SubdomainPanel';
 import { HtaccessPanel } from '@/features/websites/components/HtaccessPanel';
 import {
@@ -176,6 +177,7 @@ export function WebsiteDetailPage() {
           </Card>
 
           <HtaccessPanel site={site} />
+          <NginxDirectivesPanel site={site} />
           <WebsiteSSLPanel websiteId={site.id} domain={site.primary_domain} />
           <WebsitePHPPanel websiteId={site.id} />
           <WebsiteFTPPanel websiteId={site.id} domain={site.primary_domain} />

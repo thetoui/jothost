@@ -58,6 +58,16 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/websites", guarded(rbac.PermWebsiteCreate, h.create))
 	mux.Handle("GET /api/v1/websites/{id}", guarded(rbac.PermWebsiteView, h.get))
 	mux.Handle("PATCH /api/v1/websites/{id}", guarded(rbac.PermWebsiteUpdate, h.update))
+	// Additional nginx directives are server administration rather than
+	// website management, so they need server.manage and not website.update.
+	//
+	// A customer who could write directives into their own vhost could serve
+	// any file the web server can read — their neighbour's document root
+	// included. Somebody who already holds server.manage can edit nginx by
+	// hand over SSH, so the feature grants them nothing they did not have; it
+	// only makes it reviewable, audited and validated on the way in.
+	mux.Handle("PUT /api/v1/websites/{id}/nginx-directives",
+		guarded(rbac.PermServerManage, h.setDirectives))
 	mux.Handle("DELETE /api/v1/websites/{id}", guarded(rbac.PermWebsiteDelete, h.delete))
 
 	// A subdomain is a website, so creating one is a website.create right and
@@ -213,6 +223,53 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		Name:          body.Name,
 		HTTPSRedirect: body.HTTPSRedirect,
 		AllowOverride: body.AllowOverride,
+	}, UpdateActor{
+		Actor:     actorID(r),
+		IPAddress: clientIP(r),
+		UserAgent: r.UserAgent(),
+	})
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+
+	httpx.OK(w, r, site)
+}
+
+// directivesBody carries a site's additional nginx configuration.
+type directivesBody struct {
+	// Directives replaces whatever was there. An empty string clears it, which
+	// is how the feature is turned off for a site.
+	Directives string `json:"nginx_directives"`
+}
+
+func (h *Handler) setDirectives(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r)
+	defer cancel()
+
+	id := r.PathValue("id")
+	if !isUUID(id) {
+		httpx.Error(w, r, httpx.BadRequest("id must be a UUID"))
+		return
+	}
+
+	var body directivesBody
+	if err := decode(w, r, &body); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+
+	// Validated here and again in the Agent. Not belt and braces for its own
+	// sake: this check gives the operator a message they can act on, and the
+	// Agent's protects the file from anything that reaches the socket without
+	// coming through here.
+	if err := validate.NginxDirectives(body.Directives); err != nil {
+		httpx.Error(w, r, httpx.BadRequest(err.Error()))
+		return
+	}
+
+	site, err := h.service.Update(ctx, id, UpdateParams{
+		NginxDirectives: &body.Directives,
 	}, UpdateActor{
 		Actor:     actorID(r),
 		IPAddress: clientIP(r),

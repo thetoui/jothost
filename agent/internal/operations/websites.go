@@ -54,6 +54,9 @@ type websiteCreatePayload struct {
 	// MaxBodyBytes caps uploads at the Apache layer, in bytes. nginx has its
 	// own limit expressed the way nginx expresses it.
 	MaxBodyBytes int64 `json:"max_body_bytes"`
+
+	// Directives is the operator's own nginx configuration for this site.
+	Directives string `json:"nginx_directives"`
 }
 
 // sslConfig builds the vhost's certificate section from the payload.
@@ -90,6 +93,13 @@ func (r *Registry) handleWebsiteCreate(ctx context.Context, req protocol.Request
 	if payload.SystemUser == "" {
 		return nil, Fail(protocol.CodeInvalidPayload, "system_user is required", nil)
 	}
+	// Validated here as well as in the API. The Agent is the thing that writes
+	// the file, and it does not get to assume the only caller is a well-behaved
+	// panel: anything that can reach the socket can send this payload.
+	if err := validate.NginxDirectives(payload.Directives); err != nil {
+		return nil, Fail(protocol.CodeInvalidPayload,
+			"those additional nginx directives were refused", err)
+	}
 
 	result, err := r.deps.Sites.Create(ctx, sites.CreateRequest{
 		Domain:        payload.Domain,
@@ -103,6 +113,7 @@ func (r *Registry) handleWebsiteCreate(ctx context.Context, req protocol.Request
 		ApachePort:    payload.ApachePort,
 		AllowOverride: payload.AllowOverride,
 		MaxBodyBytes:  payload.MaxBodyBytes,
+		Directives:    payload.Directives,
 	}, reporterFunc(reporter))
 	if err != nil {
 		return nil, websiteError(err)
@@ -285,6 +296,14 @@ func (r *Registry) handleWebsiteUpdate(ctx context.Context, req protocol.Request
 	if payload.DocumentRoot == "" {
 		return nil, Fail(protocol.CodeInvalidPayload, "document_root is required", nil)
 	}
+	// Checked on the update as well as the create. The rewrite path carries the
+	// directives on every vhost change, so this is the one an attacker would
+	// reach for: a create is a new site, an update is every other change to an
+	// existing one.
+	if err := validate.NginxDirectives(payload.Directives); err != nil {
+		return nil, Fail(protocol.CodeInvalidPayload,
+			"those additional nginx directives were refused", err)
+	}
 
 	result, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
 		Domain:        payload.Domain,
@@ -297,6 +316,7 @@ func (r *Registry) handleWebsiteUpdate(ctx context.Context, req protocol.Request
 		ApachePort:    payload.ApachePort,
 		AllowOverride: payload.AllowOverride,
 		MaxBodyBytes:  payload.MaxBodyBytes,
+		Directives:    payload.Directives,
 	}, reporterFunc(reporter))
 	if err != nil {
 		return nil, websiteError(err)

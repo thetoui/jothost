@@ -285,6 +285,8 @@ export interface Website {
   apache_port: number | null;
   /** Whether Apache reads .htaccess for this site. Only meaningful in hybrid. */
   allow_override: boolean;
+  /** The operator's own nginx configuration for this site's server block. */
+  nginx_directives: string;
   /** The three modes are set together on a subdomain, or all null. */
   document_root_mode: DocumentRootMode | null;
   php_pool_mode: PHPPoolMode | null;

@@ -69,6 +69,12 @@ type Website struct {
 	// nothing while the host serves everything from nginx.
 	AllowOverride bool `json:"allow_override"`
 
+	// NginxDirectives is the operator's own configuration for this site's
+	// server block. Empty for almost every site, and gated on server.manage
+	// rather than website.update: writing nginx configuration is server
+	// administration, whoever's website it happens to be attached to.
+	NginxDirectives string `json:"nginx_directives"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -145,7 +151,7 @@ const websiteColumns = `
 	system_username AS system_user,
 	php_version, status, ssl_enabled, https_redirect,
 	parent_website_id::text, document_root_mode, php_pool_mode, system_user_mode,
-	apache_port, allow_override,
+	apache_port, allow_override, nginx_directives,
 	created_at, updated_at`
 
 func scanWebsite(row pgx.Row) (Website, error) {
@@ -155,7 +161,7 @@ func scanWebsite(row pgx.Row) (Website, error) {
 		&site.SSLEnabled, &site.HTTPSRedirect,
 		&site.ParentWebsiteID, &site.DocumentRootMode, &site.PHPPoolMode,
 		&site.SystemUserMode, &site.ApachePort, &site.AllowOverride,
-		&site.CreatedAt, &site.UpdatedAt)
+		&site.NginxDirectives, &site.CreatedAt, &site.UpdatedAt)
 	return site, err
 }
 
@@ -416,6 +422,10 @@ type UpdateParams struct {
 	// effect on a host running the hybrid arrangement; nginx has no equivalent
 	// and never reads the file.
 	AllowOverride *bool
+	// NginxDirectives replaces the site's additional configuration. An empty
+	// string clears it, which is why this is a pointer: "" and "leave it
+	// alone" are different requests and a plain string cannot tell them apart.
+	NginxDirectives *string
 }
 
 // Update applies mutable fields to a website.
@@ -425,10 +435,12 @@ func (r *Repository) Update(ctx context.Context, id string, params UpdateParams)
 		SET name           = COALESCE($2, name),
 		    https_redirect = COALESCE($3, https_redirect),
 		    allow_override = COALESCE($4, allow_override),
+		    nginx_directives = COALESCE($5, nginx_directives),
 		    updated_at     = now()
 		WHERE id = $1::uuid
 		RETURNING `+websiteColumns,
-		id, params.Name, params.HTTPSRedirect, params.AllowOverride)
+		id, params.Name, params.HTTPSRedirect, params.AllowOverride,
+		params.NginxDirectives)
 
 	site, err := scanWebsite(row)
 	if errors.Is(err, pgx.ErrNoRows) {

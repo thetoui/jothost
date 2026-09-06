@@ -23,6 +23,7 @@ function website(overrides: Partial<Website> = {}): Website {
     parent_website_id: null,
     apache_port: null,
     allow_override: true,
+    nginx_directives: '',
     document_root_mode: null,
     php_pool_mode: null,
     system_user_mode: null,

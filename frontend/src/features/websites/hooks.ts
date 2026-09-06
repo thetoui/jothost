@@ -122,6 +122,26 @@ export function useDeleteWebsite() {
   });
 }
 
+/**
+ * useSetNginxDirectives replaces a site's additional nginx configuration.
+ *
+ * It queues a vhost rewrite on the host, so the site's jobs are invalidated
+ * along with the record: the change is not applied until that job succeeds,
+ * and the page should be watching it rather than reporting the setting saved.
+ */
+export function useSetNginxDirectives(websiteId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (directives: string) =>
+      websitesApi.setNginxDirectives(websiteId, directives),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(websiteId) });
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.jobs(websiteId) });
+    },
+  });
+}
+
 /** useAddDomain attaches a hostname to a site. */
 export function useAddDomain() {
   const queryClient = useQueryClient();

@@ -59,6 +59,16 @@ type SiteConfig struct {
 	// block is omitted rather than pointing at a certificate that is not there
 	// — which nginx refuses to start with, taking every other site down too.
 	SSL *SSLConfig
+	// Directives are additional configuration written into this site's server
+	// block, validated by shared/validate before it reaches here.
+	//
+	// It is inserted last, after everything the panel writes. nginx's own
+	// precedence decides what wins — the most specific location matches, and
+	// the last add_header at a level replaces earlier ones — so placing it at
+	// the end is what makes "additional" mean what an operator expects: their
+	// configuration overrides the defaults rather than being silently ignored
+	// underneath them.
+	Directives string
 }
 
 // Redirect is a domain that redirects elsewhere rather than serving content.
@@ -161,9 +171,28 @@ server {
         fastcgi_buffers 16 16k;
         fastcgi_buffer_size 32k;
     }
-{{ end }}}
+{{ end }}
+{{- if .Directives }}` + directivesBlock + `{{ end }}}
 {{- end }}
 {{- if .SSL }}` + sslServerBlock + `{{ end }}`))
+
+// directivesBlock is the operator's own configuration, fenced and labelled.
+//
+// The fence is not decoration. This is the one part of a generated vhost that
+// somebody wrote by hand, and when nginx refuses the file the first question is
+// which half is at fault — so the boundary is marked in the file itself rather
+// than left to be inferred from indentation.
+//
+// The content is inserted verbatim. It has already been checked for the one
+// thing that would make it something other than a fragment of this block —
+// braces that do not balance, which would close the server early or swallow
+// what follows — and beyond that it is nginx configuration, which is the point.
+const directivesBlock = `
+    # ---- Additional directives, set in the panel ----------------------
+    # Everything below this line was written by an operator, not generated.
+{{ .Directives }}
+    # ---- End of additional directives ---------------------------------
+`
 
 // redirectTemplate sends one domain to another.
 var redirectTemplate = template.Must(template.New("redirect").Parse(`# Managed by JotHost Panel. Manual edits are overwritten.

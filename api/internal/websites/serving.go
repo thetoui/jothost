@@ -235,5 +235,13 @@ func (r *Repository) VhostPayload(ctx context.Context, site Website) (map[string
 		payload["apache_port"] = state.ApachePort
 		payload["allow_override"] = state.AllowOverride
 	}
+	// Carried on every vhost rewrite, not only the one that set it. The Agent
+	// renders the whole file from this payload, so omitting the directives on
+	// an unrelated change — adding an alias, switching PHP version — would
+	// quietly drop them, which is the failure the SSL fields above are
+	// commented for.
+	if site.NginxDirectives != "" {
+		payload["nginx_directives"] = site.NginxDirectives
+	}
 	return payload, nil
 }

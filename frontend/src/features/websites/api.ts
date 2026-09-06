@@ -78,6 +78,12 @@ export const websitesApi = {
       },
     }),
 
+  setNginxDirectives: (id: string, directives: string) =>
+    request<Website>(`/websites/${encodeURIComponent(id)}/nginx-directives`, {
+      method: 'PUT',
+      body: { nginx_directives: directives },
+    }),
+
   removeSubdomain: (id: string, removeFiles = false) =>
     request<JobAccepted>(
       `/subdomains/${encodeURIComponent(id)}${removeFiles ? '?remove_files=true' : ''}`,

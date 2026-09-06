@@ -326,6 +326,15 @@ func (m *Manager) Install(ctx context.Context, serverName string, report func(in
 	// The vhost goes last, and only once the socket is really there. Pointing
 	// nginx at a socket that does not exist yet makes the first request a 502
 	// with nothing obviously wrong in the configuration.
+	// Anything this package published under another name goes first. Without
+	// this, asking for a new name added a server block instead of moving one:
+	// the console stayed reachable at the old name, and the panel reported
+	// whichever the directory listed first.
+	progress(report, 88, "Removing any previous site")
+	if err := m.removeOtherVhosts(ctx, serverName); err != nil {
+		return Status{}, err
+	}
+
 	progress(report, 90, "Publishing the site")
 	if err := m.writeVhost(ctx, serverName, root, socket); err != nil {
 		return Status{}, err
@@ -342,11 +351,15 @@ func (m *Manager) Install(ctx context.Context, serverName string, report func(in
 // looks like a broken panel rather than a removed feature.
 func (m *Manager) Uninstall(ctx context.Context, report func(int, string)) error {
 	if m.nginx != nil {
-		name, err := m.servedName()
-		if err == nil && name != "" {
+		// Every one of them. A host that somehow ended up with two marked
+		// vhosts must not be left serving the one this did not look at.
+		names, err := m.servedNames()
+		if err == nil && len(names) > 0 {
 			progress(report, 15, "Removing the site")
-			if _, err := m.nginx.RemoveSite(ctx, name); err != nil {
-				return fmt.Errorf("remove the phpMyAdmin site: %w", err)
+			for _, name := range names {
+				if _, err := m.nginx.RemoveSite(ctx, name); err != nil {
+					return fmt.Errorf("remove the phpMyAdmin site %s: %w", name, err)
+				}
 			}
 			if err := m.nginx.Reload(ctx); err != nil {
 				return fmt.Errorf("reload nginx: %w", err)
@@ -392,14 +405,35 @@ func (m *Manager) Uninstall(ctx context.Context, report func(int, string)) error
 	return nil
 }
 
-// servedName reports the server_name phpMyAdmin is published under, by reading
-// the marker the vhost carries. Empty means it is not being served.
+// servedName reports the server_name phpMyAdmin is published under. Empty
+// means it is not being served.
+//
+// Where more than one vhost carries the marker this returns the first in
+// directory order, which is what callers wanting a single answer need. Anything
+// that has to act on all of them uses servedNames.
 func (m *Manager) servedName() (string, error) {
-	entries, err := os.ReadDir(m.nginx.SitesDir())
-	if err != nil {
+	names, err := m.servedNames()
+	if err != nil || len(names) == 0 {
 		return "", err
 	}
+	return names[0], nil
+}
 
+// servedNames reports every vhost carrying the marker this package owns.
+//
+// There should only ever be one, and for a long time the code assumed so and
+// returned the first it found. Installing under a second name wrote a second
+// vhost and left the first published, so the panel reported one name, served
+// two, and on uninstall removed whichever the filesystem happened to list
+// first - leaving a database console live on a name the operator believed they
+// had removed.
+func (m *Manager) servedNames() ([]string, error) {
+	entries, err := os.ReadDir(m.nginx.SitesDir())
+	if err != nil {
+		return nil, err
+	}
+
+	var names []string
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".conf") {
 			continue
@@ -411,9 +445,35 @@ func (m *Manager) servedName() (string, error) {
 		if !strings.Contains(string(content), vhostMarker) {
 			continue
 		}
-		return strings.TrimSuffix(entry.Name(), ".conf"), nil
+		names = append(names, strings.TrimSuffix(entry.Name(), ".conf"))
 	}
-	return "", nil
+	// os.ReadDir already sorts, so the same host gives the same answer twice.
+	return names, nil
+}
+
+// removeOtherVhosts deletes every vhost this package owns except the one about
+// to be written.
+//
+// nginx is not reloaded here: the new vhost is written immediately afterwards
+// and reloads once, so there is no moment where phpMyAdmin is unreachable
+// because its old site was removed and its new one not yet published.
+func (m *Manager) removeOtherVhosts(ctx context.Context, keep string) error {
+	if m.nginx == nil {
+		return nil
+	}
+	names, err := m.servedNames()
+	if err != nil {
+		return fmt.Errorf("read the published sites: %w", err)
+	}
+	for _, name := range names {
+		if name == keep {
+			continue
+		}
+		if _, err := m.nginx.RemoveSite(ctx, name); err != nil {
+			return fmt.Errorf("remove the previous phpMyAdmin site %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // vhostMarker identifies the vhost this package owns, so uninstalling finds it

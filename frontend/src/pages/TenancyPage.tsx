@@ -24,14 +24,7 @@ import { Tabs } from '@/components/ui/Tabs';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { errorMessage } from '@/features/auth/hooks';
-import {
-  byteLabel,
-  countedDimensions,
-  fullness,
-  isolationLabel,
-  limitLabel,
-  usedOf,
-} from '@/features/tenancy/format';
+import { byteLabel, countedDimensions, fullness, isolationLabel, limitLabel, megabytes, usedOf } from '@/features/tenancy/format';
 import {
   useAddAddon,
   useCreateAccount,
@@ -541,8 +534,10 @@ function PlansTab({ plans }: { plans: ServicePlan[] }) {
                     .join(' · ')}
                 </p>
                 <p className="mt-0.5 text-xs text-slate-600">
-                  Disk: {limitLabel(plan.limits.disk_mb)} MB · Bandwidth:{' '}
-                  {limitLabel(plan.limits.bandwidth_mb)} MB
+                  {/* The unit belongs to the number, not to the word that
+                      replaces it: "Unlimited MB" is not a quantity. */}
+                  Disk: {megabytes(plan.limits.disk_mb)} · Bandwidth:{' '}
+                  {megabytes(plan.limits.bandwidth_mb)}
                   {plan.isolation.cpu_percent !== null &&
                     ` · CPU: ${plan.isolation.cpu_percent}%`}
                   {plan.isolation.memory_mb !== null && ` · Memory: ${plan.isolation.memory_mb} MB`}

@@ -108,3 +108,16 @@ export function isolationLabel(subscription: Subscription): {
       return { tone: 'neutral', text: 'No resource limits' };
   }
 }
+
+
+/**
+ * megabytes renders a limit expressed in MB, with its unit.
+ *
+ * The unit is attached to the number rather than appended by the caller,
+ * because a limit is not always a number: "Unlimited MB" and "None MB" are
+ * both nonsense, and both were on screen.
+ */
+export function megabytes(value: number | null): string {
+  const label = limitLabel(value);
+  return typeof value === 'number' ? `${label} MB` : label;
+}

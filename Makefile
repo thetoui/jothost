@@ -401,6 +401,12 @@ docker-test-database-console: create-integration-admin ## Run the phpMyAdmin con
 	# tests and could not sign anybody in.
 	$(COMPOSE) exec -T agent sh /tests/integration/database_console.sh
 
+.PHONY: docker-test-database-dump
+docker-test-database-dump: create-integration-admin ## Run the database export/import checks
+	# Creates a table directly in MySQL, exports it through the panel, drops it,
+	# and imports it back. The panel is not asked whether it worked.
+	$(COMPOSE) exec -T agent sh /tests/integration/database_dump.sh
+
 .PHONY: docker-test-dns
 docker-test-dns: create-integration-admin ## Run the Phase 13 DNS integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase13_dns.sh

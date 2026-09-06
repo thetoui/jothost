@@ -88,6 +88,19 @@ const (
 	OperationDatabaseUserPassword OperationType = "database.user.password"
 	OperationDatabaseUserGrant    OperationType = "database.user.grant"
 
+	// Moving a dump between the panel and a database.
+	//
+	// Addressed by an opaque token rather than a path. The API asks for "the
+	// file behind this token" and has no way to ask for the file behind a
+	// path, so there is no traversal to attempt: the mapping lives in the
+	// Agent and the caller never learns where anything is.
+	OperationDatabaseExport         OperationType = "database.export"
+	OperationDatabaseImport         OperationType = "database.import"
+	OperationDatabaseTransferBegin  OperationType = "database.transfer.begin"
+	OperationDatabaseTransferRead   OperationType = "database.transfer.read"
+	OperationDatabaseTransferWrite  OperationType = "database.transfer.write"
+	OperationDatabaseTransferFinish OperationType = "database.transfer.finish"
+
 	// phpMyAdmin is installed from the host's package manager and served on
 	// one name the operator chooses. It is never enabled by default.
 	OperationPHPMyAdminStatus    OperationType = "phpmyadmin.status"
@@ -318,6 +331,12 @@ var allowedOperations = map[OperationType]struct{}{
 	OperationDatabaseUserDelete:    {},
 	OperationDatabaseUserPassword:  {},
 	OperationDatabaseUserGrant:     {},
+	OperationDatabaseExport:         {},
+	OperationDatabaseImport:         {},
+	OperationDatabaseTransferBegin:  {},
+	OperationDatabaseTransferRead:   {},
+	OperationDatabaseTransferWrite:  {},
+	OperationDatabaseTransferFinish: {},
 	OperationPHPMyAdminStatus:      {},
 	OperationPHPMyAdminInstall:     {},
 	OperationPHPMyAdminUninstall:   {},

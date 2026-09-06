@@ -27,6 +27,8 @@ const (
 	// recorded separately: "opened a console on the orders database" and "read
 	// the password for web_shop" answer different questions afterwards.
 	ActionConsoleSession = "database.console.session"
+	ActionDatabaseExport = "database.export"
+	ActionDatabaseImport = "database.import"
 	ActionGrantChange    = "database.grant"
 	ActionDatabaseAssign = "database.assign"
 
@@ -68,6 +70,15 @@ type Agent interface {
 	DatabaseUserPassword(ctx context.Context, requestID string, req agentclient.DatabaseUserRequest) (agentclient.DatabaseUserResult, error)
 	DatabaseUserDelete(ctx context.Context, requestID, engine, username, host string) error
 	DatabaseGrant(ctx context.Context, requestID, engine, username, host, database, privilege string) error
+
+	// Moving a dump in or out. Addressed by token: the API never learns where
+	// the Agent keeps one, so it cannot ask for a file by path.
+	DatabaseExport(ctx context.Context, requestID, engine, name string) (agentclient.DatabaseTransfer, error)
+	DatabaseImport(ctx context.Context, requestID, engine, name, token string) error
+	DatabaseTransferBegin(ctx context.Context, requestID, name string) (agentclient.DatabaseTransfer, error)
+	DatabaseTransferRead(ctx context.Context, requestID, token string, offset int64, length int) (agentclient.TransferChunk, error)
+	DatabaseTransferWrite(ctx context.Context, requestID, token string, data []byte) (int64, error)
+	DatabaseTransferFinish(ctx context.Context, requestID, token string) error
 }
 
 // Service coordinates the panel's records with the host's database servers.

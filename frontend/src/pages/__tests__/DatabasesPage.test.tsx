@@ -185,18 +185,14 @@ describe('DatabasesPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Expand shop' }));
 
     expect(await screen.findByText('Connection info')).toBeInTheDocument();
-    // Export and import are the backup feature, which shipped, so both are
-    // real links now. They used to be greyed with "Added in Phase 14" beside
-    // them — a release number meaningless outside this repository, naming a
-    // release that had already happened.
-    expect(screen.getByRole('link', { name: /Export dump/ })).toHaveAttribute(
-      'href',
-      '/backups',
-    );
-    expect(screen.getByRole('link', { name: /Import dump/ })).toHaveAttribute(
-      'href',
-      '/backups',
-    );
+    // Export and import are buttons, not links to the Backups page. That is
+    // the point of them: a backup is an archive of the host, restored whole,
+    // and these are one database as a .sql file. Pointing them at /backups was
+    // a different feature wearing the same word.
+    expect(screen.getByRole('button', { name: /Export dump/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Export dump/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Import dump/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Import dump/ })).not.toBeInTheDocument();
     // What genuinely is not built says so as a fact about the panel, without
     // a phase number.
     expect(screen.getByText('This panel does not copy databases yet')).toBeInTheDocument();

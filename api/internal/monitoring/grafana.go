@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/jothost/panel/api/internal/agentclient"
 )
 
 // GrafanaRole is the PostgreSQL role Grafana connects as.
@@ -140,4 +143,80 @@ func randomPassword() (string, error) {
 	// file, and a "+" or "/" in either is a character somebody has to think
 	// about.
 	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// ErrGrafanaUnavailable means the panel cannot manage Grafana on this host.
+var ErrGrafanaUnavailable = errors.New("Grafana cannot be managed from here")
+
+// GrafanaState is what the panel tells the page.
+type GrafanaState struct {
+	agentclient.GrafanaStatus
+	// EmbedBase is where the page points its iframes, empty until Grafana is
+	// usable. It is the panel's own view of the URL rather than the Agent's:
+	// the Agent knows what it wrote into Grafana's config, and the panel knows
+	// what a browser can reach.
+	EmbedBase string `json:"embed_base"`
+	// DashboardUID names the dashboard the panel provisioned, so the page can
+	// build panel URLs without hard-coding it in two places.
+	DashboardUID string `json:"dashboard_uid"`
+}
+
+// GrafanaDashboardUID is the dashboard the Agent provisions.
+const GrafanaDashboardUID = "jothost-host"
+
+// GrafanaStatus reports what is on the host.
+func (s *Service) GrafanaStatus(ctx context.Context, requestID string) (GrafanaState, error) {
+	if s.agent == nil {
+		return GrafanaState{}, ErrGrafanaUnavailable
+	}
+
+	status, err := s.agent.Grafana(ctx, requestID)
+	if err != nil {
+		return GrafanaState{}, err
+	}
+
+	state := GrafanaState{GrafanaStatus: status, DashboardUID: GrafanaDashboardUID}
+	// Only a Grafana that is installed, provisioned and running can answer an
+	// iframe. Offering an embed URL for one that is not would put a broken
+	// frame on the page and leave the reader to guess which of the three is
+	// missing — which is what the status detail says.
+	if status.Installed && status.Provisioned && status.Running {
+		// Under the panel's own name, which is what makes the frame
+		// same-origin. The Agent writes the matching root_url into Grafana.
+		state.EmbedBase = strings.TrimRight(s.panelURL, "/") + "/grafana"
+	}
+	return state, nil
+}
+
+// InstallGrafana creates the read-only role and asks the host to install.
+//
+// The role comes first and its failure stops the install. The alternative is
+// handing Grafana the panel's own database credentials, which would make
+// anybody with Grafana's editor rights an administrator of the panel's data —
+// and the whole reason for a separate role is that Grafana lets an editor write
+// SQL.
+func (s *Service) InstallGrafana(ctx context.Context, actor Actor, requestID string) (string, error) {
+	if s.agent == nil || s.pool == nil {
+		return "", ErrGrafanaUnavailable
+	}
+
+	creds, err := EnsureGrafanaRole(ctx, s.pool, s.databaseURL)
+	if err != nil {
+		return "", err
+	}
+
+	jobID, err := s.agent.InstallGrafana(ctx, requestID, agentclient.GrafanaSetup{
+		Host: creds.Host, Port: creds.Port, Database: creds.Database,
+		User: creds.User, Password: creds.Password, SSLMode: creds.SSLMode,
+		RootURL: s.panelURL,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	// The password is not in the metadata and must never be. An audit entry is
+	// read by more people than the credential is.
+	s.record(ctx, actor, requestID, ActionGrafanaInstall, "monitoring", "",
+		map[string]any{"role": GrafanaRole, "job_id": jobID})
+	return jobID, nil
 }

@@ -209,6 +209,15 @@ func New(opts Options) (*Server, error) {
 		Audit:    auditRecorder,
 		Log:      log,
 		ServerID: opts.LocalServerID,
+
+		// Grafana draws the charts this package's rules are evaluated from.
+		// The pool is here to create its read-only role and nothing else; the
+		// database URL is read for the host and database only, never for the
+		// panel's own credentials.
+		Agent:       agent,
+		Pool:        opts.Pool,
+		DatabaseURL: cfg.DatabaseURL,
+		PanelURL:    cfg.PanelURL,
 	})
 	s.monitoring = monitoringpkg.NewHandler(monitoringpkg.HandlerOptions{
 		Service: monitorService,

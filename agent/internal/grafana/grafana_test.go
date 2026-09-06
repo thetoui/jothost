@@ -312,3 +312,48 @@ func TestAStartMarkerWithNoEndIsTakenAsThePanels(t *testing.T) {
 		t.Fatal("the repaired file does not have exactly one block")
 	}
 }
+
+// TestGrafanaIsToldItIsServedUnderASubPath.
+//
+// It is proxied at /grafana/ on the panel's own name. Without
+// serve_from_sub_path Grafana builds every asset URL from the domain root, so
+// the page loads and all of its scripts 404 — a blank frame, and nothing in
+// any log saying why.
+func TestGrafanaIsToldItIsServedUnderASubPath(t *testing.T) {
+	dir, err := provisionInto(t, &stubServices{})
+	if err != nil {
+		t.Fatalf("Provision: %v", err)
+	}
+
+	config := read(t, dir, testConfigFile)
+	if !strings.Contains(config, "serve_from_sub_path = true") {
+		t.Fatalf("Grafana was not told it is served under a path:\n%s", config)
+	}
+	if !strings.Contains(config, "root_url = https://panel.example/grafana/") {
+		t.Fatalf("root_url does not carry the sub-path:\n%s", config)
+	}
+}
+
+// TestTheSessionCookieIsNotWeakenedUnnecessarily.
+//
+// The first version set SameSite=None with Secure, which a cross-origin frame
+// needs. Then the frame stopped being cross-origin — Grafana is proxied under
+// the panel's own host — so None would have been a weaker cookie for no
+// benefit, and Secure would have broken every install served over plain HTTP.
+func TestTheSessionCookieIsNotWeakenedUnnecessarily(t *testing.T) {
+	dir, err := provisionInto(t, &stubServices{})
+	if err != nil {
+		t.Fatalf("Provision: %v", err)
+	}
+
+	config := read(t, dir, testConfigFile)
+	if strings.Contains(config, "cookie_samesite = none") {
+		t.Error("the session cookie is SameSite=None for a same-origin frame")
+	}
+	if strings.Contains(config, "cookie_secure = true") {
+		t.Error("cookie_secure is forced, which breaks a panel served over HTTP")
+	}
+	if !strings.Contains(config, "cookie_samesite = lax") {
+		t.Errorf("expected a Lax session cookie:\n%s", config)
+	}
+}

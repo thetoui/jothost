@@ -1,6 +1,7 @@
 import { request } from '@/services/apiClient';
 import type {
   Alert,
+  GrafanaState,
   AlertMetric,
   AlertRule,
   AlertRuleInput,
@@ -54,4 +55,12 @@ export const monitoringApi = {
       `/monitoring/services/${encodeURIComponent(service)}`,
       signal ? { signal } : {},
     ),
+};
+
+/** The chart provider's state on the host. */
+export const grafanaApi = {
+  status: (signal?: AbortSignal) =>
+    request<GrafanaState>('/monitoring/grafana', signal ? { signal } : {}),
+
+  install: () => request<{ job_id: string }>('/monitoring/grafana', { method: 'POST' }),
 };

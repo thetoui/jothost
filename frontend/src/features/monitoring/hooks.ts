@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { monitoringApi } from '@/features/monitoring/api';
+import { grafanaApi, monitoringApi } from '@/features/monitoring/api';
 import type { AlertRuleInput } from '@/types/api';
 
 export const monitoringKeys = {
@@ -94,5 +94,34 @@ export function useServiceHistory(service: string, enabled = true) {
     queryKey: monitoringKeys.service(service),
     queryFn: ({ signal }) => monitoringApi.serviceHistory(service, signal),
     enabled: enabled && Boolean(service),
+  });
+}
+
+/** useGrafana reports whether the chart provider is usable. */
+export function useGrafana() {
+  return useQuery({
+    queryKey: [...monitoringKeys.all, 'grafana'],
+    queryFn: ({ signal }) => grafanaApi.status(signal),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * useInstallGrafana puts Grafana on the host.
+ *
+ * The mutation returns a job id and the install carries on without it: this is
+ * a package download measured in hundreds of megabytes, and a page that waited
+ * for it would look hung.
+ */
+export function useInstallGrafana() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => grafanaApi.install(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [...monitoringKeys.all, 'grafana'] });
+      // The job list is what the page watches for the result.
+      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
   });
 }

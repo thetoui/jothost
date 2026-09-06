@@ -59,6 +59,11 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/monitoring/alerts/{id}/acknowledge",
 		guarded(rbac.PermMonitorManage, h.acknowledge))
 
+	// The chart provider. Reading its state is server.view like the rest of
+	// monitoring; installing it puts a package and a database role on the host,
+	// which is monitor.manage.
+	mux.Handle("GET /api/v1/monitoring/grafana", guarded(rbac.PermServerView, h.grafanaStatus))
+	mux.Handle("POST /api/v1/monitoring/grafana", guarded(rbac.PermMonitorManage, h.installGrafana))
 	mux.Handle("GET /api/v1/monitoring/rules", guarded(rbac.PermServerView, h.listRules))
 	mux.Handle("POST /api/v1/monitoring/rules", guarded(rbac.PermMonitorManage, h.createRule))
 	mux.Handle("PATCH /api/v1/monitoring/rules/{id}", guarded(rbac.PermMonitorManage, h.updateRule))
@@ -284,4 +289,44 @@ func translate(err error) error {
 	default:
 		return err
 	}
+}
+
+func (h *Handler) grafanaStatus(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	state, err := h.service.GrafanaStatus(ctx, httpx.RequestIDFromContext(ctx))
+	if err != nil {
+		// A host the Agent cannot answer for cannot run Grafana either, and the
+		// page renders that rather than an error: "the panel cannot reach the
+		// host" belongs beside the charts, not instead of the page.
+		httpx.OK(w, r, map[string]any{
+			"installed":   false,
+			"running":     false,
+			"provisioned": false,
+			"can_install": false,
+			"detail":      "the agent could not be reached, so Grafana cannot be managed",
+		})
+		return
+	}
+	httpx.OK(w, r, state)
+}
+
+func (h *Handler) installGrafana(w http.ResponseWriter, r *http.Request) {
+	// Longer than a read: this creates a database role and queues a package
+	// install of several hundred megabytes.
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+
+	jobID, err := h.service.InstallGrafana(ctx, actorFrom(r), httpx.RequestIDFromContext(ctx))
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+	// 202: the install is queued on the host and is not finished when this
+	// returns. The page watches the job.
+	httpx.WriteJSON(w, r, http.StatusAccepted, httpx.Envelope{
+		Success: true,
+		Data:    map[string]any{"job_id": jobID},
+	})
 }

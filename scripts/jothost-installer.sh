@@ -971,6 +971,34 @@ EOF
         proxy_buffering off;
     }
 
+    # Grafana, when it is installed. Proxied under the panel's own name rather
+    # than published on one of its own, which is the difference between an
+    # embedded chart and a cross-origin frame: same-origin means the browser
+    # sends Grafana's session cookie as a first-party cookie, so no SameSite
+    # relaxation is needed anywhere.
+    #
+    # Grafana still authenticates its own visitors. This proxy carries the
+    # request; it does not vouch for whoever sent it.
+    location /grafana/ {
+        proxy_pass http://127.0.0.1:3000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        # Grafana's live tail and its alerting stream are websockets.
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # The server block sends X-Frame-Options: DENY, which is right for the
+        # panel and would make every embedded chart a blank box. Overridden
+        # here to SAMEORIGIN: the frame is the panel's own page, and anybody
+        # else framing Grafana is still refused.
+        proxy_hide_header X-Frame-Options;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
     location = /healthz { proxy_pass http://127.0.0.1:8080; proxy_set_header Host \$host; }
     location = /readyz  { proxy_pass http://127.0.0.1:8080; proxy_set_header Host \$host; }
 

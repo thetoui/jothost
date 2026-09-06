@@ -2690,3 +2690,26 @@ export interface ProcessList {
   processes: HostProcess[];
   count: number;
 }
+
+
+// ----------------------------------------------------------------- grafana
+
+/**
+ * Grafana's state on the host.
+ *
+ * Three separate booleans rather than one "ready", because they fail for
+ * different reasons and are fixed in different ways: not installed needs an
+ * install, not provisioned needs the panel to write its datasource, and not
+ * running needs the service started. `detail` says which.
+ */
+export interface GrafanaState {
+  installed: boolean;
+  running: boolean;
+  provisioned: boolean;
+  can_install: boolean;
+  /** Where the panel's iframes point. Empty until all three above are true. */
+  embed_base?: string;
+  /** The dashboard the panel provisioned, so the page need not hard-code it. */
+  dashboard_uid?: string;
+  detail?: string;
+}

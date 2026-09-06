@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/jothost/panel/api/internal/agentclient"
 	"github.com/jothost/panel/api/internal/audit"
 	"github.com/jothost/panel/shared/validate"
 )
@@ -22,6 +25,9 @@ const (
 	ActionRuleUpdate  = "monitor.rule.update"
 	ActionRuleDelete  = "monitor.rule.delete"
 	ActionAcknowledge = "monitor.alert.acknowledge"
+	// Installing a chart provider changes what runs on the host and creates a
+	// database role, so it is recorded like any other privileged change.
+	ActionGrafanaInstall = "monitor.grafana.install"
 
 	ResourceTypeRule  = "alert_rule"
 	ResourceTypeAlert = "alert"
@@ -51,6 +57,17 @@ type Service struct {
 	log      *slog.Logger
 	serverID string
 	now      func() time.Time
+
+	// The chart provider. Grafana draws; everything above still decides — the
+	// rules, the thresholds and the acknowledgement state are this package's
+	// and are untouched by whether Grafana is installed.
+	agent       *agentclient.Client
+	pool        *pgxpool.Pool
+	databaseURL string
+	// panelURL is where the panel is reached, which Grafana needs to build the
+	// links inside an embedded panel. Empty means the panel does not know, and
+	// Grafana is left to work it out from the request.
+	panelURL string
 }
 
 // ServiceOptions configure a Service.
@@ -60,6 +77,11 @@ type ServiceOptions struct {
 	Log      *slog.Logger
 	ServerID string
 	Now      func() time.Time
+
+	Agent       *agentclient.Client
+	Pool        *pgxpool.Pool
+	DatabaseURL string
+	PanelURL    string
 }
 
 // NewService builds a Service.
@@ -77,6 +99,11 @@ func NewService(opts ServiceOptions) *Service {
 		log:      log,
 		serverID: opts.ServerID,
 		now:      opts.Now,
+
+		agent:       opts.Agent,
+		pool:        opts.Pool,
+		databaseURL: opts.DatabaseURL,
+		panelURL:    opts.PanelURL,
 	}
 }
 

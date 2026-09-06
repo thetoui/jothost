@@ -28,6 +28,7 @@ import {
   useMonitoringOverview,
   useUpdateAlertRule,
 } from '@/features/monitoring/hooks';
+import { GrafanaPanels } from '@/features/monitoring/components/GrafanaPanels';
 import { ApiError } from '@/services/apiClient';
 import type {
   Alert,
@@ -77,6 +78,7 @@ export function MonitoringPage() {
           <RecentAlerts overview={data} />
         </>
       )}
+      <GrafanaPanels />
     </div>
   );
 }

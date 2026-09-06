@@ -117,22 +117,26 @@ func renderSettings(rootURL string) string {
 	out.WriteString("http_addr = 127.0.0.1\n")
 	fmt.Fprintf(&out, "http_port = %d\n", DefaultPort)
 	if rootURL != "" {
-		fmt.Fprintf(&out, "root_url = %s\n", rootURL)
-		// Grafana builds its own asset URLs from root_url when it is served
-		// under a path rather than at a domain root.
-		out.WriteString("serve_from_sub_path = false\n")
+		// Grafana is proxied under /grafana/ on the panel's own origin, so its
+		// root_url carries the path and it has to build every asset URL with
+		// that prefix. Without serve_from_sub_path it serves a page whose
+		// scripts are all 404s — a blank frame with nothing in the log to say
+		// why.
+		fmt.Fprintf(&out, "root_url = %s\n", strings.TrimRight(rootURL, "/")+"/grafana/")
+		out.WriteString("serve_from_sub_path = true\n")
 	}
 
 	out.WriteString("\n[security]\n")
 	// The setting that makes an iframe work at all. Without it Grafana sends
 	// X-Frame-Options: deny and every embedded panel is a blank box.
 	out.WriteString("allow_embedding = true\n")
-	// A session cookie that a browser will send from inside an iframe on the
-	// panel's own origin. Lax is not enough for a cross-origin frame; None
-	// requires Secure, which is why this is only right behind TLS and is said
-	// so in the panel.
-	out.WriteString("cookie_samesite = none\n")
-	out.WriteString("cookie_secure = true\n")
+	// Lax, not None. The first version of this set SameSite=None with Secure,
+	// which a cross-origin frame needs — and then the frame stopped being
+	// cross-origin: Grafana is proxied under /grafana/ on the panel's own
+	// host, so the browser is sending a first-party cookie. None would have
+	// been a weaker cookie for no benefit, and Secure would have broken every
+	// install the panel serves over plain HTTP.
+	out.WriteString("cookie_samesite = lax\n")
 
 	out.WriteString("\n[auth.anonymous]\n")
 	// Deliberately off, and the reason is the whole security model. phpMyAdmin

@@ -31,7 +31,9 @@ import (
 
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/php"
+	"github.com/jothost/panel/agent/internal/services"
 	"github.com/jothost/panel/agent/internal/sites"
+	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/validate"
 )
 
@@ -109,6 +111,14 @@ type PackageInstaller interface {
 // Writing a pool file does nothing on its own: FPM has to be told to read it,
 // and the socket has to exist before nginx is pointed at it. Skipping either
 // produces a site that returns 502 with a configuration that looks correct.
+// BootPersister makes a service start again after a reboot.
+//
+// Narrow on purpose: this package has no business stopping or restarting
+// anything, and the one thing it needs is the one thing here.
+type BootPersister interface {
+	Enable(ctx context.Context, name string) error
+}
+
 type FPMControl interface {
 	StartFPM(ctx context.Context, version string, detector *php.Detector) error
 	ReloadFPM(ctx context.Context, version string) error
@@ -118,10 +128,13 @@ type FPMControl interface {
 type Options struct {
 	Installer PackageInstaller
 	FPM       FPMControl
-	PHP       *php.Detector
-	Pools     *php.Provider
-	Nginx     *nginx.Provider
-	Users     *sites.UserProvider
+	// Boot makes the PHP-FPM unit start at boot. Optional: a host with no init
+	// system has nothing to ask.
+	Boot  BootPersister
+	PHP   *php.Detector
+	Pools *php.Provider
+	Nginx *nginx.Provider
+	Users *sites.UserProvider
 	// WebGroup owns the FPM socket so nginx can open it. Without it every
 	// request returns 502 with nothing obviously wrong.
 	WebGroup string
@@ -135,12 +148,15 @@ type Options struct {
 type Manager struct {
 	installer PackageInstaller
 	fpm       FPMControl
-	php       *php.Detector
-	pools     *php.Provider
-	nginx     *nginx.Provider
-	users     *sites.UserProvider
-	webGroup  string
-	log       *slog.Logger
+	// boot makes the PHP-FPM unit start again after a reboot. Optional: a host
+	// with no init system has nothing to ask.
+	boot     BootPersister
+	php      *php.Detector
+	pools    *php.Provider
+	nginx    *nginx.Provider
+	users    *sites.UserProvider
+	webGroup string
+	log      *slog.Logger
 }
 
 // NewManager builds a Manager.
@@ -152,6 +168,7 @@ func NewManager(opts Options) *Manager {
 	return &Manager{
 		installer: opts.Installer,
 		fpm:       opts.FPM,
+		boot:      opts.Boot,
 		php:       opts.PHP,
 		pools:     opts.Pools,
 		nginx:     opts.Nginx,
@@ -322,6 +339,7 @@ func (m *Manager) Install(ctx context.Context, serverName string, report func(in
 	if err := m.startPHP(ctx, version, socket); err != nil {
 		return Status{}, err
 	}
+	m.persistPHP(ctx, version)
 
 	// The vhost goes last, and only once the socket is really there. Pointing
 	// nginx at a socket that does not exist yet makes the first request a 502
@@ -594,10 +612,10 @@ func (m *Manager) writeVhost(ctx context.Context, serverName, root, socket strin
 		// a name any resolver answers for.
 		Aliases:      []string{InternalName},
 		DocumentRoot: root,
-		AccessLog:     filepath.Join(LogDir, "access.log"),
-		ErrorLog:      filepath.Join(LogDir, "error.log"),
-		MaxBodySize:   "256m",
-		PHPSocket:     socket,
+		AccessLog:    filepath.Join(LogDir, "access.log"),
+		ErrorLog:     filepath.Join(LogDir, "error.log"),
+		MaxBodySize:  "256m",
+		PHPSocket:    socket,
 	})
 	if err != nil {
 		return fmt.Errorf("render the phpMyAdmin site: %w", err)
@@ -607,6 +625,52 @@ func (m *Manager) writeVhost(ctx context.Context, serverName, root, socket strin
 		return fmt.Errorf("write the phpMyAdmin site: %w", err)
 	}
 	return m.nginx.Reload(ctx)
+}
+
+// persistPHP makes the PHP-FPM version phpMyAdmin runs on start after a reboot.
+//
+// startPHP starts it for this boot and nothing used to enable it, so the first
+// restart stopped it and left a stale socket behind: nginx then answered every
+// request with 502 and the panel still reported phpMyAdmin as installed and
+// served, because the package and the vhost were both exactly where they
+// should be.
+//
+// The Agent's boot sweep could not rescue this. Its rule is "running, not
+// installed" — it persists what is up, deliberately, so that a service an
+// operator stopped on purpose is not turned back on. A pool that is already
+// down is invisible to it, which is why enabling has to happen here, while the
+// thing is running and this code knows it is meant to be.
+//
+// A failure is logged rather than returned. On a host with no init system
+// there is nothing to enable and the install is otherwise complete; refusing
+// it would leave phpMyAdmin installed and unpublished over a reboot that host
+// may never have.
+func (m *Manager) persistPHP(ctx context.Context, version string) {
+	if m.boot == nil {
+		return
+	}
+
+	// The unit is named differently on each distribution, so every candidate
+	// is tried and the first that takes is the answer. Asking which one exists
+	// first would be two round trips to learn what one attempt tells us.
+	definitions := services.PHPFPMDefinitions([]string{version})
+	if len(definitions) == 0 {
+		return
+	}
+
+	var lastErr error
+	for _, unit := range definitions[0].Units {
+		if err := m.boot.Enable(ctx, unit); err == nil {
+			m.log.Info("php-fpm will start at boot", "version", version, "unit", unit)
+			return
+		} else {
+			lastErr = err
+		}
+	}
+
+	m.log.Warn("php-fpm could not be set to start at boot: phpMyAdmin will 502 after a reboot",
+		"version", version, logger.KeyError, lastErr,
+		"detail", "start it by hand after a restart, or enable the unit for this PHP version")
 }
 
 // startPHP makes FPM read the new pool and waits for its socket.

@@ -747,12 +747,16 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 	phpMyAdmin := pma.NewManager(pma.Options{
 		Installer: phpInstaller,
 		FPM:       phpInstaller,
-		PHP:       phpDetector,
-		Pools:     phpPools,
-		Nginx:     nginxProvider,
-		Users:     sites.NewUserProvider(runner),
-		WebGroup:  provisioner.WebGroup(),
-		Log:       log,
+		// So the pool it starts is still running after a reboot. Without this
+		// the first restart left phpMyAdmin installed, served, and answering
+		// 502 to everything.
+		Boot:     serviceProvider,
+		PHP:      phpDetector,
+		Pools:    phpPools,
+		Nginx:    nginxProvider,
+		Users:    sites.NewUserProvider(runner),
+		WebGroup: provisioner.WebGroup(),
+		Log:      log,
 	})
 
 	// Reverse-proxied sites need one map defined in the http block. Written

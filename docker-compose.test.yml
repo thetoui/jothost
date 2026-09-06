@@ -268,6 +268,21 @@ services:
       - ./tests:/tests:ro
     command: ["sh", "/tests/integration/phase23_installer.sh"]
 
+  # A plain container that did not build anything, so the binaries are asked
+  # to run somewhere other than where they were compiled. Debian rather than
+  # Alpine on purpose: a dynamically linked Go binary built on Alpine does not
+  # run here, and the failure is a bare "not found" that names nothing.
+  release-check:
+    image: debian:12-slim
+    working_dir: /src
+    environment:
+      SRC_DIR: /src
+      RELEASE_DIR: /release
+    volumes:
+      - ./:/src:ro
+      - ./release:/release:ro
+    command: ["sh", "/src/tests/integration/release.sh"]
+
 volumes:
   go-build-cache:
   go-mod-cache:

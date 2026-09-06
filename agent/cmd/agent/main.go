@@ -67,7 +67,23 @@ func main() {
 	// reports the rest, then exits without starting the Agent.
 	repairOwnership := flag.Bool("repair-site-ownership", false,
 		"reassign abandoned site directories to root, report ambiguous ones, and exit")
+	showVersion := flag.Bool("version", false, "print the build stamp and exit")
 	flag.Parse()
+
+	// Answered before the configuration is loaded, deliberately. An operator
+	// asking a binary they have just downloaded what it is has no
+	// configuration yet, and refusing until they write one is refusing the one
+	// question worth asking before installing anything.
+	//
+	// `version` without a dash is accepted too: the API binary takes
+	// subcommands and this one takes flags, and nobody should have to remember
+	// which is which to ask the same question.
+	if *showVersion || (flag.NArg() > 0 && flag.Arg(0) == "version") {
+		info := version.Current()
+		fmt.Printf("jothost-agent %s (commit %s, built %s)\n",
+			info.Version, info.Commit, info.BuildDate)
+		return
+	}
 
 	cfg, err := config.Load()
 	if err != nil {

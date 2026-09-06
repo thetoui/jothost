@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 frontend/dist/
+# Built release archives; make release rebuilds them from a tag.
+release/
 frontend/coverage/
 bin/
 dist/

@@ -147,6 +147,50 @@ dist-frontend:
 	rm -rf $(DIST_DIR)/frontend
 	cp -r frontend/dist $(DIST_DIR)/frontend
 
+# ---------------------------------------------------------------- release
+
+# RELEASE_DIR holds the archives a release is published as. Separate from
+# dist/, which is the unpacked tree the installer runs from: an operator
+# downloads one file and a checksum, and `dist` is what comes out of it.
+RELEASE_DIR ?= release
+
+.PHONY: release
+release: dist ## Build the release archive and its checksum into release/
+	# The version comes from the VERSION file and is already compiled into the
+	# binaries by dist-binaries, so the archive cannot be named one thing and
+	# contain another. `make release-verify` checks that rather than trusting it.
+	#
+	# Packaged inside a Linux container, like everything else here. The
+	# executable bit is part of a tar archive, and a Windows or macOS working
+	# copy does not necessarily carry one - packaged from there, the archive
+	# unpacks to binaries nothing can run, and the installer fails on a host
+	# that is perfectly fine.
+	@mkdir -p $(RELEASE_DIR)
+	@docker run --rm -v "$(CURDIR):/w" -w /w $(GO_IMAGE) sh -euc '\
+		version=$$(cat VERSION); \
+		name=jothost-$$version-linux-amd64; \
+		rm -rf $(RELEASE_DIR)/$$name $(RELEASE_DIR)/$$name.tar.gz; \
+		cp -r $(DIST_DIR) $(RELEASE_DIR)/$$name; \
+		chmod 0755 $(RELEASE_DIR)/$$name/install.sh $(RELEASE_DIR)/$$name/bin/*; \
+		tar -C $(RELEASE_DIR) -czf $(RELEASE_DIR)/$$name.tar.gz $$name; \
+		rm -rf $(RELEASE_DIR)/$$name; \
+		cd $(RELEASE_DIR) && sha256sum $$name.tar.gz > $$name.tar.gz.sha256'
+	@version=$$(cat VERSION); name=jothost-$$version-linux-amd64; \
+		echo ""; echo "Release $$version:"; \
+		ls -1 $(RELEASE_DIR)/$$name.tar.gz $(RELEASE_DIR)/$$name.tar.gz.sha256; \
+		echo ""; \
+		echo "Verify it with:  cd $(RELEASE_DIR) && sha256sum -c $$name.tar.gz.sha256"
+
+.PHONY: release-verify
+release-verify: ## Check the release archive against what it claims to be
+	# A release that says one version and ships another is the kind of thing
+	# nobody notices until a bug report names a build that was never shipped.
+	$(COMPOSE_TEST) run --rm release-check
+
+.PHONY: release-clean
+release-clean: ## Remove the built release archives
+	rm -rf $(RELEASE_DIR)
+
 .PHONY: dist-support
 dist-support:
 	@mkdir -p $(DIST_DIR)

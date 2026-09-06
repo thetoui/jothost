@@ -289,7 +289,51 @@ else
 fi
 
 log ''
-log '8. What the console must not become'
+log '8. Where phpMyAdmin sends the browser next'
+# The sign-in answers 302, and until a real browser drove this nothing checked
+# where to. phpMyAdmin sees the request with the /phpmyadmin/ prefix stripped
+# by the proxy, so its redirect was root-relative and carried no prefix:
+#   Location: /index.php?route=/&db=...
+# A browser follows that to the panel's own single-page application, and the
+# operator ends up back in the panel having done nothing wrong. Every check
+# written before this one missed it, because they asked for the database page
+# by its full URL instead of following where phpMyAdmin pointed.
+rm -f "$jar.redir"
+curl -sS -D "$jar.redir" -o /dev/null -c "$jar.redir.jar"   "$PANEL_BASE_URL${MOUNT}index.php?route=/" >/dev/null
+rt="$(hidden /dev/null token 2>/dev/null || true)"
+curl -sS -o "$jar.rl" -c "$jar.rj" "$PANEL_BASE_URL${MOUNT}index.php?route=/"
+rtok="$(hidden "$jar.rl" token)"
+rses="$(hidden "$jar.rl" set_session)"
+curl -sS -D "$jar.redir" -o /dev/null -b "$jar.rj" -c "$jar.rj"   --data-urlencode "pma_username=$user"   --data-urlencode "pma_password=$secret"   --data-urlencode "server=1"   --data-urlencode "token=$rtok"   --data-urlencode "set_session=$rses"   --data-urlencode "db=$DB_NAME"   "$PANEL_BASE_URL${MOUNT}index.php?route=/"
+
+location="$(grep -i '^location:' "$jar.redir" | tr -d '' | sed 's/^[Ll]ocation: *//')"
+control 'the sign-in redirects somewhere'   "$(grep -ci '^location:' "$jar.redir" 2>/dev/null || echo 0)" 1
+
+case "$location" in
+  *"$MOUNT"*)
+    pass "the redirect keeps the panel's mount ($location)" ;;
+  '')
+    fail 'the sign-in sent no Location at all' ;;
+  *)
+    fail "the redirect drops the mount and lands in the panel: $location" ;;
+esac
+
+# And it must name the host the request arrived on. A path-only replacement
+# makes nginx rebuild the URL from its own listening port, which is not the
+# port the browser asked on wherever the two differ - and the operator is sent
+# to a port nothing answers.
+expected_host="$(printf '%s' "$PANEL_BASE_URL" | sed 's|^[a-z]*://||')"
+case "$location" in
+  http://*|https://*)
+    case "$location" in
+      *"$expected_host"*) pass "and the host the request arrived on ($expected_host)" ;;
+      *) fail "the redirect names a different host than $expected_host: $location" ;;
+    esac ;;
+  *) pass 'and is relative, so the host cannot be wrong' ;;
+esac
+
+log ''
+log '9. What the console must not become'
 rm -f "$jar.root"
 curl -sS -o "$jar.rlogin" -c "$jar.root" "$PANEL_BASE_URL${MOUNT}index.php?route=/" >/dev/null
 rt="$(hidden "$jar.rlogin" token)"
@@ -308,7 +352,7 @@ else
 fi
 
 log ''
-log '9. The trail records who opened it, not the credential'
+log '10. The trail records who opened it, not the credential'
 trail="$(api GET '/api/v1/audit?action=database.console.session&limit=5')"
 case "$trail" in
   *database.console.session*) pass 'the console session was audited' ;;
@@ -320,7 +364,7 @@ case "$trail" in
 esac
 
 log ''
-log '10. A database the panel has no password for offers no console'
+log '11. A database the panel has no password for offers no console'
 # The honest refusal, driven rather than asserted. Creating a database also
 # creates its account, so this has to remove one to reach the case at all -
 # which is the whole point: a check that never got here would pass against a

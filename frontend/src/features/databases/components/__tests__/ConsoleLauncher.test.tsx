@@ -228,3 +228,45 @@ describe('opening a second database', () => {
     expect(fields(submitted!)['set_session']).toBe('sess-5678');
   });
 });
+
+describe('when the browser will not open a window', () => {
+  it('submits into the current tab instead of losing the request', async () => {
+    // window.open returns null whenever the browser declines: pop-up blocking,
+    // an embedded or kiosk browser, a policy. Naming a target window that does
+    // not exist does not fail loudly — the browser decides for itself where to
+    // send the form, and what reached phpMyAdmin in a real browser was a GET
+    // carrying no body at all. The operator landed on a login form, which
+    // looks exactly like the panel having done nothing.
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(loginPage, { status: 200 })));
+    vi.spyOn(
+      await import('@/features/databases/api'),
+      'consoleApi',
+      'get',
+    ).mockReturnValue({ consoleSession: async () => session } as never);
+
+    const { result } = renderHook(() => useOpenConsole(), { wrapper });
+    act(() => result.current.open('db-1'));
+
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(submitted!.getAttribute('target')).toBe('_self');
+    // And still a POST with the credentials, not a degraded GET.
+    expect(submitted!.method.toLowerCase()).toBe('post');
+    expect(fields(submitted!)['pma_password']).toBe('a-password');
+  });
+
+  it('uses the opened tab when there is one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(loginPage, { status: 200 })));
+    vi.spyOn(
+      await import('@/features/databases/api'),
+      'consoleApi',
+      'get',
+    ).mockReturnValue({ consoleSession: async () => session } as never);
+
+    const { result } = renderHook(() => useOpenConsole(), { wrapper });
+    act(() => result.current.open('db-1'));
+
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(submitted!.getAttribute('target')).toBe('jothost-database-console');
+  });
+});

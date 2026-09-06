@@ -106,12 +106,24 @@ function submit(
   fields: SignInFields,
   target: Window | null,
 ) {
+  // Into the tab that was opened for it, or into this one when there is none.
+  //
+  // window.open returns null whenever the browser declines to open a window,
+  // and that is not rare: pop-up blocking, an embedded or kiosk browser, a
+  // policy. Naming a target window that does not exist does not fail loudly —
+  // the browser decides for itself where to send the form, and what reached
+  // phpMyAdmin was a GET carrying no body at all. The operator landed on a
+  // login form, which looks exactly like the panel having done nothing.
+  //
+  // Measured in a real browser inside a real click: window.open returned null,
+  // and the only request phpMyAdmin saw was that GET.
+  const windowName = target ? consoleWindow : '_self';
   const base = session.url.replace(/\/+$/, '');
 
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = `${base}/index.php?route=/`;
-  form.target = consoleWindow;
+  form.target = windowName;
   form.style.display = 'none';
 
   const values: Record<string, string> = {

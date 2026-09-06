@@ -20,7 +20,7 @@ import { Card } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SelectField } from '@/components/ui/Field';
 import { IconButton } from '@/components/ui/IconButton';
-import { IconLink, TextLink } from '@/components/ui/Link';
+import { TextLink } from '@/components/ui/Link';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
 import { Tabs } from '@/components/ui/Tabs';
@@ -29,6 +29,7 @@ import { focusRingTight } from '@/components/ui/focus';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { ConsoleCard } from '@/features/databases/components/ConsoleCard';
+import { useOpenConsole } from '@/features/databases/components/ConsoleLauncher';
 import { CreateDatabaseForm } from '@/features/databases/components/CreateDatabaseForm';
 import { DatabasePanel } from '@/features/databases/components/DatabasePanel';
 import { PasswordReveal } from '@/features/databases/components/PasswordReveal';
@@ -295,7 +296,10 @@ interface DatabaseTableProps {
 
 function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTableProps) {
   const consoleStatus = useDatabaseConsole();
-  const consoleURL = consoleStatus.data?.served ? consoleStatus.data.url : undefined;
+  // Served, not merely installed: phpMyAdmin unpacked into a directory no
+  // vhost points at is not something a browser can open.
+  const consoleServed = Boolean(consoleStatus.data?.served && consoleStatus.data.url);
+  const console_ = useOpenConsole();
 
   return (
     <div className="overflow-x-auto">
@@ -386,9 +390,18 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
                   {/* The quick actions Plesk puts at the end of a row. */}
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-end gap-1">
-                      {consoleURL && (
-                        <IconLink
-                          href={consoleURL}
+                      {consoleServed && (
+                        // A button, not a link. This was an <a> to phpMyAdmin's
+                        // own address: it signed nobody in and named no
+                        // database, so it dropped the operator on a login form
+                        // — or, once a session existed, on whichever database
+                        // that session's account happened to be looking at.
+                        // The panel is meant to open *this* database as an
+                        // account that can reach it, which is a POST and not a
+                        // href.
+                        <IconButton
+                          onClick={() => console_.open(database.id)}
+                          disabled={console_.isPending}
                           label={`Open ${database.name} in phpMyAdmin`}
                           icon={<Table2 aria-hidden="true" className="h-4 w-4" />}
                         />

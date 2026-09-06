@@ -1022,6 +1022,27 @@ EOF
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 120s;
+
+        # phpMyAdmin sees this request with the /phpmyadmin/ prefix stripped,
+        # so the redirects it issues are root-relative and carry no prefix: a
+        # sign-in answers 302 Location: /index.php?route=/&db=... and the
+        # browser follows that to the panel's own single-page application. The
+        # operator ends up back in the panel, never signed in, having done
+        # nothing wrong.
+        #
+        # PmaAbsoluteUri does not cover this. It is set, and the Location
+        # header still comes back without the prefix, so nginx has to put it
+        # back.
+        #
+        # It was invisible to every check written before a real browser drove
+        # this: they asked for the database page by its full URL instead of
+        # following where phpMyAdmin sent them.
+        # $http_host, not a bare path: a path-only replacement makes nginx
+        # rebuild the URL from its own listening port, which is not the port
+        # the browser asked on wherever the two differ - and the operator is
+        # redirected to a port nothing answers. This echoes back exactly the
+        # host and port the request arrived with.
+        proxy_redirect / \$scheme://\$http_host/phpmyadmin/;
     }
 
     location = /healthz { proxy_pass http://127.0.0.1:8080; proxy_set_header Host \$host; }

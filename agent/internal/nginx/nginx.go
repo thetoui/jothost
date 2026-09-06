@@ -37,6 +37,18 @@ type Provider struct {
 	// procRoot is where worker processes are observed, so a drain can be
 	// waited for. Configurable so tests need no real nginx.
 	procRoot string
+	// configPath and prefix name a private nginx instance. Empty means the
+	// host's own nginx, started by its init system and reading /etc/nginx.
+	//
+	// The panel runs a second instance for its own applications, so a website
+	// whose configuration nginx refuses cannot take phpMyAdmin down with it,
+	// and a website the panel writes can never be confused with one of the
+	// panel's own. Both instances are driven through this one type, so the
+	// allowlisting, the validate-before-reload rule and the drain wait are
+	// written once.
+	instanceConfig string
+	instancePrefix string
+	instanceLog    string
 }
 
 // Options configures a Provider.
@@ -47,6 +59,17 @@ type Options struct {
 	SitesDir string
 	// ProcRoot defaults to /proc.
 	ProcRoot string
+	// ConfigPath and Prefix select a private instance. Both empty means the
+	// host's own nginx; setting them makes every command carry -c and -p.
+	ConfigPath string
+	Prefix     string
+	// ErrorLog is where a private instance writes errors it hits before it has
+	// parsed its own error_log directive.
+	//
+	// Without it nginx opens its compiled-in default, which is relative and so
+	// resolves against Prefix — a path inside the panel's tree that nothing
+	// created, and the instance refuses to start over it.
+	ErrorLog string
 }
 
 // DefaultSitesDir is where generated vhosts live.
@@ -62,11 +85,45 @@ func NewProvider(opts Options) *Provider {
 	if procRoot == "" {
 		procRoot = DefaultProcRoot
 	}
-	return &Provider{
+	provider := &Provider{
 		runner:   opts.Runner,
 		sitesDir: filepath.Clean(sitesDir),
 		procRoot: filepath.Clean(procRoot),
 	}
+	if opts.ConfigPath != "" {
+		provider.instanceConfig = filepath.Clean(opts.ConfigPath)
+	}
+	if opts.Prefix != "" {
+		provider.instancePrefix = filepath.Clean(opts.Prefix)
+	}
+	if opts.ErrorLog != "" {
+		provider.instanceLog = filepath.Clean(opts.ErrorLog)
+	}
+	return provider
+}
+
+// Private reports whether this provider drives an instance of the panel's own
+// rather than the host's nginx.
+func (p *Provider) Private() bool { return p.instanceConfig != "" }
+
+// args prefixes a command with the flags that select this instance.
+//
+// Every nginx invocation goes through here. An instance flag left off one
+// command is the failure that is hardest to see: the command succeeds, against
+// the wrong nginx.
+func (p *Provider) args(rest ...string) []string {
+	if p.instanceConfig == "" {
+		return rest
+	}
+	out := make([]string, 0, len(rest)+4)
+	if p.instancePrefix != "" {
+		out = append(out, "-p", p.instancePrefix)
+	}
+	out = append(out, "-c", p.instanceConfig)
+	if p.instanceLog != "" {
+		out = append(out, "-e", p.instanceLog)
+	}
+	return append(out, rest...)
 }
 
 // Available reports whether nginx can be used.
@@ -265,7 +322,7 @@ func (p *Provider) Validate(ctx context.Context) error {
 		return ErrUnavailable
 	}
 
-	result, err := p.runner.Run(ctx, CommandName, "-t")
+	result, err := p.runner.Run(ctx, CommandName, p.args("-t")...)
 	if err != nil {
 		return fmt.Errorf("run nginx -t: %w", err)
 	}
@@ -288,7 +345,7 @@ func (p *Provider) Reload(ctx context.Context) error {
 		return err
 	}
 
-	result, err := p.runner.Run(ctx, CommandName, "-s", "reload")
+	result, err := p.runner.Run(ctx, CommandName, p.args("-s", "reload")...)
 	if err != nil {
 		return fmt.Errorf("reload nginx: %w", err)
 	}

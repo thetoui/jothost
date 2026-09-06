@@ -588,3 +588,20 @@ func (s JobState) Terminal() bool {
 		return false
 	}
 }
+
+// ConsoleMount is where the panel proxies phpMyAdmin, on the panel's own
+// origin.
+//
+// It lives here because it is the one string four separate places have to
+// agree on and none of them can see the others: the panel's nginx location
+// block (scripts/jothost-installer.sh and docker/nginx/dev.conf),
+// PmaAbsoluteUri in the configuration the Agent writes for phpMyAdmin, the URL
+// the API hands the browser, and the fetch the browser makes to read
+// phpMyAdmin's login form. A disagreement between any two of them is a login
+// that redirects into the panel's own router halfway through, which reads like
+// phpMyAdmin is broken.
+//
+// A path rather than a URL: neither the Agent nor the API knows the hostname
+// an operator reaches the panel on, and guessing one produces a link that
+// works on the developer's machine and nowhere else.
+const ConsoleMount = "/phpmyadmin/"

@@ -490,7 +490,46 @@ panel's own configuration:
 /var/lib/jothost/          the Agent's state
 /var/log/jothost/          2770 root:jothost
 /run/jothost/agent.sock    0660 root:jothost
+
+/etc/jothost/web/          the panel's own web stack: nginx.conf, sites.d,
+                           php-fpm.conf, php-fpm.d
+/run/jothost-web/          its pid files and PHP socket, 0750 root:<web group>
+/var/log/jothost/web/      its logs
 ```
+
+## The panel's own web stack
+
+The applications the panel installs for itself — phpMyAdmin, and anything that
+follows it — are served by a **second nginx and a second PHP-FPM master**,
+reading only the directories above. The public nginx proxies to it on loopback
+at `/phpmyadmin/`.
+
+This is not tidiness. When the two shared a web server and a PHP master:
+
+- a customer site whose configuration nginx refuses stopped the reload that
+  would have published a panel change, and a customer pool that stopped the PHP
+  master from starting took the database console down with it — and a database
+  console going dark is exactly when an operator most needs it;
+- the panel had to recognise its own vhosts by scanning the websites' directory
+  for a marker comment, because nothing else distinguished them;
+- a website named the same as a panel application collided, and which one won
+  depended on filesystem order.
+
+Two consequences worth knowing when working on this:
+
+- `/run/jothost-web` sits **beside** `/run/jothost`, not inside it. That
+  directory is `0750 root:jothost` so only the Agent's account reaches the
+  privileged socket in it, and nginx is not in that group — a run directory
+  underneath it is one the panel's nginx cannot traverse, and the fix is never
+  to loosen the socket's directory.
+- The panel's instance runs with `-p /etc/jothost/web`, so every relative path
+  nginx resolves — its default error log, a bare `include fastcgi_params` —
+  resolves inside the panel's tree. Paths written for it must be absolute, and
+  `fastcgi_params` is copied in rather than included from `/etc/nginx`.
+
+Neither master is registered with the init system. Both are the Agent's, and
+the Agent reconciles them at startup: it starts at boot, so that is what brings
+the panel's applications back after a reboot.
 
 The Agent runs as root and the API as the unprivileged `jothost-api`, which is
 the boundary in section 2 made concrete on a real host. The installer also sets

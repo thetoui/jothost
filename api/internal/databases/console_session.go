@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/jothost/panel/shared/protocol"
 )
 
-// ConsoleMount is where the panel's own nginx proxies phpMyAdmin. It has to
-// match the location block in scripts/jothost-installer.sh, the one in
-// docker/nginx/dev.conf, and PmaAbsoluteUri in agent/internal/pma/config.go.
-const ConsoleMount = "/phpmyadmin/"
+// ConsoleMount is where the panel's own nginx proxies phpMyAdmin. Defined in
+// shared/protocol, which is the one place the Agent and the API can both see.
+const ConsoleMount = protocol.ConsoleMount
 
 // Errors returned when a console session cannot be opened.
 var (

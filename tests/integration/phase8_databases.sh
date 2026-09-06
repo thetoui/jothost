@@ -530,6 +530,15 @@ log '10. phpMyAdmin'
 
 PMA_HOST="${PMA_HOST:-phpmyadmin.integration.test}"
 
+# phpMyAdmin is served by the panel's own nginx, on loopback, not by the nginx
+# that serves customer websites. That is deliberate: a website whose
+# configuration nginx refuses cannot take the database console down with it.
+# These checks therefore ask the panel's instance, and a check still asking
+# port 80 would be asking the wrong web server - which is what they did, and
+# they failed with a 404 that read like phpMyAdmin was broken.
+PMA_BASE="${PMA_BASE:-http://127.0.0.1:8791}"
+
+
 status="$(api GET /api/v1/databases/console)"
 contains 'the console reports whether it can be installed' "$status" '"can_install"'
 
@@ -558,9 +567,26 @@ contains 'it is served on the name that was asked for' "$status" "\"server_name\
 # The claim under test: it answers, and with its own login form rather than a
 # PHP error. Installing the package without its extensions produces a page
 # whose entire content is "the mysqli extension is missing", and that is a 200.
-page="$(curl -s --max-time 30 -H "Host: $PMA_HOST" http://127.0.0.1/ 2>/dev/null || true)"
+page="$(curl -s --max-time 30 -H "Host: $PMA_HOST" "$PMA_BASE/" 2>/dev/null || true)"
 contains 'it serves its login form' "$page" 'input_username'
 not_contains 'the page is not an error' "$page" 'phpMyAdmin - Error'
+
+# The nginx that serves customer websites must not serve it. Two web servers
+# that both answer for phpMyAdmin would be two front doors, and only one of
+# them is reached through the panel.
+website_served="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15   -H "Host: $PMA_HOST" http://127.0.0.1:80/index.php 2>/dev/null || true)"
+if [ "$website_served" = "200" ]; then
+  fail 'the websites nginx also serves phpMyAdmin'
+else
+  pass "the websites nginx does not serve phpMyAdmin (answered $website_served)"
+fi
+
+# Nothing of the panel's may appear where the website system looks.
+if grep -rl 'jothost:phpmyadmin' /etc/nginx/ >/dev/null 2>&1; then
+  fail 'a phpMyAdmin vhost is in the websites nginx directory'
+else
+  pass 'no phpMyAdmin configuration under /etc/nginx'
+fi
 
 # The configuration must carry no credentials. One that names a user and
 # password turns reaching the page into having the database.
@@ -577,7 +603,9 @@ if [ "${pool_user:-0}" -gt 0 ]; then
   pass 'it runs under its own system account'
 else
   # ps output varies by busybox version; fall back to the socket's owner.
-  owner="$(find /run/php-fpm -name 'jothost-pma-*.sock' -exec stat -c '%U' {} + 2>/dev/null | head -1)"
+  # In the panel's own run directory now, served by the panel's own PHP
+  # master. /run/php-fpm belongs to the websites' master.
+  owner="$(find /run/jothost-web -name 'jothost-pma*.sock' -exec stat -c '%U' {} + 2>/dev/null | head -1)"
   if [ "$owner" = "jothost_pma" ]; then
     pass 'it runs under its own system account'
   else
@@ -594,7 +622,7 @@ pma_pw="$(json_field "$made" 'password')"
 pma_user="$(json_field "$made" 'username')"
 
 rm -f "$work/pma.jar"
-form="$(curl -s --max-time 30 -c "$work/pma.jar" -H "Host: $PMA_HOST" http://127.0.0.1/ 2>/dev/null || true)"
+form="$(curl -s --max-time 30 -c "$work/pma.jar" -H "Host: $PMA_HOST" "$PMA_BASE/" 2>/dev/null || true)"
 form_token="$(printf '%s' "$form" | sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p' | head -1)"
 
 signed_in="$(curl -s --max-time 30 -b "$work/pma.jar" -c "$work/pma.jar" -L -H "Host: $PMA_HOST" \
@@ -602,19 +630,19 @@ signed_in="$(curl -s --max-time 30 -b "$work/pma.jar" -c "$work/pma.jar" -L -H "
   --data-urlencode "pma_password=$pma_pw" \
   --data-urlencode "server=1" \
   --data-urlencode "token=$form_token" \
-  http://127.0.0.1/index.php 2>/dev/null || true)"
+  "$PMA_BASE/index.php" 2>/dev/null || true)"
 
 contains 'an account the panel created can sign in' "$signed_in" "$DB_PMA"
 not_contains 'signing in did not bounce back to the form' "$signed_in" 'input_password'
 
 # root must be refused even with the server's own socket authentication.
 rm -f "$work/root.jar"
-form="$(curl -s --max-time 30 -c "$work/root.jar" -H "Host: $PMA_HOST" http://127.0.0.1/ 2>/dev/null || true)"
+form="$(curl -s --max-time 30 -c "$work/root.jar" -H "Host: $PMA_HOST" "$PMA_BASE/" 2>/dev/null || true)"
 form_token="$(printf '%s' "$form" | sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p' | head -1)"
 as_root="$(curl -s --max-time 30 -b "$work/root.jar" -c "$work/root.jar" -L -H "Host: $PMA_HOST" \
   --data-urlencode "pma_username=root" --data-urlencode "pma_password=" \
   --data-urlencode "server=1" --data-urlencode "token=$form_token" \
-  http://127.0.0.1/index.php 2>/dev/null || true)"
+  "$PMA_BASE/index.php" 2>/dev/null || true)"
 contains 'root is refused' "$as_root" 'input_username'
 
 # An address that is not a host name must be refused rather than written into

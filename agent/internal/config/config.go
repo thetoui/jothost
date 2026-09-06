@@ -62,6 +62,14 @@ type Config struct {
 	// than a name resolved through PATH, for the same reason.
 	NginxPath     string
 	NginxSitesDir string
+	// PanelWebListen is the address the panel's own nginx binds to.
+	//
+	// Loopback by default, and that is the intended production value: the
+	// panel's applications are reached through its public vhost, which is what
+	// decides whether a visitor gets to them at all. It is configurable
+	// because the development stack runs the public nginx in a separate
+	// container, where loopback inside the Agent is reachable by nothing.
+	PanelWebListen string
 	// Apache is the backend in hybrid mode. Two binary names because
 	// distributions disagree: Alpine and RHEL ship "httpd", Debian ships
 	// "apache2". Both are allowlisted; whichever exists is used.
@@ -264,8 +272,9 @@ func Load() (Config, error) {
 
 		SystemctlPath: getString("AGENT_SYSTEMCTL_PATH", "/usr/bin/systemctl"),
 
-		NginxPath:     getString("AGENT_NGINX_PATH", "/usr/sbin/nginx"),
-		NginxSitesDir: getString("AGENT_NGINX_SITES_DIR", "/etc/nginx/conf.d"),
+		NginxPath:      getString("AGENT_NGINX_PATH", "/usr/sbin/nginx"),
+		NginxSitesDir:  getString("AGENT_NGINX_SITES_DIR", "/etc/nginx/conf.d"),
+		PanelWebListen: getString("AGENT_PANEL_WEB_LISTEN", "127.0.0.1"),
 
 		// OpenRC, for the hosts that have no systemd. Alpine is the one that
 		// matters: systemd cannot be installed there at all.

@@ -891,7 +891,9 @@ wins, and ties break on username so the same database always opens as the same
 account.
 
 `url` is the path the panel proxies phpMyAdmin at on its **own origin**, not the
-hostname the Agent published it under. That is forced rather than preferred:
+hostname the Agent published it under. Behind that path is the panel's own
+nginx and its own PHP-FPM master, separate from the pair that serve customer
+websites — see ARCHITECTURE.md — so a website cannot take the console down. That is forced rather than preferred:
 phpMyAdmin's login is a POST carrying a CSRF token bound to the session cookie
 set on the page the form came from, so a caller must read that page before it
 can sign anybody in, and only same-origin JavaScript may read it. Posting blind

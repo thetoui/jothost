@@ -33,6 +33,20 @@ type SSLConfig struct {
 type SiteConfig struct {
 	// PrimaryDomain is the canonical name. It becomes the first server_name.
 	PrimaryDomain string
+	// FastCGIParams is the file nginx reads the standard FastCGI variables
+	// from. Empty renders the bare name, which nginx resolves against its
+	// prefix — right for the host's nginx and wrong for the panel's own
+	// instance, whose prefix is the panel's tree and contains no such file.
+	FastCGIParams string
+	// Listen overrides the address the site is served on, e.g.
+	// "127.0.0.1:8791". Empty means port 80 on every address, which is what a
+	// customer website wants.
+	//
+	// The panel's own applications set it, because they are served by the
+	// panel's private nginx and reached through its public vhost. A panel
+	// application listening on every address would be a second way in that
+	// nothing authenticates the route to.
+	Listen string
 	// Aliases are additional names served by the same site.
 	Aliases []string
 	// DocumentRoot is the directory nginx serves from.
@@ -96,8 +110,12 @@ type Redirect struct {
 // attack possible.
 var siteTemplate = template.Must(template.New("site").Parse(`# Managed by JotHost Panel. Manual edits are overwritten.
 server {
+{{- if .Listen }}
+    listen {{ .Listen }};
+{{- else }}
     listen 80;
     listen [::]:80;
+{{- end }}
 
     server_name {{ .PrimaryDomain }}{{ range .Aliases }} {{ . }}{{ end }};
 {{ if and .SSL .SSL.ChallengeRoot }}` + acmeChallengeBlock + `{{ end }}
@@ -155,7 +173,7 @@ server {
         # this line turns any uploaded file into executable code.
         try_files $uri =404;
 
-        include fastcgi_params;
+        include {{ .FastCGIParams }};
         fastcgi_pass unix:{{ .PHPSocket }};
         fastcgi_index index.php;
 
@@ -221,6 +239,13 @@ func Render(cfg SiteConfig) (string, error) {
 	// what makes catch-all routing possible. Everything else a wildcard could
 	// be — a bare asterisk answering for every name on the host, an asterisk
 	// inside a label — is still refused.
+	// The bare name is what the host's nginx wants: it resolves it against its
+	// own prefix, where the distribution put the file. Only a caller serving
+	// from a different prefix has to say where it is.
+	if cfg.FastCGIParams == "" {
+		cfg.FastCGIParams = "fastcgi_params"
+	}
+
 	if err := validate.ServerName(cfg.PrimaryDomain); err != nil {
 		return "", err
 	}

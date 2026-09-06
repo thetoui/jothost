@@ -3,6 +3,8 @@ package pma
 import (
 	"strings"
 	"text/template"
+
+	"github.com/jothost/panel/shared/protocol"
 )
 
 // configTemplate is the configuration the panel writes for phpMyAdmin.
@@ -97,11 +99,9 @@ type configData struct {
 }
 
 // BaseURI is the path the panel proxies phpMyAdmin at, on the panel's own
-// origin. It appears here, in the panel's nginx configuration and in the
-// frontend; those three have to agree, and this is the one they are checked
-// against.
-const BaseURI = "/phpmyadmin/"
-
+// origin. Defined in shared/protocol because the API and the frontend have to
+// agree with it and cannot see this package.
+const BaseURI = protocol.ConsoleMount
 
 // renderConfig produces config.inc.php.
 func renderConfig(secret string) string {

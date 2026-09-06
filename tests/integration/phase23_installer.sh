@@ -277,6 +277,44 @@ fi
 code=$(curl -s -o /dev/null -w '%{http_code}' -k --max-time 10 "https://$DOMAIN/websites" || true)
 same "a deep link falls through to the application" "$code" "200"
 
+# The panel's own applications are proxied to its private nginx, which runs on
+# loopback and is a different process from the one serving websites. Nothing
+# checked this before, and the failure it hides is a quiet one: with no
+# location block, /phpmyadmin/ falls through to the single-page application
+# above and answers 200 with the panel's own HTML. The browser then fetches
+# what it thinks is phpMyAdmin's login form, parses the panel's index page,
+# finds no CSRF token, and reports that phpMyAdmin returned no login form.
+#
+# So this stands something on the panel's port and checks the answer came from
+# there. A 502 would prove only that *something* is proxied; it would pass
+# just as happily against a proxy aimed at the wrong port.
+panel_port=8791
+probe_reply="proxied-to-the-panel-stack"
+(
+  while true; do
+    printf 'HTTP/1.1 200 OK
+Content-Length: %s
+Connection: close
+
+%s'       "${#probe_reply}" "$probe_reply" | nc -l -p "$panel_port" -s 127.0.0.1 >/dev/null 2>&1 || break
+  done
+) &
+probe_pid=$!
+sleep 1
+
+body=$(curl -s -k --max-time 10 "https://$DOMAIN/phpmyadmin/index.php" 2>/dev/null || true)
+kill "$probe_pid" >/dev/null 2>&1 || true
+wait "$probe_pid" 2>/dev/null || true
+
+case "$body" in
+  *"$probe_reply"*)
+    pass "/phpmyadmin/ is proxied to the panel's own web stack on $panel_port" ;;
+  *"<!doctype html"*|*"<!DOCTYPE html"*)
+    fail "/phpmyadmin/ fell through to the single-page application: no proxy is configured" ;;
+  *)
+    fail "/phpmyadmin/ did not reach the panel's stack on $panel_port (got: $(printf '%.60s' "$body"))" ;;
+esac
+
 # Self-signed was asked for, so the certificate must not be trusted — and the
 # installer must have said so rather than implying otherwise.
 if curl -fsS --max-time 10 "https://$DOMAIN/" >/dev/null 2>&1; then

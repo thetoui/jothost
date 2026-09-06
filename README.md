@@ -112,13 +112,30 @@ docker compose up -d --build
 ## Installing on a server
 
 Everything above is the development stack. To put the panel on a real Linux
-machine, build the artefacts and run the installer on the target host:
+machine, build a release and run the installer on the target host:
 
 ```bash
-make dist
+make release
 ```
 
-Copy `dist/` to the server, then:
+That produces a versioned archive and a checksum:
+
+```text
+release/jothost-0.1.0-linux-amd64.tar.gz
+release/jothost-0.1.0-linux-amd64.tar.gz.sha256
+```
+
+Copy both to the server and check the archive before running anything as root
+— it is the only check available at that point:
+
+```bash
+sha256sum -c jothost-0.1.0-linux-amd64.tar.gz.sha256
+tar -xzf jothost-0.1.0-linux-amd64.tar.gz
+cd jothost-0.1.0-linux-amd64
+./bin/jothost-api version      # what you are about to install
+```
+
+Then:
 
 ```bash
 sudo ./install.sh install --domain panel.example.com --email you@example.com
@@ -139,7 +156,18 @@ sudo ./install.sh uninstall    # remove the panel; --purge also its data
 ```
 
 Supported: Debian/Ubuntu, Alpine, and RHEL/Rocky/Alma, on x86_64 and aarch64.
-See [docs/PHASE23.md](docs/PHASE23.md) for what it does and does not do.
+See [docs/PHASE23.md](docs/PHASE23.md) for what it does and does not do, and
+[docs/PHASE25.md](docs/PHASE25.md) for how a release is built and checked.
+
+`make dist` still builds the unpacked tree if you would rather copy that.
+
+### Before you rely on it
+
+| | |
+|---|---|
+| [docs/SECURITY.md](docs/SECURITY.md) | What protects the host, and what deliberately does not. Read the "What this does not do" section. |
+| [docs/RECOVERY.md](docs/RECOVERY.md) | What to do when something breaks. Start here at 3am. |
+| [CHANGELOG.md](CHANGELOG.md) | What is in this version, and its known limitations. |
 
 ---
 

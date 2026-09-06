@@ -196,7 +196,100 @@ else
 fi
 
 log ''
-log '7. What the console must not become'
+log '7. A second database, in the same browser'
+# The reported failure: the console opened the first database and no other.
+# phpMyAdmin keeps one signed-in account per browser, in a cookie, so the entry
+# page answered the second click with the signed-in interface rather than a
+# login form. The launcher looked for its CSRF token only inside #login_form,
+# found none, and refused - saying phpMyAdmin had returned no login form, which
+# was true and explained nothing.
+#
+# The token is on that page too, and posting credentials with it switches the
+# account outright. No sign-out is involved; the first fix written for this
+# used one and it was not needed.
+#
+# The jar is deliberately the one section 5 signed in with. A fresh jar would
+# make this pass against the broken build.
+second_name="${DB_NAME}b"
+# A username unlike the database name, so nothing below can pass on the
+# database name alone.
+second_account="other${STAMP}"
+second_created="$(api POST /api/v1/databases   "{\"name\":\"$second_name\",\"engine\":\"mariadb\",\"create_user\":true,\"username\":\"$second_account\"}")"
+second_id="$(printf '%s' "$second_created" | sed -n 's/.*"database":{"id":"\([^"]*\)".*/\1/p')"
+
+# whoami asks the database server who the phpMyAdmin session is connected as.
+#
+# Not phpMyAdmin's rendered page: the second account's name turns up in the
+# markup of a page served to the first account, so a grep for it passes against
+# a build that never switched. This is the server's own answer.
+whoami() {
+  curl -sS -o "$jar.sql" -b "$jar" -c "$jar"     "$PANEL_BASE_URL${MOUNT}index.php?route=/sql&db=$1"
+  sql_token="$(hidden "$jar.sql" token)"
+  [ -n "$sql_token" ] || return 0
+  curl -sS -o "$jar.who" -b "$jar" -c "$jar"     --data-urlencode 'sql_query=SELECT CURRENT_USER()'     --data-urlencode "db=$1"     --data-urlencode "token=$sql_token"     "$PANEL_BASE_URL${MOUNT}index.php?route=/sql"
+  grep -o '[A-Za-z0-9_]*@localhost' "$jar.who" | head -1
+}
+
+if [ -z "$second_id" ]; then
+  fail "could not create $second_name"
+else
+  second_session="$(api POST "/api/v1/databases/$second_id/console-session")"
+  second_user="$(field "$second_session" 'username')"
+  second_secret="$(field "$second_session" 'password')"
+
+  control 'the browser is signed in as the first database account'     "$(whoami "$DB_NAME")" "$user@localhost"
+
+  # Step one, as the launcher does it.
+  curl -sS -o "$jar.second" -b "$jar" -c "$jar" "$PANEL_BASE_URL${MOUNT}index.php?route=/"
+  if [ -z "$(hidden "$jar.second" set_session)" ]; then
+    pass 'phpMyAdmin answers a signed-in browser with its interface, not a login form'
+  else
+    fail 'the browser was not signed in, so this proves nothing about switching'
+  fi
+
+  t2="$(hidden "$jar.second" token)"
+  if [ -n "$t2" ]; then
+    pass 'and that page still carries the token a sign-in needs'
+  else
+    fail 'no token on the signed-in page - the second database cannot be opened'
+  fi
+
+  curl -sS -o /dev/null -b "$jar" -c "$jar"     --data-urlencode "pma_username=$second_user"     --data-urlencode "pma_password=$second_secret"     --data-urlencode "server=1"     --data-urlencode "token=$t2"     --data-urlencode "db=$second_name"     --data-urlencode "target=index.php?route=/database/structure&db=$second_name"     "$PANEL_BASE_URL${MOUNT}index.php?route=/"
+
+  curl -sS -o "$jar.seconddb" -b "$jar" -c "$jar"     "$PANEL_BASE_URL${MOUNT}index.php?route=/database/structure&db=$second_name"
+
+  if grep -q 'input_password' "$jar.seconddb"; then
+    fail 'the second database bounced back to the login page'
+  elif grep -q "$second_name" "$jar.seconddb"; then
+    pass "the second database opened ($second_name)"
+  else
+    fail 'signed in but not on the second database'
+  fi
+
+  # The claim that matters, from the server rather than the page.
+  connected="$(whoami "$second_name")"
+  if [ "$connected" = "$second_account@localhost" ]; then
+    pass "and the server says the session is $connected"
+  else
+    fail "the session is $connected, not $second_account@localhost"
+  fi
+
+  # And back again, so this is not a one-way switch.
+  curl -sS -o "$jar.third" -b "$jar" -c "$jar" "$PANEL_BASE_URL${MOUNT}index.php?route=/"
+  t3="$(hidden "$jar.third" token)"
+  curl -sS -o /dev/null -b "$jar" -c "$jar"     --data-urlencode "pma_username=$user"     --data-urlencode "pma_password=$secret"     --data-urlencode "server=1"     --data-urlencode "token=$t3"     --data-urlencode "db=$DB_NAME"     "$PANEL_BASE_URL${MOUNT}index.php?route=/"
+  back="$(whoami "$DB_NAME")"
+  if [ "$back" = "$user@localhost" ]; then
+    pass "and back to the first database as $back"
+  else
+    fail "returning to the first database left the session as $back"
+  fi
+
+  api DELETE "/api/v1/databases/$second_id" >/dev/null 2>&1 || true
+fi
+
+log ''
+log '8. What the console must not become'
 rm -f "$jar.root"
 curl -sS -o "$jar.rlogin" -c "$jar.root" "$PANEL_BASE_URL${MOUNT}index.php?route=/" >/dev/null
 rt="$(hidden "$jar.rlogin" token)"
@@ -215,7 +308,7 @@ else
 fi
 
 log ''
-log '8. The trail records who opened it, not the credential'
+log '9. The trail records who opened it, not the credential'
 trail="$(api GET '/api/v1/audit?action=database.console.session&limit=5')"
 case "$trail" in
   *database.console.session*) pass 'the console session was audited' ;;
@@ -227,7 +320,7 @@ case "$trail" in
 esac
 
 log ''
-log '9. A database the panel has no password for offers no console'
+log '10. A database the panel has no password for offers no console'
 # The honest refusal, driven rather than asserted. Creating a database also
 # creates its account, so this has to remove one to reach the case at all -
 # which is the whole point: a check that never got here would pass against a

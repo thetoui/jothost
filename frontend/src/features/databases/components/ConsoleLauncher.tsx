@@ -16,20 +16,13 @@ import type { DatabaseConsoleSession } from '@/types/api';
 const consoleWindow = 'jothost-database-console';
 
 /**
- * loginFields reads phpMyAdmin's own login form for the two hidden fields it
- * will not sign anybody in without.
+ * loadEntryPage fetches phpMyAdmin's entry page as a parsed document.
  *
- * phpMyAdmin issues a CSRF token bound to the session cookie it sets on this
- * page. A POST without both is answered with the login page again — measured
- * against a running phpMyAdmin, not inferred: credentials alone, credentials
- * with the cookie, and credentials with the token each failed; only the pair
- * worked.
- *
- * This is also why phpMyAdmin is proxied onto the panel's own origin. Reading
- * a page to get its token is precisely what the same-origin policy exists to
- * prevent, so on a separate hostname there is no version of this that works.
+ * Parsed rather than pattern-matched, so a value containing a quote or an
+ * attribute order phpMyAdmin changes between releases cannot silently produce
+ * the wrong string.
  */
-async function loginFields(base: string): Promise<{ token: string; setSession: string }> {
+async function loadEntryPage(base: string): Promise<Document> {
   // Not the panel's API, so not the API client: this is phpMyAdmin, a
   // different application that answers in HTML and needs its own cookie sent.
   // Routing it through the service layer would mean teaching that layer about
@@ -42,19 +35,57 @@ async function loginFields(base: string): Promise<{ token: string; setSession: s
   if (!response.ok) {
     throw new Error(`phpMyAdmin answered ${response.status} at ${base}`);
   }
+  return new DOMParser().parseFromString(await response.text(), 'text/html');
+}
 
-  // Parsed rather than pattern-matched, so a value containing a quote or an
-  // attribute order phpMyAdmin changes between releases cannot silently
-  // produce the wrong string.
-  const page = new DOMParser().parseFromString(await response.text(), 'text/html');
-  const read = (name: string) =>
-    page.querySelector<HTMLInputElement>(`#login_form input[name="${name}"]`)?.value ?? '';
+/**
+ * SignInFields is what phpMyAdmin needs alongside the credentials.
+ */
+interface SignInFields {
+  /** The CSRF token, bound to the session cookie the page was served with. */
+  token: string;
+  /**
+   * Present only on the login form. phpMyAdmin does not require it — measured
+   * both ways — but it is what the real form posts, so it is sent when it is
+   * there and omitted when it is not.
+   */
+  setSession: string;
+}
 
-  const token = read('token');
-  const setSession = read('set_session');
-  if (!token || !setSession) {
-    throw new Error('phpMyAdmin did not return a login form.');
+/**
+ * signInFields reads what phpMyAdmin needs to accept a sign-in, from whatever
+ * page it serves this browser.
+ *
+ * phpMyAdmin will not sign anybody in without a CSRF token bound to the session
+ * cookie the page was served with. That was measured rather than inferred:
+ * credentials alone, credentials with the cookie, and credentials with a token
+ * from a different session each failed; only the pair worked. It is also why
+ * phpMyAdmin is proxied onto the panel's own origin, since reading a page for
+ * its token is exactly what the same-origin policy exists to prevent.
+ *
+ * The token is taken from any page, not only the login form. That is the whole
+ * fix for the second database: phpMyAdmin keeps one signed-in account per
+ * browser, so once an operator had opened one database, the entry page answered
+ * with the signed-in interface instead of a login form. Looking for the token
+ * only inside #login_form found nothing there, and every database after the
+ * first refused to open with "phpMyAdmin did not return a login form" — true,
+ * and no help at all.
+ *
+ * Posting credentials with the signed-in page's token switches the account
+ * outright; no sign-out is needed. That was confirmed by asking the database
+ * itself, not by reading phpMyAdmin's markup: after the post, SELECT
+ * CURRENT_USER() returns the new account.
+ */
+function signInFields(page: Document): SignInFields | null {
+  const token =
+    page.querySelector<HTMLInputElement>('#login_form input[name="token"]')?.value ??
+    page.querySelector<HTMLInputElement>('input[name="token"]')?.value ??
+    '';
+  if (!token) {
+    return null;
   }
+  const setSession =
+    page.querySelector<HTMLInputElement>('#login_form input[name="set_session"]')?.value ?? '';
   return { token, setSession };
 }
 
@@ -72,7 +103,7 @@ async function loginFields(base: string): Promise<{ token: string; setSession: s
  */
 function submit(
   session: DatabaseConsoleSession,
-  fields: { token: string; setSession: string },
+  fields: SignInFields,
   target: Window | null,
 ) {
   const base = session.url.replace(/\/+$/, '');
@@ -88,13 +119,18 @@ function submit(
     pma_password: session.password,
     server: '1',
     token: fields.token,
-    set_session: fields.setSession,
     db: session.database,
     // Where phpMyAdmin lands once it has signed in. Without it the operator
     // arrives at the server overview and has to find their database in a list
     // of everybody else's.
     target: `index.php?route=/database/structure&db=${encodeURIComponent(session.database)}`,
   };
+
+  // Only when phpMyAdmin offered one. The signed-in page has none, and posting
+  // an empty one is not the same as leaving it out.
+  if (fields.setSession) {
+    values['set_session'] = fields.setSession;
+  }
 
   for (const [name, value] of Object.entries(values)) {
     const input = document.createElement('input');
@@ -138,14 +174,25 @@ export function useOpenConsole() {
 
       session.mutate(databaseId, {
         onSuccess: (result) => {
-          loginFields(result.url.replace(/\/+$/, ''))
-            .then((fields) => submit(result, fields, opened.current))
+          const base = result.url.replace(/\/+$/, '');
+          loadEntryPage(base)
+            .then((page) => {
+              const fields = signInFields(page);
+              if (!fields) {
+                // Neither a login form nor any page phpMyAdmin served. The
+                // likeliest cause is the proxy answering with something else
+                // entirely — the panel's own application, when the
+                // /phpmyadmin/ location is missing.
+                throw new Error('phpMyAdmin did not return a page it can sign in from.');
+              }
+              submit(result, fields, opened.current);
+            })
             .catch((error: unknown) => {
               opened.current?.close();
               setFailed(
                 error instanceof Error
                   ? error.message
-                  : 'phpMyAdmin did not return a login form.',
+                  : 'phpMyAdmin could not be opened.',
               );
             });
         },

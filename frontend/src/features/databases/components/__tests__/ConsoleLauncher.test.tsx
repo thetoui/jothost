@@ -6,14 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useOpenConsole } from '@/features/databases/components/ConsoleLauncher';
 
 /**
- * What these pin down is the part that was wrong the first time.
+ * What these pin down are the two things that were wrong, in order.
  *
- * The original launcher posted the credentials straight at phpMyAdmin and was
- * never signed in, because phpMyAdmin will not accept a login without the CSRF
- * token and set_session it puts on its own login page. So the checks here are
- * about those two fields: that they are read, that they are sent, and that
- * their absence stops the flow instead of quietly posting a login that cannot
- * work.
+ * The first launcher posted credentials straight at phpMyAdmin and was never
+ * signed in: phpMyAdmin will not accept a login without a CSRF token bound to
+ * the session cookie the page was served with.
+ *
+ * The second read that token only out of #login_form. phpMyAdmin keeps one
+ * signed-in account per browser, so after the first database the entry page is
+ * the signed-in interface and has no login form in it — and every database
+ * after the first refused to open. The token is on that page too, and posting
+ * credentials with it switches the account outright.
  */
 
 const session = {
@@ -31,6 +34,18 @@ const loginPage = `
     <input type="text" name="pma_username">
     <input type="password" name="pma_password">
   </form>
+`;
+
+/**
+ * What phpMyAdmin answers with once this browser already holds a session: the
+ * interface, with a CSRF token but no login form anywhere in it.
+ */
+const signedInPage = `
+  <div id="page_content">
+    <form id="menu-bar" method="post">
+      <input type="hidden" name="token" value="tok-signed-in">
+    </form>
+  </div>
 `;
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -95,10 +110,10 @@ describe('opening a database console', () => {
     expect(sent['target']).toContain('db=shop');
   });
 
-  it('posts nothing when phpMyAdmin returns no login form', async () => {
-    // A proxy that answers with the panel's own index.html looks like a 200
-    // and would, without this, produce a form post with an empty token that
-    // lands the operator on a login page with no explanation.
+  it('posts nothing when the answer is not a phpMyAdmin page at all', async () => {
+    // A proxy answering with the panel's own index.html looks like a 200 and
+    // would, without this, produce a form post with an empty token that lands
+    // the operator on a login page with no explanation.
     vi.stubGlobal('fetch', vi.fn(async () => new Response('<html><body>nope</body></html>')));
     vi.spyOn(
       await import('@/features/databases/api'),
@@ -111,7 +126,7 @@ describe('opening a database console', () => {
 
     await waitFor(() => expect(result.current.error).toBeTruthy());
     expect(submitted).toBeNull();
-    expect(result.current.error).toMatch(/login form/i);
+    expect(result.current.error).toMatch(/sign in from/i);
   });
 
   it('never puts the password in the URL it posts to', async () => {
@@ -129,5 +144,87 @@ describe('opening a database console', () => {
     expect(submitted!.method.toLowerCase()).toBe('post');
     expect(submitted!.getAttribute('action')).not.toContain(session.password);
     expect(submitted!.getAttribute('action')).not.toContain('pma_password');
+  });
+});
+
+describe('opening a second database', () => {
+  it('signs in with the token from the page it is already signed in on', async () => {
+    // The reported bug. phpMyAdmin keeps one signed-in account per browser, so
+    // the entry page answers the second click with the interface rather than a
+    // login form. The token is there; only the login form is not.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(signedInPage, { status: 200 })));
+    vi.spyOn(
+      await import('@/features/databases/api'),
+      'consoleApi',
+      'get',
+    ).mockReturnValue({ consoleSession: async () => session } as never);
+
+    const { result } = renderHook(() => useOpenConsole(), { wrapper });
+    act(() => result.current.open('db-2'));
+
+    await waitFor(() => expect(submitted).not.toBeNull());
+
+    const sent = fields(submitted!);
+    expect(sent['token']).toBe('tok-signed-in');
+    expect(sent['pma_username']).toBe('shop_rw');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('never signs out to do it', async () => {
+    // A sign-out would work and was the first fix written. It is not needed —
+    // posting with the page token switches the account — and it would leave a
+    // window in which the browser holds no session at all.
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        requests.push(String(input));
+        return new Response(signedInPage, { status: 200 });
+      }),
+    );
+    vi.spyOn(
+      await import('@/features/databases/api'),
+      'consoleApi',
+      'get',
+    ).mockReturnValue({ consoleSession: async () => session } as never);
+
+    const { result } = renderHook(() => useOpenConsole(), { wrapper });
+    act(() => result.current.open('db-2'));
+
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(requests.filter((url) => url.includes('logout'))).toHaveLength(0);
+    expect(requests).toHaveLength(1);
+  });
+
+  it('omits set_session when the page has none', async () => {
+    // The signed-in page carries no set_session. phpMyAdmin does not require
+    // it, and posting it empty is not the same as leaving it out.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(signedInPage, { status: 200 })));
+    vi.spyOn(
+      await import('@/features/databases/api'),
+      'consoleApi',
+      'get',
+    ).mockReturnValue({ consoleSession: async () => session } as never);
+
+    const { result } = renderHook(() => useOpenConsole(), { wrapper });
+    act(() => result.current.open('db-2'));
+
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(fields(submitted!)).not.toHaveProperty('set_session');
+  });
+
+  it('still sends set_session when the login form offers one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(loginPage, { status: 200 })));
+    vi.spyOn(
+      await import('@/features/databases/api'),
+      'consoleApi',
+      'get',
+    ).mockReturnValue({ consoleSession: async () => session } as never);
+
+    const { result } = renderHook(() => useOpenConsole(), { wrapper });
+    act(() => result.current.open('db-1'));
+
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(fields(submitted!)['set_session']).toBe('sess-5678');
   });
 });

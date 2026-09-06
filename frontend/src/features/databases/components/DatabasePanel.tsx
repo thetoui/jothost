@@ -10,6 +10,7 @@ import {
   Wrench,
 } from 'lucide-react';
 
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
 import { Modal } from '@/components/ui/Modal';
@@ -18,6 +19,7 @@ import { ToolGroup, ToolTile } from '@/components/ui/ToolTile';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { ConnectionInfo } from '@/features/databases/components/ConnectionInfo';
+import { useOpenConsole } from '@/features/databases/components/ConsoleLauncher';
 import {
   useDatabase,
   useDatabaseConsole,
@@ -39,10 +41,13 @@ export function DatabasePanel({ database }: { database: Database }) {
   const detail = useDatabase(database.id);
   const refresh = useRefreshDatabaseSize();
   const console_ = useDatabaseConsole();
+  const consoleSession = useOpenConsole();
   const [showingConnection, setShowingConnection] = useState(false);
 
   const users = detail.data?.users ?? [];
-  const consoleURL = console_.data?.served ? console_.data.url : undefined;
+  // Served, not merely installed: phpMyAdmin unpacked into a directory that
+  // no vhost points at is not something a browser can open.
+  const consoleServed = Boolean(console_.data?.served && console_.data.url);
 
   return (
     <div className="border-t border-surface-border bg-surface-sunken/40 px-5 py-4">
@@ -50,8 +55,14 @@ export function DatabasePanel({ database }: { database: Database }) {
         <ToolTile
           icon={<Table2 className="h-4 w-4" />}
           label="phpMyAdmin"
-          {...(consoleURL
-            ? { detail: 'Browse and edit tables', tone: 'blue' as const, href: consoleURL }
+          {...(consoleServed
+            ? {
+                detail: consoleSession.isPending
+                  ? 'Signing in…'
+                  : `Open ${database.name} signed in`,
+                tone: 'blue' as const,
+                onClick: () => consoleSession.open(database.id),
+              }
             : { unavailable: 'Install it below to use this' })}
         />
         <ToolTile
@@ -92,6 +103,12 @@ export function DatabasePanel({ database }: { database: Database }) {
           tone="slate"
         />
       </ToolGroup>
+
+      {consoleSession.error && (
+        <Alert tone="danger" title="phpMyAdmin could not be opened" className="mt-3">
+          {consoleSession.error}
+        </Alert>
+      )}
 
       {/* The facts strip Plesk puts under a database. It answers "where is this,
           who can reach it, and how big is it" without opening anything. */}

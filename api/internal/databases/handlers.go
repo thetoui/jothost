@@ -66,6 +66,10 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("PATCH /api/v1/databases/{id}/users/{userId}", guarded(h.setGrant))
 
 	mux.Handle("GET /api/v1/databases/console", guarded(h.consoleStatus))
+	// A signed-in session for one database. POST rather than GET: it returns a
+	// credential, and a GET is the shape browsers cache, prefetch and put in
+	// history.
+	mux.Handle("POST /api/v1/databases/{id}/console-session", guarded(h.consoleSession))
 	mux.Handle("POST /api/v1/databases/console", guarded(h.installConsole))
 	mux.Handle("DELETE /api/v1/databases/console", guarded(h.uninstallConsole))
 
@@ -572,4 +576,34 @@ func isUUID(value string) bool {
 		}
 	}
 	return true
+}
+
+// consoleSession returns what a browser needs to open phpMyAdmin on one
+// database, already signed in.
+//
+// Guarded by the same permission as revealing a password, because that is what
+// it does: it hands the caller a database credential they could already ask for
+// directly. It is recorded separately in the audit trail all the same.
+func (h *Handler) consoleSession(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	id := r.PathValue("id")
+	if !isUUID(id) {
+		httpx.Error(w, r, httpx.BadRequest("id must be a UUID"))
+		return
+	}
+
+	session, err := h.service.ConsoleSessionFor(ctx, id, actorFrom(r),
+		httpx.RequestIDFromContext(ctx))
+	if err != nil {
+		httpx.Error(w, r, Translate(err))
+		return
+	}
+
+	// No-store, and it is not decoration: this body carries a password, and a
+	// browser or proxy keeping a copy of it is the one way this endpoint
+	// becomes worse than the reveal it is built on.
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.OK(w, r, session)
 }

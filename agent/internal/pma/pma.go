@@ -511,6 +511,11 @@ func (m *Manager) writePool(ctx context.Context, version, root string, account s
 }
 
 // writeVhost publishes phpMyAdmin under one server name.
+// InternalName is the server_name the panel's reverse proxy addresses
+// phpMyAdmin by. It must match the Host header in the panel's /phpmyadmin/
+// location, in docker/nginx/dev.conf and in scripts/jothost-installer.sh.
+const InternalName = "phpmyadmin.internal"
+
 func (m *Manager) writeVhost(ctx context.Context, serverName, root, socket string) error {
 	if err := os.MkdirAll(filepath.Dir(LogDir), 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", filepath.Dir(LogDir), err)
@@ -521,7 +526,14 @@ func (m *Manager) writeVhost(ctx context.Context, serverName, root, socket strin
 
 	rendered, err := nginx.Render(nginx.SiteConfig{
 		PrimaryDomain: serverName,
-		DocumentRoot:  root,
+		// A second, fixed name so the panel's own vhost can proxy phpMyAdmin
+		// under /phpmyadmin/ without knowing what the operator called it. The
+		// panel's proxy passes this as the Host header; it is how a static
+		// configuration file written at install time reaches a site created
+		// later. Nothing new is exposed — this is the same site, and it is not
+		// a name any resolver answers for.
+		Aliases:      []string{InternalName},
+		DocumentRoot: root,
 		AccessLog:     filepath.Join(LogDir, "access.log"),
 		ErrorLog:      filepath.Join(LogDir, "error.log"),
 		MaxBodySize:   "256m",

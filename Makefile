@@ -324,6 +324,13 @@ docker-test-audit: create-integration-admin ## Run the audit trail integration c
 	# The trail was written from Phase 1 and readable by nothing until now.
 	$(COMPOSE) exec -T agent sh /tests/integration/audit.sh
 
+.PHONY: docker-test-database-console
+docker-test-database-console: create-integration-admin ## Run the phpMyAdmin console-session checks
+	# Drives the sign-in a browser performs, not just the endpoint that hands
+	# out the credentials: the first version of this feature passed its own
+	# tests and could not sign anybody in.
+	$(COMPOSE) exec -T agent sh /tests/integration/database_console.sh
+
 .PHONY: docker-test-dns
 docker-test-dns: create-integration-admin ## Run the Phase 13 DNS integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase13_dns.sh

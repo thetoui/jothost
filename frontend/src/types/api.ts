@@ -2713,3 +2713,21 @@ export interface GrafanaState {
   dashboard_uid?: string;
   detail?: string;
 }
+
+
+/**
+ * What a browser needs to open phpMyAdmin on one database, signed in.
+ *
+ * The password is in here. phpMyAdmin authenticates with a database account,
+ * the panel already stores these passwords because MySQL and PostgreSQL keep
+ * only a hash, and the same permission can already reveal them directly — so
+ * this hands the caller nothing new. It is posted as a form body and never put
+ * in a URL.
+ */
+export interface DatabaseConsoleSession {
+  url: string;
+  database: string;
+  username: string;
+  password: string;
+  host?: string;
+}

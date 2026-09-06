@@ -208,3 +208,17 @@ export function useAssignDatabase() {
     onSuccess: (_result, input) => invalidate(input.id),
   });
 }
+
+/**
+ * useConsoleSession opens phpMyAdmin on one database.
+ *
+ * A mutation rather than a query, and never cached: the response carries a
+ * credential, and a query cache is a copy of it kept in the tab for as long as
+ * the page is open.
+ */
+export function useConsoleSession() {
+  return useMutation({
+    mutationFn: (databaseId: string) => consoleApi.consoleSession(databaseId),
+    gcTime: 0,
+  });
+}

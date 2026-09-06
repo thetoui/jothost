@@ -67,6 +67,21 @@ $cfg['LoginCookieStore'] = 0;
    updates the package. */
 $cfg['VersionCheck'] = false;
 
+/*
+ * Where phpMyAdmin believes it lives.
+ *
+ * The panel proxies it under its own origin at this path, and that is not a
+ * cosmetic choice. phpMyAdmin's login is a POST carrying a CSRF token bound to
+ * a session cookie it set on the page the form came from, so signing somebody
+ * in requires reading that page first — which only same-origin JavaScript can
+ * do. Off its own hostname, "open this database" could never be more than a
+ * login form with the username typed in.
+ *
+ * Without this, every redirect phpMyAdmin issues drops the prefix and lands on
+ * the panel's own router instead.
+ */
+$cfg['PmaAbsoluteUri'] = '{{ .BaseURI }}';
+
 /* Suggestions to change settings the panel manages are noise here. */
 $cfg['ShowServerInfo'] = false;
 $cfg['ShowPhpInfo'] = false;
@@ -78,7 +93,15 @@ type configData struct {
 	Secret  string
 	Socket  string
 	TempDir string
+	BaseURI string
 }
+
+// BaseURI is the path the panel proxies phpMyAdmin at, on the panel's own
+// origin. It appears here, in the panel's nginx configuration and in the
+// frontend; those three have to agree, and this is the one they are checked
+// against.
+const BaseURI = "/phpmyadmin/"
+
 
 // renderConfig produces config.inc.php.
 func renderConfig(secret string) string {
@@ -92,6 +115,7 @@ func renderConfig(secret string) string {
 		// skip-networking set.
 		Socket:  defaultMySQLSocket,
 		TempDir: TempDir,
+		BaseURI: BaseURI,
 	})
 	return out.String()
 }

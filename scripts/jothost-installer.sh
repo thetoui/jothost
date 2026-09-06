@@ -999,6 +999,26 @@ EOF
         add_header X-Frame-Options "SAMEORIGIN" always;
     }
 
+    # phpMyAdmin, when it has been installed. Served here rather than only on
+    # its own hostname: phpMyAdmin's login is a POST carrying a CSRF token
+    # bound to the session cookie set on the page the form came from, and
+    # reading that page is something only same-origin JavaScript may do. Off
+    # this origin, "open this database" could never be more than a login form
+    # with the username filled in.
+    #
+    # phpMyAdmin still authenticates its own visitors with a real database
+    # account. This proxy carries the request; it does not vouch for whoever
+    # sent it.
+    location /phpmyadmin/ {
+        proxy_pass http://127.0.0.1:80/;
+        proxy_http_version 1.1;
+        proxy_set_header Host phpmyadmin.internal;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120s;
+    }
+
     location = /healthz { proxy_pass http://127.0.0.1:8080; proxy_set_header Host \$host; }
     location = /readyz  { proxy_pass http://127.0.0.1:8080; proxy_set_header Host \$host; }
 

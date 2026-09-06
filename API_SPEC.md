@@ -873,6 +873,39 @@ that does not finish inside the request.
 `GET` reports `installed`, `served`, the address, the PHP version behind it,
 and — when it cannot be installed — why.
 
+```http
+POST   /databases/:id/console-session
+```
+
+Opens phpMyAdmin on one database, signed in as an account that can reach it.
+The response carries `url`, `database`, `username`, `password` and `host`, and
+is sent with `Cache-Control: no-store`.
+
+The password is in the body on purpose. phpMyAdmin authenticates with a
+database account; the panel stores these passwords because MySQL and PostgreSQL
+keep only a hash, and `GET /database-users/:id/password` already reveals them to
+this same permission. A shared administrative account is never used — it would
+give everyone who can open a console full access to every database on the host.
+Where several accounts can reach the database the one with the most access
+wins, and ties break on username so the same database always opens as the same
+account.
+
+`url` is the path the panel proxies phpMyAdmin at on its **own origin**, not the
+hostname the Agent published it under. That is forced rather than preferred:
+phpMyAdmin's login is a POST carrying a CSRF token bound to the session cookie
+set on the page the form came from, so a caller must read that page before it
+can sign anybody in, and only same-origin JavaScript may read it. Posting blind
+to phpMyAdmin's own hostname returns the login page every time.
+
+**POST**, never GET, and the credentials go in a form body. In a query string
+the password would land in phpMyAdmin's access log, in the `Referer` of every
+link on the page that follows, and in browser history.
+
+**409** when no account the panel holds a password for can reach the database,
+and **503** when phpMyAdmin is not served on this host. Each session is audited
+as `database.console.session`, recording who opened which database as which
+account — and not the password.
+
 ---
 
 # 15. Database Users

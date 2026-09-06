@@ -292,11 +292,11 @@ panel_port=8791
 probe_reply="proxied-to-the-panel-stack"
 (
   while true; do
-    printf 'HTTP/1.1 200 OK
-Content-Length: %s
-Connection: close
-
-%s'       "${#probe_reply}" "$probe_reply" | nc -l -p "$panel_port" -s 127.0.0.1 >/dev/null 2>&1 || break
+    # The escapes are spelled out rather than embedded as real CR bytes:
+    # git normalises CRLF in the working tree, which would silently turn
+    # this into a malformed HTTP response the next time it touched the file.
+    printf 'HTTP/1.1 200 OK\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' \
+      "${#probe_reply}" "$probe_reply" | nc -l -p "$panel_port" -s 127.0.0.1 >/dev/null 2>&1 || break
   done
 ) &
 probe_pid=$!

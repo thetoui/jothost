@@ -10,6 +10,7 @@ import (
 	"github.com/jothost/panel/api/internal/agentclient"
 	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/rbac"
+	"github.com/jothost/panel/api/internal/websites"
 	"github.com/jothost/panel/shared/validate"
 )
 
@@ -172,6 +173,14 @@ func (h *Handler) domainFor(w http.ResponseWriter, r *http.Request) (string, boo
 
 	site, err := h.websites.Get(r.Context(), id)
 	if err != nil {
+		// Mapped here rather than left to the log package's own translate,
+		// which knows nothing about websites and turned "no such website" into
+		// a 500. A deleted site being polled by a tab somebody left open is an
+		// ordinary thing, not a server fault.
+		if errors.Is(err, websites.ErrNotFound) {
+			httpx.Error(w, r, httpx.NotFound("No such website"))
+			return "", false
+		}
 		httpx.Error(w, r, translate(err))
 		return "", false
 	}

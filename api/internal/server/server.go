@@ -849,6 +849,7 @@ func (s *Server) routes() http.Handler {
 	s.mail.Routes(mux)
 	s.deploy.Routes(mux)
 	s.dns.Routes(mux)
+	s.dns.TemplateRoutes(mux)
 	s.updates.Routes(mux)
 	s.auditReader.Routes(mux)
 	s.monitoring.Routes(mux)

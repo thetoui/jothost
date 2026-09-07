@@ -407,6 +407,13 @@ docker-test-database-dump: create-integration-admin ## Run the database export/i
 	# and imports it back. The panel is not asked whether it worked.
 	$(COMPOSE) exec -T agent sh /tests/integration/database_dump.sh
 
+.PHONY: docker-test-dns-templates
+docker-test-dns-templates: create-integration-admin ## Run the DNS template checks
+	# Creates a template, makes a zone from it, and reads the zone back. A
+	# template that cannot produce valid records must be refused when it is
+	# written, not when somebody creates a domain.
+	$(COMPOSE) exec -T agent sh /tests/integration/dns_templates.sh
+
 .PHONY: docker-test-dns
 docker-test-dns: create-integration-admin ## Run the Phase 13 DNS integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase13_dns.sh

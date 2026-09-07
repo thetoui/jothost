@@ -25,6 +25,8 @@ const (
 	ActionRecordCreate   = "dns.record.create"
 	ActionRecordUpdate   = "dns.record.update"
 	ActionRecordDelete   = "dns.record.delete"
+	ActionTemplateSave   = "dns.template.save"
+	ActionTemplateDelete = "dns.template.delete"
 	ActionConfigure      = "dns.configure"
 	ActionInstall        = "dns.install"
 	ActionProviderAdd    = "dns.provider.add"
@@ -515,17 +517,40 @@ func contains(values []string, value string) bool {
 // worse than a zone with none.
 func (s *Service) seedRecords(ctx context.Context, zone Zone) error {
 	address := s.address(ctx)
-	if address == "" {
+
+	template, err := s.repo.DefaultTemplate(ctx, s.serverID)
+	if err != nil && !errors.Is(err, ErrTemplateNotFound) {
+		return err
+	}
+	if errors.Is(err, ErrTemplateNotFound) || len(template.Records) == 0 {
+		// No template on this server. The zone gets its glue and nothing else,
+		// which is a zone somebody adds a line to rather than one they cannot
+		// create.
 		return nil
 	}
-	recordType := validate.RecordA
-	if strings.Contains(address, ":") {
-		recordType = validate.RecordAAAA
-	}
 
-	for _, name := range []string{"@", "www"} {
+	for _, record := range template.Records {
+		rendered := record.Render(zone.Name, address)
+
+		// A record the template could fill in only from the host's address is
+		// skipped when there is no address to fill in with. Writing the
+		// literal "{ip}" would produce a zone the name server refuses to load,
+		// taking down every domain on the host rather than this one.
+		if address == "" && strings.Contains(record.Value, PlaceholderIP) {
+			s.log.Warn("a template record was skipped: this host's address is not known",
+				"zone", zone.Name, "record", record.Name, "type", record.Type)
+			continue
+		}
+
 		if _, err := s.repo.CreateRecord(ctx, RecordParams{
-			ZoneID: zone.ID, Name: name, Type: recordType, Value: address,
+			ZoneID:   zone.ID,
+			Name:     rendered.Name,
+			Type:     rendered.Type,
+			Value:    rendered.Value,
+			TTL:      rendered.TTL,
+			Priority: rendered.Priority,
+			Weight:   rendered.Weight,
+			Port:     rendered.Port,
 		}); err != nil {
 			return err
 		}

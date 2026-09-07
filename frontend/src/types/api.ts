@@ -2731,3 +2731,64 @@ export interface DatabaseConsoleSession {
   password: string;
   host?: string;
 }
+
+/**
+ * One line of a DNS template.
+ *
+ * The same shape as a DNSRecord minus the zone: a template is a list of
+ * records with two things left to fill in, not a language.
+ */
+export interface DNSTemplateRecord {
+  id?: string;
+  name: string;
+  type: DNSRecordType;
+  ttl: number;
+  value: string;
+  priority: number;
+  weight: number;
+  port: number;
+  position?: number;
+}
+
+/** A named set of records a new zone is seeded from. */
+export interface DNSTemplate {
+  id: string;
+  server_id: string;
+  name: string;
+  description: string;
+  is_default: boolean;
+  /**
+   * Installed with the panel. Editable, so an operator wanting different
+   * defaults needs no second template, but not removable: deleting the only
+   * one leaves new zones starting with nothing at all.
+   */
+  builtin: boolean;
+  records: DNSTemplateRecord[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** What a template may substitute, as the API reports it. */
+export interface DNSPlaceholder {
+  token: string;
+  means: string;
+}
+
+/** The templates listing. */
+export interface DNSTemplateList {
+  templates: DNSTemplate[] | null;
+  /**
+   * Named by the server rather than hard-coded here. A form offering a
+   * placeholder the panel cannot fill is a template that silently produces a
+   * broken zone weeks later.
+   */
+  placeholders: DNSPlaceholder[] | null;
+}
+
+/** A template to create or replace. The records are the whole list. */
+export interface DNSTemplateInput {
+  name: string;
+  description?: string;
+  is_default?: boolean;
+  records: DNSTemplateRecord[];
+}

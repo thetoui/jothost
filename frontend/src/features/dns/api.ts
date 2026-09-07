@@ -7,6 +7,9 @@ import type {
   DNSRecordInput,
   DNSSettings,
   DNSSyncResult,
+  DNSTemplate,
+  DNSTemplateInput,
+  DNSTemplateList,
   DNSZone,
   DNSZoneChange,
   DNSZoneDetail,
@@ -83,5 +86,20 @@ export const dnsApi = {
     request<DNSSyncResult>(`/dns/zones/${encodeURIComponent(zoneId)}/sync`, {
       method: 'POST',
       body,
+    }),
+
+  templates: (signal?: AbortSignal) =>
+    request<DNSTemplateList>('/dns/templates', signal ? { signal } : {}),
+
+  createTemplate: (body: DNSTemplateInput) =>
+    request<DNSTemplate>('/dns/templates', { method: 'POST', body }),
+
+  /** Replaces a template whole, records included. */
+  updateTemplate: (id: string, body: DNSTemplateInput) =>
+    request<DNSTemplate>(`/dns/templates/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+
+  removeTemplate: (id: string) =>
+    request<{ deleted: boolean }>(`/dns/templates/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     }),
 };

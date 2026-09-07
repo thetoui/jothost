@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { dnsApi, type DNSZoneInput } from '@/features/dns/api';
-import type { DNSRecordInput, DNSSettings, DNSZoneChange } from '@/types/api';
+import type { DNSRecordInput, DNSSettings, DNSTemplateInput, DNSZoneChange } from '@/types/api';
 
 export const dnsKeys = {
   all: ['dns'] as const,
   overview: () => [...dnsKeys.all, 'overview'] as const,
   zone: (id: string) => [...dnsKeys.all, 'zone', id] as const,
   forWebsite: (websiteId: string) => [...dnsKeys.all, 'website', websiteId] as const,
+  templates: () => [...dnsKeys.all, 'templates'] as const,
 };
 
 /** useDNSOverview reads the name server, its zones and its settings. */
@@ -195,6 +196,47 @@ export function useImportDNSZone(zoneId: string) {
     onSuccess: () => {
       // The zone's records have changed, so everything showing them is stale.
       void queryClient.invalidateQueries({ queryKey: dnsKeys.all });
+    },
+  });
+}
+
+/** useDNSTemplates reads the templates a new zone can be seeded from. */
+export function useDNSTemplates() {
+  return useQuery({
+    queryKey: dnsKeys.templates(),
+    queryFn: ({ signal }) => dnsApi.templates(signal),
+  });
+}
+
+/**
+ * useSaveDNSTemplate creates a template, or replaces one whole.
+ *
+ * One hook for both because the request is the same one: the records are the
+ * entire list either way, so an edit that reorders or removes lines needs no
+ * vocabulary of its own.
+ */
+export function useSaveDNSTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: DNSTemplateInput }) =>
+      id ? dnsApi.updateTemplate(id, input) : dnsApi.createTemplate(input),
+    onSuccess: () => {
+      // Not just the templates: making one the default clears the flag on
+      // whichever one held it, so the whole list is stale.
+      void queryClient.invalidateQueries({ queryKey: dnsKeys.templates() });
+    },
+  });
+}
+
+/** useDeleteDNSTemplate removes one. The built-in is refused by the server. */
+export function useDeleteDNSTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => dnsApi.removeTemplate(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: dnsKeys.templates() });
     },
   });
 }

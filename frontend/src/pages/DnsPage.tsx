@@ -16,11 +16,13 @@ import { ZoneEditor } from '@/features/dns/components/ZoneEditor';
 import {
   useCreateDNSZone,
   useDNSOverview,
+  useDNSTemplates,
   useDeleteDNSZone,
   useInstallDNS,
   useSaveDNSSettings,
 } from '@/features/dns/hooks';
 import { ProviderCard } from '@/features/dns/components/ProviderCard';
+import { TemplateCard } from '@/features/dns/components/TemplateCard';
 import { ApiError } from '@/services/apiClient';
 import type { DNSOverview, DNSZone } from '@/types/api';
 
@@ -111,6 +113,7 @@ export function DnsPage() {
             overview={data}
             onOpen={(id) => setOpenZone(id)}
           />
+          <TemplateCard />
           <ProviderCard overview={data} />
           <ServerSettings overview={data} />
         </>
@@ -351,6 +354,8 @@ function CreateZoneDialog({
   const [masters, setMasters] = useState('');
 
   const defaultNS = overview?.settings.default_ns ?? [];
+  const { data: templates } = useDNSTemplates();
+  const seed = (templates?.templates ?? []).find((template) => template.is_default);
   const failure = create.error instanceof ApiError ? create.error.message : null;
 
   const submit = () => {
@@ -447,8 +452,14 @@ function CreateZoneDialog({
 
         {kind === 'forward' && defaultNS.length > 0 && (
           <p className="text-xs text-slate-500">
-            It will be delegated to {defaultNS.join(', ')}, and starts with address records for the
-            zone itself and www pointing at this host.
+            It will be delegated to {defaultNS.join(', ')}
+            {/* Named rather than described: what a new zone starts with is the
+                default template's business now, and saying "the zone itself and
+                www" here would go quietly out of date the first time somebody
+                edits it. */}
+            {seed
+              ? `, and starts from the ${seed.name} template's ${(seed.records ?? []).length} records.`
+              : ', and starts empty — no template is set as the default.'}
           </p>
         )}
       </div>

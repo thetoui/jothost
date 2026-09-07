@@ -102,6 +102,28 @@ describe('PHPPage', () => {
     expect(await screen.findByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 
+  it('offers no removal for a version that is not installed', async () => {
+    // The list includes versions this host could install but has not, so that
+    // an operator can see what is available. Offering Remove on one was a
+    // control whose only possible outcome was an error, and it read as though
+    // the panel believed the version was there.
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).includes('/auth/me')) {
+        return mockProfile(['server.view', 'server.manage']);
+      }
+      return envelopeResponse({
+        versions: [version({ version: '8.5', installed: false, binary_path: null, in_use: 0 })],
+        count: 1,
+      });
+    });
+
+    renderWithProviders(<PHPPage />);
+
+    // The row is there — this is not a test that the version is hidden.
+    expect(await screen.findByText(/8\.5/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+  });
+
   // Installing changes the whole server, so a viewer must not see the control.
   it('hides the install form from a user who cannot manage the server', async () => {
     vi.mocked(globalThis.fetch).mockImplementation(async (input) => {

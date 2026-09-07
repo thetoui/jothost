@@ -123,7 +123,13 @@ function VersionRow({ version }: { version: PHPVersion }) {
         <div className="flex shrink-0 items-center gap-3">
           <StatusPill label={pill.label} tone={pill.tone} dot pulse={settling} />
 
-          {version.in_use > 0 ? (
+          {!version.installed ? (
+            // Nothing to remove. This row is here to say the version exists
+            // and could be installed - offering Remove on it was a control
+            // whose only possible outcome was an error, and it read as though
+            // the panel thought the version was there.
+            null
+          ) : version.in_use > 0 ? (
             // Removing a version websites still run would take every one of
             // them offline, so the row says why instead of offering an action
             // the API will refuse.

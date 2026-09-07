@@ -553,6 +553,11 @@ func New(opts Options) (*Server, error) {
 			Zones:    mailZones{dns: dnsService},
 			Agent:    agent,
 			Audit:    auditRecorder,
+			// Installing a mail server goes through the queue: the packages
+			// take minutes and the virus scanner's signature database is
+			// several hundred megabytes, neither of which fits inside a
+			// request the HTTP server closes after API_WRITE_TIMEOUT.
+			Jobs:     jobRepo,
 			Log:      log,
 			ServerID: opts.LocalServerID,
 		}),

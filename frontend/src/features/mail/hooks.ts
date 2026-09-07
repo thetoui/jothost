@@ -16,12 +16,20 @@ export const mailKeys = {
   aliases: (domainID: string) => [...mailKeys.all, 'aliases', domainID] as const,
 };
 
-/** useMailOverview reads the settings, the daemons, and what DNS publishes. */
-export function useMailOverview() {
+/**
+ * useMailOverview reads the settings, the daemons, and what DNS publishes.
+ *
+ * `watch` polls while something is being installed on the host. Installing the
+ * virus scanner downloads several hundred megabytes of signatures and finishes
+ * long after the request that asked for it, so without this the page shows
+ * "not installed" until somebody thinks to reload.
+ */
+export function useMailOverview(watch = false) {
   return useQuery({
     queryKey: mailKeys.overview(),
     queryFn: ({ signal }) => mailApi.overview(signal),
     placeholderData: (previous) => previous,
+    refetchInterval: watch ? 10_000 : false,
   });
 }
 

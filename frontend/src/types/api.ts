@@ -2213,7 +2213,13 @@ export interface MailStatus {
   postfix: MailDaemon;
   dovecot: MailDaemon;
   rspamd: MailDaemon;
+  /**
+   * Whether scanning is switched on and able to work — not whether the
+   * package is on the host. `antivirus_present` is that question.
+   */
   antivirus: MailDaemon;
+  /** Whether ClamAV is installed on this host at all. */
+  antivirus_present: boolean;
   hostname: string;
   tls: {
     configured: boolean;

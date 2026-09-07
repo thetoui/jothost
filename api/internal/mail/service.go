@@ -10,6 +10,7 @@ import (
 
 	"github.com/jothost/panel/api/internal/agentclient"
 	"github.com/jothost/panel/api/internal/audit"
+	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/shared/protocol"
 	"github.com/jothost/panel/shared/validate"
 )
@@ -136,9 +137,15 @@ type Service struct {
 	zones    Zones
 	agent    *agentclient.Client
 	audit    *audit.Recorder
+	// jobs queues the work that cannot finish inside a request. Installing a
+	// mail server is the only one here.
+	jobs     *jobs.Repository
 	log      *slog.Logger
 	serverID string
 }
+
+// ErrNoServer means the panel has no server recorded to install onto.
+var ErrNoServer = errors.New("no server is registered with this panel")
 
 // ServiceOptions configure a Service.
 type ServiceOptions struct {
@@ -147,6 +154,7 @@ type ServiceOptions struct {
 	Zones    Zones
 	Agent    *agentclient.Client
 	Audit    *audit.Recorder
+	Jobs     *jobs.Repository
 	Log      *slog.Logger
 	ServerID string
 }
@@ -164,6 +172,7 @@ func NewService(opts ServiceOptions) *Service {
 		agent:    opts.Agent,
 		audit:    opts.Audit,
 		log:      log,
+		jobs:     opts.Jobs,
 		serverID: opts.ServerID,
 	}
 }
@@ -452,25 +461,39 @@ func (s *Service) Configure(ctx context.Context, actor Actor, requestID string,
 	return saved, nil
 }
 
-// Install puts a mail server on the host.
+// Install queues installation of a mail server.
+//
+// A job rather than the request that asked for it. The packages alone take
+// minutes, and the virus scanner's signature database is several hundred
+// megabytes; the HTTP server closes a connection after API_WRITE_TIMEOUT
+// whatever the handler is still doing, so a synchronous install reported a
+// failure to the operator and then carried on and succeeded - leaving the
+// panel saying one thing and the host another.
 func (s *Service) Install(ctx context.Context, actor Actor, requestID string,
 	filtering, antivirus bool,
-) (map[string]any, error) {
-	response, err := s.agent.Do(ctx, protocol.Request{
-		Operation: protocol.OperationMailInstall,
-		RequestID: requestID,
+) (jobs.Job, error) {
+	if s.serverID == "" {
+		return jobs.Job{}, ErrNoServer
+	}
+
+	job, err := s.jobs.Create(ctx, jobs.CreateParams{
+		Type: jobs.TypeMailInstall,
 		Payload: map[string]any{
 			"filtering": filtering,
 			"antivirus": antivirus,
 		},
+		CreatedBy:    actor.UserID,
+		ResourceType: ResourceTypeServer,
+		ResourceID:   s.serverID,
 	})
 	if err != nil {
-		return nil, err
+		return jobs.Job{}, err
 	}
+
 	s.record(ctx, actor, ActionInstall, ResourceTypeServer, s.serverID, map[string]any{
-		"filtering": filtering, "antivirus": antivirus,
+		"filtering": filtering, "antivirus": antivirus, "job_id": job.ID,
 	})
-	return response.Data, nil
+	return job, nil
 }
 
 // DomainRequest is a domain being created or changed.

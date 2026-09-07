@@ -15,6 +15,9 @@ function status(overrides: Partial<MailStatus> = {}): MailStatus {
     dovecot: { installed: true, running: true, version: '2.3.21.1' },
     rspamd: { installed: true, running: true, version: '3.10.2' },
     antivirus: { installed: false, running: false, detail: 'virus scanning is turned off' },
+    // The package is not on this host. Distinct from the line above, which is
+    // false whenever scanning is switched off however complete the install.
+    antivirus_present: false,
     hostname: 'mail.example.com',
     tls: { configured: true, certificate_path: '/etc/jothost/ssl/example.com/fullchain.pem' },
     ports: [
@@ -123,6 +126,26 @@ describe('MailPage', () => {
       return envelopeResponse(data);
     });
   }
+
+  it('offers to install the scanner when the package is missing', async () => {
+    mockApi(overview({ status: status({ antivirus_present: false }) }));
+    renderWithProviders(<MailPage />);
+
+    expect(await screen.findByText(/no virus scanner/)).toBeInTheDocument();
+  });
+
+  it('offers no install once the scanner is on the host', async () => {
+    // The state the panel could not tell from the one above. Scanning is
+    // still switched off here - antivirus.installed is false in both - so
+    // keying the offer on that showed a several-hundred-megabyte download to
+    // an operator who only needed to turn a toggle on, and went on showing it
+    // after the install had finished.
+    mockApi(overview({ status: status({ antivirus_present: true }) }));
+    renderWithProviders(<MailPage />);
+
+    await screen.findByText('The mail server');
+    expect(screen.queryByText(/no virus scanner/)).not.toBeInTheDocument();
+  });
 
   it('leads with an open relay, because it is the one failure that takes every customer offline', async () => {
     mockApi(

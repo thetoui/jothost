@@ -996,6 +996,47 @@ rather than 404 — HTTP is a valid configuration, not a missing one.
 
 Issuing and revoking need `ssl.manage`; listing needs only `website.view`.
 
+## Issuance puts this host's own DNS in order first
+
+A Let's Encrypt certificate is obtained over the HTTP-01 challenge: the
+authority resolves every name on the certificate and fetches a file from
+whatever answers. A name resolving nowhere fails, and a failed challenge is
+spent — Let's Encrypt allows a small number per hour and then stops looking.
+
+So before the job is queued, each name that falls inside a primary zone this
+panel serves gets an address record pointing at this host, and the 202 carries
+a report of what happened:
+
+```json
+{
+  "job": { "id": "…", "type": "ssl.issue" },
+  "dns": {
+    "address": "203.0.113.10",
+    "added": 1,
+    "blocked": 0,
+    "names": [
+      { "name": "example.com", "zone": "example.com", "status": "added",
+        "detail": "A record added, pointing at 203.0.113.10" }
+    ]
+  }
+}
+```
+
+`status` is one of `ready` (already points here), `added` (the panel wrote the
+missing record), `elsewhere` (a record names a different machine), `aliased` (a
+CNAME, which may or may not lead here), `not_served` (no zone here covers the
+name) or `no_address` (this host's own address is not known). `blocked` counts
+the first and last of those, which are the two that fail validation.
+
+Only a missing record is ever written. A record naming a different machine is
+reported and left alone: repointing a live domain can take a working site off
+the internet, and nobody clicking Issue is asking for it. A failure to reach
+DNS does not stop issuance — the panel's zones are one of several places a name
+can be served from — and `dns` is then absent, as it is for `selfsigned`, which
+no authority ever resolves anything for.
+
+The change is audited as `dns.certificate.align`.
+
 ---
 
 # 17. DNS

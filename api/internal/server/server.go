@@ -320,7 +320,11 @@ func New(opts Options) (*Server, error) {
 		PHP:        phpRepo,
 		Jobs:       jobRepo,
 		Audit:      auditRecorder,
-		Log:        log,
+		// Issuance points the certificate's names at this host in the zones
+		// the panel serves first: a name that resolves nowhere fails the
+		// HTTP-01 challenge, and a failed challenge is spent.
+		DNS: dnsService,
+		Log: log,
 	})
 	s.ssl = sslpkg.NewHandler(sslpkg.HandlerOptions{
 		Service: sslService,

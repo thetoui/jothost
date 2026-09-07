@@ -25,7 +25,7 @@ import {
   providerLabel,
 } from '@/features/ssl/status';
 import { ApiError } from '@/services/apiClient';
-import type { SSLCertificate, SSLProvider } from '@/types/api';
+import type { DNSAlignment, SSLCertificate, SSLProvider } from '@/types/api';
 
 interface WebsiteSSLPanelProps {
   websiteId: string;
@@ -150,9 +150,10 @@ function IssueForm({ websiteId, domain }: { websiteId: string; domain: string })
         {provider === 'letsencrypt' && (
           <>
             <Alert tone="info">
-              <span className="font-medium">{domain}</span> must already resolve to this
-              server over the public internet. The authority fetches a challenge over plain
-              HTTP before issuing.
+              <span className="font-medium">{domain}</span> must resolve to this server over
+              the public internet. The authority fetches a challenge over plain HTTP before
+              issuing. Where this host serves the zone, the panel adds the address record
+              first; where the DNS is somewhere else, it has to be right already.
             </Alert>
             <Toggle
               id="ssl-staging"
@@ -174,6 +175,8 @@ function IssueForm({ websiteId, domain }: { websiteId: string; domain: string })
 
         {error && <Alert tone="danger">{error}</Alert>}
 
+        {issue.data?.dns && <DNSReport alignment={issue.data.dns} />}
+
         <Button
           type="submit"
           variant="primary"
@@ -184,6 +187,47 @@ function IssueForm({ websiteId, domain }: { websiteId: string; domain: string })
         </Button>
       </form>
     </RequirePermission>
+  );
+}
+
+/**
+ * DNSReport says what issuance did to this host's zones, and what it did not.
+ *
+ * Shown after the request rather than before it because until the names are
+ * known there is nothing to say. A name pointing at another machine is the
+ * usual reason issuance fails, and it fails several minutes later with a
+ * message from certbot — by which time nobody is looking at this form.
+ */
+function DNSReport({ alignment }: { alignment: DNSAlignment }) {
+  const names = alignment.names ?? [];
+  if (names.length === 0) {
+    return null;
+  }
+
+  const blocked = names.filter((name) => name.status === 'elsewhere' || name.status === 'no_address');
+  const added = names.filter((name) => name.status === 'added');
+
+  return (
+    <Alert tone={blocked.length > 0 ? 'warning' : 'info'} title="DNS">
+      {added.length > 0 && (
+        <p>
+          Added an address record for {added.map((name) => name.name).join(', ')}
+          {alignment.address ? `, pointing at ${alignment.address}` : ''}.
+        </p>
+      )}
+      {blocked.length > 0 && (
+        <ul className="mt-1 space-y-1">
+          {blocked.map((name) => (
+            <li key={name.name}>
+              <span className="font-medium">{name.name}</span> {name.detail}
+            </li>
+          ))}
+        </ul>
+      )}
+      {added.length === 0 && blocked.length === 0 && (
+        <p>Every name on the certificate already resolves here.</p>
+      )}
+    </Alert>
   );
 }
 

@@ -724,6 +724,36 @@ export interface JobAccepted {
   job: Job;
 }
 
+/** What the panel found, and did, for one name on a certificate. */
+export interface DNSNameOutcome {
+  name: string;
+  /**
+   * ready — already points here; added — the panel wrote the missing record;
+   * elsewhere — points at another machine and will fail validation there;
+   * aliased — a CNAME, which may or may not lead here; not_served — no zone
+   * on this host covers it; no_address — this host's own address is unknown.
+   */
+  status: 'ready' | 'added' | 'elsewhere' | 'aliased' | 'not_served' | 'no_address';
+  zone?: string;
+  detail: string;
+}
+
+/** What issuance did to this host's zones before asking for a certificate. */
+export interface DNSAlignment {
+  address: string;
+  names: DNSNameOutcome[] | null;
+  added: number;
+  /** Names that will fail the challenge as things stand. */
+  blocked: number;
+}
+
+/** The issuance response: the queued work, and what DNS had to become. */
+export interface SSLIssueAccepted {
+  job: Job;
+  /** Absent for a self-signed certificate, and where no name server runs here. */
+  dns?: DNSAlignment;
+}
+
 export interface DomainCreated {
   domain: WebsiteDomain;
   job: Job;

@@ -39,8 +39,8 @@ type Handler struct {
 type HandlerOptions struct {
 	Service  *Service
 	Websites *websites.Repository
-	Auth    *auth.Service
-	Log     *slog.Logger
+	Auth     *auth.Service
+	Log      *slog.Logger
 }
 
 // NewHandler builds a Handler.

@@ -414,6 +414,12 @@ docker-test-dns-templates: create-integration-admin ## Run the DNS template chec
 	# written, not when somebody creates a domain.
 	$(COMPOSE) exec -T agent sh /tests/integration/dns_templates.sh
 
+.PHONY: docker-test-ssl-dns
+docker-test-ssl-dns: create-integration-admin ## Run the certificate/DNS alignment checks
+	# Asks for a certificate on a name this host serves and reads the zone back.
+	# A name already pointing at another machine must be reported and left alone.
+	$(COMPOSE) exec -T agent sh /tests/integration/ssl_dns.sh
+
 .PHONY: docker-test-dns
 docker-test-dns: create-integration-admin ## Run the Phase 13 DNS integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase13_dns.sh

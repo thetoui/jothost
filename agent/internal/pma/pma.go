@@ -270,6 +270,15 @@ func (m *Manager) pickPHP(ctx context.Context) (string, error) {
 // failing on what the previous attempt already did (CLAUDE.md section 17).
 func (m *Manager) Install(ctx context.Context, serverName string, report func(int, string)) (Status, error) {
 	serverName = validate.NormalizeDomain(serverName)
+	if serverName == "" {
+		// The panel does not choose a name any more, because there is no name
+		// to choose: this vhost listens on the panel's own loopback address
+		// and is reached only through the panel's /phpmyadmin/ location, which
+		// sends InternalName as the Host header. A name the operator picked
+		// was displayed as an address and could never be used to reach
+		// anything.
+		serverName = InternalName
+	}
 	if err := validate.Domain(serverName); err != nil {
 		return Status{}, fmt.Errorf("%w: %v", ErrInvalidServerName, err)
 	}

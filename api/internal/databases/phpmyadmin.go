@@ -45,9 +45,17 @@ func (s *Service) InstallConsole(ctx context.Context, serverName string, actor A
 		return jobs.Job{}, ErrNoServer
 	}
 
+	// An empty name is the ordinary case now, and the Agent fills it in with
+	// the fixed internal one. phpMyAdmin is reached at ConsoleMount on the
+	// panel's own address; a name given here reaches nothing, because the
+	// vhost listens on the panel's loopback and the proxy addresses it by a
+	// constant. The parameter is still accepted so an existing caller is not
+	// broken, and validated when it is given.
 	name := validate.NormalizeDomain(serverName)
-	if err := validate.Domain(name); err != nil {
-		return jobs.Job{}, err
+	if name != "" {
+		if err := validate.Domain(name); err != nil {
+			return jobs.Job{}, err
+		}
 	}
 
 	job, err := s.jobs.Create(ctx, jobs.CreateParams{

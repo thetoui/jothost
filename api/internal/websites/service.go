@@ -586,7 +586,7 @@ func (s *Service) Update(ctx context.Context, id string, params UpdateParams,
 
 	// Only the settings the host actually reads queue a rewrite. Renaming a
 	// site changes a label in the panel and nothing on the machine.
-	if params.AllowOverride == nil && params.NginxDirectives == nil {
+	if params.AllowOverride == nil && params.NginxDirectives == nil && params.DocumentRoot == nil {
 		return site, nil
 	}
 

@@ -113,6 +113,21 @@ export const websitesApi = {
       body: { allow_override: allow },
     }),
 
+  /**
+   * Moves a site's document root.
+   *
+   * The path is relative to the site's own directory — "public/dist", not
+   * "/var/www/example.com/public/dist". The panel composes the absolute path
+   * from the site's own domain, so an operator cannot name another site's
+   * files, /etc, or anywhere reached with "../": they are not naming a
+   * directory at all, only a subpath of the one already theirs.
+   */
+  setDocumentRoot: (websiteId: string, relative: string) =>
+    request<Website>(`/websites/${encodeURIComponent(websiteId)}`, {
+      method: 'PATCH',
+      body: { document_root: relative },
+    }),
+
   removeDomain: (domainId: string) =>
     request<JobAccepted>(`/domains/${encodeURIComponent(domainId)}`, { method: 'DELETE' }),
 };

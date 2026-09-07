@@ -229,3 +229,23 @@ export function useSetAllowOverride(websiteId: string) {
     },
   });
 }
+
+/**
+ * useSetDocumentRoot moves where a site is served from.
+ *
+ * Both the list and the detail are invalidated, and for a reason worth naming:
+ * moving the document root rewrites the vhost on the host, so what the panel
+ * shows until the refresh lands is the directory the site was served from a
+ * moment ago.
+ */
+export function useSetDocumentRoot(websiteId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (relative: string) => websitesApi.setDocumentRoot(websiteId, relative),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(websiteId) });
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.list() });
+    },
+  });
+}

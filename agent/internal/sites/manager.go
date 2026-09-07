@@ -555,8 +555,24 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 	}
 
 	progress(report, 20, "Resolving site layout")
-	layout, err := m.fs.LayoutFor(req.DocumentRoot)
+	// Named from the domain rather than inferred from the document root's
+	// parent. An operator can now set the document root themselves, and
+	// inferring the site from it would put this site's logs inside whatever
+	// directory they chose — publishing the access log to anyone who guessed
+	// its name.
+	layout, err := m.fs.LayoutIn(m.fs.SiteDir(domain), req.DocumentRoot)
 	if err != nil {
+		return UpdateResult{}, err
+	}
+
+	// A document root the operator has pointed at but not deployed into yet is
+	// created rather than refused: naming where a build will land, then
+	// deploying, is the ordinary order of doing this, and nginx pointed at a
+	// missing directory answers 404 to everything with nothing to say why.
+	//
+	// Only when it is missing. An existing directory keeps whatever ownership
+	// a deployment gave it, for the reason above this function.
+	if err := m.fs.EnsureContent(layout); err != nil {
 		return UpdateResult{}, err
 	}
 

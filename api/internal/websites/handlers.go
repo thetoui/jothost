@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -193,6 +194,15 @@ type updateBody struct {
 	// Apache vhost, so it is applied through the same rewrite every other
 	// configuration change goes through rather than by editing a file.
 	AllowOverride *bool `json:"allow_override"`
+	// DocumentRoot is where in the site's own directory the web server should
+	// serve from — "public/dist", not "/var/www/example.com/public/dist".
+	//
+	// Relative on purpose. An operator cannot name another site's files,
+	// cannot name /etc and cannot escape with "../", because they are not
+	// naming a directory at all: only a subpath of the one already theirs.
+	// Taking an absolute path and checking it afterwards would mean trusting a
+	// check to catch every way a path can be written.
+	DocumentRoot *string `json:"document_root"`
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -219,11 +229,34 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	site, err := h.service.Update(ctx, id, UpdateParams{
+	params := UpdateParams{
 		Name:          body.Name,
 		HTTPSRedirect: body.HTTPSRedirect,
 		AllowOverride: body.AllowOverride,
-	}, UpdateActor{
+	}
+
+	if body.DocumentRoot != nil {
+		// The site is read first because the path is composed against its own
+		// directory, and that directory is derived from the site's domain
+		// rather than from anything in the request.
+		existing, err := h.repo.Get(ctx, id)
+		if err != nil {
+			httpx.Error(w, r, translate(err))
+			return
+		}
+
+		relative, err := validate.DocumentRoot(*body.DocumentRoot)
+		if err != nil {
+			httpx.Error(w, r, httpx.ValidationFailed(err.Error()))
+			return
+		}
+
+		absolute := validate.DocumentRootPath(
+			path.Join(SiteRoot, existing.PrimaryDomain), relative)
+		params.DocumentRoot = &absolute
+	}
+
+	site, err := h.service.Update(ctx, id, params, UpdateActor{
 		Actor:     actorID(r),
 		IPAddress: clientIP(r),
 		UserAgent: r.UserAgent(),

@@ -12,6 +12,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/jothost/panel/agent/internal/pathsec"
 )
@@ -179,11 +180,118 @@ func (p *Provisioner) HasWebGroup() bool { return p.webGID >= 0 }
 // Root returns the configured site root.
 func (p *Provisioner) Root() string { return p.root }
 
+// EnsureContent creates a document root that does not exist yet.
+//
+// It belongs to whoever owns the site's own directory. Deriving the account
+// again here would be a second place for that convention to live; inheriting
+// it means the new directory belongs to exactly what the rest of the site
+// belongs to, whatever that turned out to be.
+//
+// An existing directory is left completely alone — mode and ownership both. A
+// deployment may have set them deliberately, and an update that silently
+// re-owned them would break the site it was asked to reconfigure.
+func (p *Provisioner) EnsureContent(layout Layout) error {
+	if _, err := os.Stat(layout.Content); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("check %s: %w", layout.Content, err)
+	}
+
+	info, err := os.Stat(layout.Root)
+	if err != nil {
+		return fmt.Errorf("read the site directory: %w", err)
+	}
+
+	// The site's own mode, not a fresh one. Its directories are 0750 — the
+	// account and the web server's group, nobody else — and a new one created
+	// 0755 would be the one directory in the tree the rest of the host can
+	// walk into.
+	mode := info.Mode().Perm()
+	if err := os.MkdirAll(layout.Content, mode); err != nil {
+		return fmt.Errorf("create %s: %w", layout.Content, err)
+	}
+	// MkdirAll applies the mode only to directories it creates and is subject
+	// to the umask; set it explicitly so the result is the one asked for.
+	if err := os.Chmod(layout.Content, mode); err != nil {
+		return fmt.Errorf("secure %s: %w", layout.Content, err)
+	}
+
+	uid, gid, ok := ownerAndGroupOf(info)
+	if !ok {
+		// A platform that does not report an owner. The directory is created
+		// and left to root, which is visible and fixable, rather than the
+		// operation failing over something cosmetic.
+		return nil
+	}
+	if err := os.Chown(layout.Content, uid, gid); err != nil {
+		return fmt.Errorf("give %s to the site's account: %w", layout.Content, err)
+	}
+	return nil
+}
+
+// SiteDir is where a domain's own directory lives.
+//
+// One function, so nothing has to reconstruct the convention. The domain is
+// already validated by the time it reaches here; this composes rather than
+// checks, and LayoutIn resolves the result against the root regardless.
+func (p *Provisioner) SiteDir(domain string) string {
+	return filepath.Join(p.root, domain)
+}
+
 // LayoutFor resolves the paths for a site without creating anything.
 //
 // The document root is supplied by the caller and must resolve inside the site
 // root: the Agent runs as root, so a document root of "/etc" would otherwise
 // hand a website's user ownership of the system's configuration.
+// LayoutIn resolves a layout for a site whose directory is known.
+//
+// LayoutFor below infers the site root from the document root's parent, which
+// is right only while the document root is exactly one level down. Once an
+// operator can set it themselves — "public/dist" for a built front end — that
+// inference puts the log directory *inside* the served one, and a site's own
+// access log becomes a file anybody can fetch by guessing its name.
+//
+// So where the caller knows which site it is dealing with, it says so, and the
+// document root is checked to be inside that site rather than trusted to imply
+// it.
+func (p *Provisioner) LayoutIn(siteDir, documentRoot string) (Layout, error) {
+	root, err := p.validator.Resolve(siteDir)
+	if err != nil {
+		if errors.Is(err, pathsec.ErrOutsideRoot) {
+			return Layout{}, fmt.Errorf("%w: %s", ErrOutsideRoot, p.root)
+		}
+		return Layout{}, err
+	}
+	if root == p.root || root == "/" {
+		return Layout{}, fmt.Errorf("%w: a site must be nested inside %s",
+			ErrOutsideRoot, p.root)
+	}
+
+	content, err := p.validator.Resolve(documentRoot)
+	if err != nil {
+		if errors.Is(err, pathsec.ErrOutsideRoot) {
+			return Layout{}, fmt.Errorf("%w: %s", ErrOutsideRoot, p.root)
+		}
+		return Layout{}, err
+	}
+
+	// Inside the site, and checked on the resolved paths so a symlink cannot
+	// carry the document root out of a directory it appears to be under.
+	if content != root && !strings.HasPrefix(content, root+string(filepath.Separator)) {
+		return Layout{}, fmt.Errorf("%w: the document root must be inside %s",
+			ErrOutsideRoot, root)
+	}
+
+	logs := filepath.Join(root, LogsDir)
+	return Layout{
+		Root:      root,
+		Content:   content,
+		Logs:      logs,
+		AccessLog: filepath.Join(logs, "access.log"),
+		ErrorLog:  filepath.Join(logs, "error.log"),
+	}, nil
+}
+
 func (p *Provisioner) LayoutFor(documentRoot string) (Layout, error) {
 	resolved, err := p.validator.Resolve(documentRoot)
 	if err != nil {

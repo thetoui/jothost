@@ -32,6 +32,19 @@ func ownerOf(info os.FileInfo) (int, bool) {
 	return int(stat.Uid), true
 }
 
+// ownerAndGroupOf reports both halves of a stat result's ownership.
+//
+// A directory created for a site has to carry the group as well: the web
+// server reaches a site's files through the group, and a directory owned by
+// the right user in the wrong group is one nginx cannot read.
+func ownerAndGroupOf(info os.FileInfo) (int, int, bool) {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, false
+	}
+	return int(stat.Uid), int(stat.Gid), true
+}
+
 // isEmptyDir reports whether a directory holds no entries beyond those named
 // in ignore.
 //

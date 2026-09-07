@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Activity,
   Clock,
@@ -12,6 +12,7 @@ import {
   KeyRound,
   Lock,
   Package,
+  Pencil,
   Plug,
   ScrollText,
   Settings2,
@@ -19,7 +20,16 @@ import {
   Terminal,
 } from 'lucide-react';
 
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/Field';
+import { IconButton } from '@/components/ui/IconButton';
 import { LinkButton, TextLink } from '@/components/ui/Link';
+import { Modal } from '@/components/ui/Modal';
+import { RequirePermission } from '@/features/auth/components/RequirePermission';
+import { Permission } from '@/features/auth/permissions';
+import { useSetDocumentRoot } from '@/features/websites/hooks';
+import { ApiError } from '@/services/apiClient';
 import { Tabs } from '@/components/ui/Tabs';
 import { ToolGroup, ToolTile } from '@/components/ui/ToolTile';
 import type { Website } from '@/types/api';
@@ -39,6 +49,7 @@ type PanelTab = 'dashboard' | 'hosting';
  */
 export function DomainPanel({ site }: DomainPanelProps) {
   const [tab, setTab] = useState<PanelTab>('dashboard');
+  const [movingRoot, setMovingRoot] = useState(false);
 
   const files = `/files?path=${encodeURIComponent(site.document_root)}`;
   const detail = `/websites/${site.id}`;
@@ -183,10 +194,18 @@ export function DomainPanel({ site }: DomainPanelProps) {
       <dl className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-surface-border pt-3 text-xs text-slate-500">
         <div className="flex gap-1.5">
           <dt>Website at</dt>
-          <dd>
+          <dd className="flex items-center gap-1.5">
             <TextLink to={files} tone="neutral" className="font-mono">
               {site.document_root}
             </TextLink>
+            <RequirePermission permission={Permission.WebsiteUpdate}>
+              <IconButton
+                size="sm"
+                onClick={() => setMovingRoot(true)}
+                label={`Change the document root for ${site.primary_domain}`}
+                icon={<Pencil aria-hidden="true" className="h-3 w-3" />}
+              />
+            </RequirePermission>
           </dd>
         </div>
         <div className="flex gap-1.5">
@@ -198,6 +217,12 @@ export function DomainPanel({ site }: DomainPanelProps) {
           <dd className="font-mono text-slate-700">{logsDirFor(site.document_root)}</dd>
         </div>
       </dl>
+
+      <DocumentRootDialog
+        site={site}
+        open={movingRoot}
+        onClose={() => setMovingRoot(false)}
+      />
     </div>
   );
 }
@@ -287,4 +312,104 @@ function Fact({ label, value, mono = false }: { label: string; value: string; mo
       </dd>
     </div>
   );
+}
+
+/**
+ * DocumentRootDialog moves where a site is served from.
+ *
+ * The field is relative to the site's own directory, and the prefix is shown
+ * beside it rather than being editable. An operator setting "public/dist"
+ * cannot name another site's files or anywhere outside their own — not because
+ * a check catches it, but because there is nothing to catch: they are not
+ * naming a directory, only a subpath of the one already theirs.
+ */
+function DocumentRootDialog({
+  site,
+  open,
+  onClose,
+}: {
+  site: Website;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const move = useSetDocumentRoot(site.id);
+  const base = `/var/www/${site.primary_domain}`;
+  const current = relativeRoot(site.document_root, base);
+  const [value, setValue] = useState(current);
+
+  useEffect(() => {
+    if (open) {
+      setValue(current);
+      move.reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, current]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Document root"
+      description="Where the web server serves this site from. Somewhere inside the site's own directory."
+      busy={move.isPending}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={move.isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={move.isPending}
+            onClick={() => move.mutate(value.trim(), { onSuccess: onClose })}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {move.error instanceof ApiError && (
+          <Alert tone="danger" title="The document root was not changed">
+            {move.error.message}
+          </Alert>
+        )}
+
+        <TextField
+          id="document-root"
+          label="Served from"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="public"
+          // adornment, not prefix: "prefix" is a real HTML attribute, so
+          // TypeScript accepts it, React passes it to the input, and it
+          // renders nothing at all.
+          adornment={<span className="font-mono text-xs text-slate-500">{base}/</span>}
+          hint="A path inside the site, such as public or public/dist. Leave it empty to serve the site's own directory. It is created if it does not exist yet."
+        />
+
+        <p className="text-xs text-slate-500">
+          The site&rsquo;s logs stay where they are, beside the site rather than inside what is
+          served — an access log under the document root would be a file anybody could fetch.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * relativeRoot turns the stored absolute path back into what the field edits.
+ *
+ * A path that is not under the site's own directory is shown whole rather than
+ * mangled into something shorter: it means the record and the convention have
+ * diverged, and hiding that would make the field lie about what is being
+ * changed.
+ */
+function relativeRoot(documentRoot: string, base: string): string {
+  if (documentRoot === base) {
+    return '';
+  }
+  if (documentRoot.startsWith(`${base}/`)) {
+    return documentRoot.slice(base.length + 1);
+  }
+  return documentRoot;
 }

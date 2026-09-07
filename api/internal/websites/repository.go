@@ -426,6 +426,11 @@ type UpdateParams struct {
 	// string clears it, which is why this is a pointer: "" and "leave it
 	// alone" are different requests and a plain string cannot tell them apart.
 	NginxDirectives *string
+	// DocumentRoot is the absolute path the site is served from, composed by
+	// the service from a path relative to the site's own directory. Stored
+	// absolute because that is what the vhost needs and what every reader of
+	// this row already expects.
+	DocumentRoot *string
 }
 
 // Update applies mutable fields to a website.
@@ -436,11 +441,12 @@ func (r *Repository) Update(ctx context.Context, id string, params UpdateParams)
 		    https_redirect = COALESCE($3, https_redirect),
 		    allow_override = COALESCE($4, allow_override),
 		    nginx_directives = COALESCE($5, nginx_directives),
+		    document_root  = COALESCE($6, document_root),
 		    updated_at     = now()
 		WHERE id = $1::uuid
 		RETURNING `+websiteColumns,
 		id, params.Name, params.HTTPSRedirect, params.AllowOverride,
-		params.NginxDirectives)
+		params.NginxDirectives, params.DocumentRoot)
 
 	site, err := scanWebsite(row)
 	if errors.Is(err, pgx.ErrNoRows) {

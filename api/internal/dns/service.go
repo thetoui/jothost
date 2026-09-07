@@ -29,6 +29,7 @@ const (
 	ActionTemplateDelete = "dns.template.delete"
 	ActionConfigure      = "dns.configure"
 	ActionInstall        = "dns.install"
+	ActionRepair         = "dns.repair"
 	ActionProviderAdd    = "dns.provider.add"
 	ActionProviderRemove = "dns.provider.remove"
 	ActionSync           = "dns.sync"
@@ -967,6 +968,25 @@ func (s *Service) requireDNSSEC(ctx context.Context, requestID string) error {
 }
 
 // reconcile hands the Agent the complete set of zones.
+// Repair rewrites the host's DNS configuration from the panel's record.
+//
+// The same reconcile every zone change runs, exposed as something an operator
+// can ask for. The panel already detects the two states that need it - a
+// named.conf that does not include the panel's zones, and zone files the
+// server has not loaded - and until this existed it reported them with nothing
+// attached: the only way to reach the repair was to open Name server settings
+// and save them unchanged, which is not a thing anybody would guess.
+//
+// Idempotent, because it is the reconcile: on a host with nothing wrong it
+// rewrites the same files with the same contents and reloads.
+func (s *Service) Repair(ctx context.Context, actor Actor, requestID string) error {
+	if err := s.reconcile(ctx, requestID); err != nil {
+		return err
+	}
+	s.record(ctx, actor, requestID, ActionRepair, ResourceTypeServer, s.serverID, nil)
+	return nil
+}
+
 func (s *Service) reconcile(ctx context.Context, requestID string) error {
 	zones, err := s.repo.ListZones(ctx, s.serverID)
 	if err != nil {

@@ -1074,6 +1074,7 @@ The change is audited as `dns.certificate.align`.
 ```http
 GET    /dns
 POST   /dns/install
+POST   /dns/repair
 PUT    /dns/settings
 
 GET    /dns/zones
@@ -1165,8 +1166,17 @@ pushes a zone there. Deleting records the panel does not have is opt-in
 (`prune`): a provider's zone usually holds records added in their dashboard, and
 removing what the panel does not recognise would break them with no warning.
 
+`POST /dns/repair` rewrites the host's DNS configuration from the panel's
+record and returns the refreshed overview. It is the same reconcile every zone
+change already runs, exposed as something an operator can ask for: `GET /dns`
+reports when a host needs it — a `named.conf` that does not include the panel's
+zones means every zone is written to disk and served by nobody — and until this
+existed the only way to reach the repair was to open the name server settings
+and save them unchanged. Idempotent, because it is the reconcile.
+
 `dns.zone.create`, `.update`, `.delete`, `dns.record.create`, `.update`,
-`.delete`, `dns.configure`, `dns.install`, `dns.provider.add`, `.remove` and
+`.delete`, `dns.configure`, `dns.install`, `dns.repair`, `dns.template.save`,
+`.delete`, `dns.certificate.align`, `dns.provider.add`, `.remove` and
 `dns.sync` are audited. A provider token never appears in an audit record.
 
 ---

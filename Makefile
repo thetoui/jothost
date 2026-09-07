@@ -414,6 +414,12 @@ docker-test-dns-templates: create-integration-admin ## Run the DNS template chec
 	# written, not when somebody creates a domain.
 	$(COMPOSE) exec -T agent sh /tests/integration/dns_templates.sh
 
+.PHONY: docker-test-dns-repair
+docker-test-dns-repair: create-integration-admin ## Run the DNS configuration repair checks
+	# Deletes named.conf from underneath the panel and asks it to put the file
+	# back, then reads the file rather than the panel's answer about it.
+	$(COMPOSE) exec -T agent sh /tests/integration/dns_repair.sh
+
 .PHONY: docker-test-domain-roots
 docker-test-domain-roots: create-integration-admin ## Run the per-domain document root checks
 	# Gives an alias a directory of its own and reads the generated vhost off

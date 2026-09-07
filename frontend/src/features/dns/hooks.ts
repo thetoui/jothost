@@ -52,6 +52,18 @@ export function useInstallDNS() {
   });
 }
 
+/** useRepairDNS rewrites the host's DNS configuration from the panel's record. */
+export function useRepairDNS() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => dnsApi.repair(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: dnsKeys.all });
+    },
+  });
+}
+
 /** useSaveDNSSettings writes the name server's settings. */
 export function useSaveDNSSettings() {
   const queryClient = useQueryClient();

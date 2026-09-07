@@ -38,6 +38,15 @@ export const dnsApi = {
 
   install: () => request<DNSOverview>('/dns/install', { method: 'POST' }),
 
+  /**
+   * Rewrites the host's DNS configuration from the panel's record.
+   *
+   * The same reconcile a zone change runs. It answers the warnings the
+   * overview raises — a named.conf not including the panel's zones, zones the
+   * server has not loaded — which until now had no control attached at all.
+   */
+  repair: () => request<DNSOverview>('/dns/repair', { method: 'POST' }),
+
   saveSettings: (settings: Partial<DNSSettings>) =>
     request<DNSSettings>('/dns/settings', { method: 'PUT', body: settings }),
 

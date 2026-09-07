@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { logsApi } from '@/features/logs/api';
+import { logsApi, websiteLogsApi } from '@/features/logs/api';
+import type { TailParams } from '@/features/logs/api';
 import { ApiError } from '@/services/apiClient';
 import type { LogLine, LogTail } from '@/types/api';
 
@@ -190,4 +191,36 @@ function describe(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
   return 'The log could not be read.';
+}
+
+/**
+ * useWebsiteLogs lists one site's own logs.
+ */
+export function useWebsiteLogs(websiteId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['website-logs', websiteId],
+    queryFn: ({ signal }) => websiteLogsApi.list(websiteId, signal),
+    enabled: enabled && websiteId !== '',
+  });
+}
+
+/**
+ * useWebsiteLogTail follows the end of one of a site's logs.
+ *
+ * Refetched on an interval rather than held open: a log viewer that streams
+ * needs a connection per viewer, and this is a page somebody leaves open on a
+ * second monitor.
+ */
+export function useWebsiteLogTail(
+  websiteId: string,
+  kind: string,
+  params: TailParams,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['website-log-tail', websiteId, kind, params],
+    queryFn: ({ signal }) => websiteLogsApi.tail(websiteId, kind, params, signal),
+    enabled: enabled && websiteId !== '' && kind !== '',
+    refetchInterval: 5000,
+  });
 }

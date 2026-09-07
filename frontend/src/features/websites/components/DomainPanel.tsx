@@ -28,6 +28,7 @@ import { LinkButton, TextLink } from '@/components/ui/Link';
 import { Modal } from '@/components/ui/Modal';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
+import { SiteLogsDialog } from '@/features/websites/components/SiteLogsDialog';
 import { useSetDocumentRoot } from '@/features/websites/hooks';
 import { ApiError } from '@/services/apiClient';
 import { Tabs } from '@/components/ui/Tabs';
@@ -50,6 +51,7 @@ type PanelTab = 'dashboard' | 'hosting';
 export function DomainPanel({ site }: DomainPanelProps) {
   const [tab, setTab] = useState<PanelTab>('dashboard');
   const [movingRoot, setMovingRoot] = useState(false);
+  const [showingLogs, setShowingLogs] = useState(false);
 
   const files = `/files?path=${encodeURIComponent(site.document_root)}`;
   const detail = `/websites/${site.id}`;
@@ -125,12 +127,14 @@ export function DomainPanel({ site }: DomainPanelProps) {
                   tone={site.php_version ? 'violet' : 'slate'}
                   to={detail}
                 />
+                {/* This site's own logs, not the host's. It used to link to
+                    the site's detail page, which does not show them. */}
                 <ToolTile
                   icon={<ScrollText className="h-4 w-4" />}
                   label="Logs"
-                  detail="Access and error"
+                  detail="This site's requests and errors"
                   tone="amber"
-                  to={detail}
+                  onClick={() => setShowingLogs(true)}
                 />
                 <ToolTile
                   icon={<Clock className="h-4 w-4" />}
@@ -214,7 +218,7 @@ export function DomainPanel({ site }: DomainPanelProps) {
         </div>
         <div className="flex gap-1.5">
           <dt>Logs at</dt>
-          <dd className="font-mono text-slate-700">{logsDirFor(site.document_root)}</dd>
+          <dd className="font-mono text-slate-700">{logsDirFor(site.primary_domain)}</dd>
         </div>
       </dl>
 
@@ -223,16 +227,24 @@ export function DomainPanel({ site }: DomainPanelProps) {
         open={movingRoot}
         onClose={() => setMovingRoot(false)}
       />
+
+      <SiteLogsDialog site={site} open={showingLogs} onClose={() => setShowingLogs(false)} />
     </div>
   );
 }
 
-/** logsDirFor derives a site's log directory from its document root. */
-export function logsDirFor(documentRoot: string): string {
-  // The Agent's layout is <root>/public alongside <root>/logs. Deriving it
-  // rather than storing it keeps the two from drifting apart in the UI.
-  const parent = documentRoot.replace(/\/+$/, '').split('/').slice(0, -1).join('/');
-  return parent ? `${parent}/logs` : documentRoot;
+/**
+ * logsDirFor says where a site's logs are.
+ *
+ * From the domain, not from the document root. It used to take the document
+ * root's parent, which was right only while the document root was exactly one
+ * level down — and once an operator can set it to "public/dist", that
+ * inference claims the logs are at <site>/public/logs, which is both wrong and
+ * inside the directory being served. The Agent had the identical bug and it is
+ * fixed there too.
+ */
+export function logsDirFor(domain: string): string {
+  return `/var/www/${domain}/logs`;
 }
 
 function DomainSummary({ site }: { site: Website }) {
@@ -287,7 +299,7 @@ function HostingFacts({ site }: { site: Website }) {
     <div className="space-y-4">
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         <Fact label="Document root" value={site.document_root} mono />
-        <Fact label="Log directory" value={logsDirFor(site.document_root)} mono />
+        <Fact label="Log directory" value={logsDirFor(site.primary_domain)} mono />
         <Fact label="System user" value={site.system_user} mono />
         <Fact label="PHP version" value={site.php_version ?? 'Static site, no PHP'} />
         <Fact label="Primary domain" value={site.primary_domain} />

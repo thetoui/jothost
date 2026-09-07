@@ -14,6 +14,7 @@ import (
 	"github.com/jothost/panel/api/internal/auth"
 	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/rbac"
+	"github.com/jothost/panel/api/internal/websites"
 )
 
 // Timeouts. Reading a tail is a bounded read of a file and should be quick;
@@ -29,11 +30,15 @@ type Handler struct {
 	service *Service
 	auth    *auth.Service
 	log     *slog.Logger
+	// websites resolves a website id to the site it is, so a per-site log key
+	// is composed from the panel's own record rather than from the request.
+	websites *websites.Repository
 }
 
 // HandlerOptions configure a Handler.
 type HandlerOptions struct {
-	Service *Service
+	Service  *Service
+	Websites *websites.Repository
 	Auth    *auth.Service
 	Log     *slog.Logger
 }
@@ -44,7 +49,7 @@ func NewHandler(opts HandlerOptions) *Handler {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Handler{service: opts.Service, auth: opts.Auth, log: log}
+	return &Handler{service: opts.Service, auth: opts.Auth, log: log, websites: opts.Websites}
 }
 
 // Routes registers the endpoints on mux.
@@ -186,14 +191,24 @@ func tailOptions(r *http.Request) (agentclient.LogTailOptions, error) {
 }
 
 func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
-	defer cancel()
-
 	key := sourceKey(r)
 	if key == "" {
 		httpx.Error(w, r, httpx.BadRequest("a log is required"))
 		return
 	}
+	h.sendLog(w, r, key)
+}
+
+// sendLog writes one log to the response.
+//
+// Shared by the host-wide download and a website's own, so the headers a log
+// is sent with are decided once. A log line is attacker-influenced content —
+// anyone who can make a request can write one into an access log — and the
+// difference between sending it as octet-stream and sending it as anything a
+// browser renders is stored cross-site scripting on the panel's own origin.
+func (h *Handler) sendLog(w http.ResponseWriter, r *http.Request, key string) {
+	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
+	defer cancel()
 
 	requestID := httpx.RequestIDFromContext(ctx)
 

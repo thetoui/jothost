@@ -612,6 +612,9 @@ func New(opts Options) (*Server, error) {
 		}),
 		Auth: authService,
 		Log:  log,
+		// So a website's own logs can be served on the website's own routes,
+		// under website.view rather than server.view.
+		Websites: websiteRepo,
 	})
 
 	// The host's packet filter. No state of the panel's own: the provisional
@@ -838,6 +841,7 @@ func (s *Server) routes() http.Handler {
 	s.webserver.Routes(mux)
 	s.services.Routes(mux)
 	s.logs.Routes(mux)
+	s.logs.WebsiteRoutes(mux)
 	s.cron.Routes(mux)
 	s.ssh.Routes(mux)
 	s.fail2ban.Routes(mux)

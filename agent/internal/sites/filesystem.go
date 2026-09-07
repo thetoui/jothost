@@ -229,6 +229,28 @@ func (p *Provisioner) EnsureContent(layout Layout) error {
 	return nil
 }
 
+// Domains lists the sites this host has directories for.
+//
+// From the filesystem rather than from the panel's records, because this is
+// the Agent and the filesystem is what it knows. A directory that is not a
+// domain is skipped by the caller; a site the panel has forgotten still has
+// logs worth reading.
+func (p *Provisioner) Domains() ([]string, error) {
+	entries, err := os.ReadDir(p.root)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", p.root, err)
+	}
+
+	domains := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		domains = append(domains, entry.Name())
+	}
+	return domains, nil
+}
+
 // SiteDir is where a domain's own directory lives.
 //
 // One function, so nothing has to reconstruct the convention. The domain is

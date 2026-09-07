@@ -517,6 +517,12 @@ type UpdateRequest struct {
 	Directives string
 }
 
+// Domains lists the sites this host has directories for.
+func (m *Manager) Domains() ([]string, error) { return m.fs.Domains() }
+
+// Root is the directory websites live under.
+func (m *Manager) Root() string { return m.fs.Root() }
+
 // UpdateResult reports what was rewritten.
 type UpdateResult struct {
 	Domain     string `json:"domain"`

@@ -274,7 +274,13 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	$(MAKE) docker-test-ftp
 	$(MAKE) docker-test-site-ownership
 	$(MAKE) docker-test-audit
+	$(MAKE) docker-test-database-console
+	$(MAKE) docker-test-database-dump
 	$(MAKE) docker-test-dns
+	$(MAKE) docker-test-dns-templates
+	$(MAKE) docker-test-dns-repair
+	$(MAKE) docker-test-domain-roots
+	$(MAKE) docker-test-ssl-dns
 	$(MAKE) docker-test-updates
 	$(MAKE) docker-test-monitoring
 	$(MAKE) docker-test-backup

@@ -8,7 +8,57 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **DNS zone templates.** What a new zone starts with is now a named, editable
+  list of records rather than two lines hard-coded in Go. `{domain}` and `{ip}`
+  are substituted when a zone is created, and a template is validated by
+  rendering it against a sample and checking the record that comes out — so one
+  that cannot produce a valid record is refused when it is written, not when
+  somebody creates a domain and gets a zone the name server will not load. The
+  built-in template reproduces the old behaviour exactly, and can be edited but
+  not deleted.
+- **Issuing a certificate puts the host's own DNS in order first.** Let's
+  Encrypt resolves every name on a certificate and fetches a challenge from
+  whatever answers, and a failed challenge is spent. Each name that falls in a
+  zone this panel serves now gets its address record before the job is queued,
+  and the response says what happened per name. Only a missing record is
+  written: a name pointing at another machine is reported and left alone.
+- **A document root per domain.** An alias can be served from a directory of
+  its own instead of the website's. Clearing it puts the name back on the
+  website's root and keeps it there as the site moves, which is not the same as
+  typing today's path out.
+- **A repair control for the name server's configuration.** The panel already
+  reported when `named.conf` did not include its zones; the fix existed as the
+  reconcile every zone change runs, and the only way to reach it was to save
+  unrelated settings.
+- **The virus scanner can be installed after the mail server is.** It was
+  offered only while installing the mail server itself, so a host that said no
+  once could never change its mind. The panel also tells "no scanner on this
+  host" from "a scanner nobody switched on" — states that read identically
+  before.
+
+### Changed
+
+- Mail installation is a queued job. It ran inside the request that asked for
+  it, and the HTTP server closes a connection after `API_WRITE_TIMEOUT`
+  whatever the handler is doing — so installing a virus scanner reported a
+  failure and then succeeded.
+- phpMyAdmin no longer asks for an address to serve it on. It is reached
+  through the panel's own `/phpmyadmin/`, so the name that field took could
+  never appear in a request that arrived anywhere.
+- The log source picker scrolls inside its own card. Every website contributes
+  two sources, so the list grew the page instead.
+
+### Fixed
+
+- An agent call capped at `AGENT_TIMEOUT` even when the caller had set a longer
+  deadline of its own, which made every longer timeout in the API dead code.
+- A PHP version that is not installed no longer offers to be removed.
+- The name server card reported "Answers on: any, any", which is BIND's IPv4
+  and IPv6 settings both saying "everything".
+- A per-website log route answered 500 rather than 404 for a website that does
+  not exist.
 
 ## [0.1.0] — 2026-09-06
 

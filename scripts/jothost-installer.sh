@@ -1037,7 +1037,7 @@ EOF
         # It was invisible to every check written before a real browser drove
         # this: they asked for the database page by its full URL instead of
         # following where phpMyAdmin sent them.
-        # $http_host, not a bare path: a path-only replacement makes nginx
+        # \$http_host, not a bare path: a path-only replacement makes nginx
         # rebuild the URL from its own listening port, which is not the port
         # the browser asked on wherever the two differ - and the operator is
         # redirected to a port nothing answers. This echoes back exactly the

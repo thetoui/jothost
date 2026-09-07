@@ -467,8 +467,19 @@ func websiteError(err error) error {
 // that is. Checking in two places and trusting the first is how a check gets
 // removed from the one that mattered.
 func (p websiteCreatePayload) aliasRoots() []sites.AliasRoot {
-	roots := make([]sites.AliasRoot, 0, len(p.AliasRoots))
-	for _, alias := range p.AliasRoots {
+	return toAliasRoots(p.AliasRoots)
+}
+
+// toAliasRoots converts the payload form for the site manager.
+//
+// Shared by every operation that rewrites a vhost. Each of them rewrites the
+// whole file, so one that dropped these would take every alias off its own
+// document root as a side effect of switching PHP version or issuing a
+// certificate - the same failure the certificate and proxy fields in those
+// payloads are commented for.
+func toAliasRoots(payload []aliasRootPayload) []sites.AliasRoot {
+	roots := make([]sites.AliasRoot, 0, len(payload))
+	for _, alias := range payload {
 		roots = append(roots, sites.AliasRoot{
 			Domain:       alias.Domain,
 			DocumentRoot: alias.DocumentRoot,

@@ -652,12 +652,18 @@ as_root="$(curl -s --max-time 30 -b "$work/root.jar" -c "$work/root.jar" -L -H "
   "$PMA_BASE/index.php" 2>/dev/null || true)"
 contains 'root is refused' "$as_root" 'input_username'
 
-# An address that is not a host name must be refused rather than written into
-# an nginx server_name.
+# An address that is not a host name must still be refused rather than written
+# into an nginx server_name.
 code="$(api_status POST /api/v1/databases/console '{"server_name":"not a host"}')"
 expect_status 'an invalid address is refused' '422' "$code"
+
+# An empty one is now the ordinary case and is accepted. phpMyAdmin is served
+# by the panel's own nginx on the loopback and reached only through the panel's
+# /phpmyadmin/ location, which addresses it by a fixed internal name - so there
+# is no address to choose, and the panel stopped asking for one. This check
+# asserted a 422 while the field was still on the form.
 code="$(api_status POST /api/v1/databases/console '{"server_name":""}')"
-expect_status 'an empty address is refused' '422' "$code"
+expect_status 'no address is needed, because it is always the panel own' '202' "$code"
 
 if [ -n "$pma_id" ]; then
   api DELETE "/api/v1/databases/$pma_id" >/dev/null 2>&1 || true

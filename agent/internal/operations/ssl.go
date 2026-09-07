@@ -45,6 +45,11 @@ type sslPayload struct {
 	PHPSocket   string   `json:"php_socket"`
 	MaxBodySize string   `json:"max_body_size"`
 	Aliases     []string `json:"aliases"`
+	// AliasRoots are the names on this site served from directories of their
+	// own. Carried here because this operation rewrites the whole vhost:
+	// without them, every alias with a root of its own would quietly go back
+	// to the site's as a side effect of an unrelated change.
+	AliasRoots []aliasRootPayload `json:"alias_roots"`
 	// ProxyPort keeps a reverse-proxied site proxied. Issuing a certificate
 	// rewrites the whole vhost, so without this a Node.js site would go onto
 	// HTTPS and stop reaching its own application in the same operation.
@@ -183,6 +188,7 @@ func (r *Registry) handleSSLRevoke(ctx context.Context, req protocol.Request, re
 		updated, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
 			Domain:        payload.Domain,
 			Aliases:       payload.Aliases,
+			AliasRoots:    toAliasRoots(payload.AliasRoots),
 			DocumentRoot:  payload.DocumentRoot,
 			MaxBodySize:   payload.MaxBodySize,
 			PHPSocket:     payload.PHPSocket,
@@ -260,6 +266,7 @@ func (r *Registry) applyCertificate(ctx context.Context, payload sslPayload, cer
 	updated, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
 		Domain:        payload.Domain,
 		Aliases:       payload.Aliases,
+		AliasRoots:    toAliasRoots(payload.AliasRoots),
 		DocumentRoot:  payload.DocumentRoot,
 		MaxBodySize:   payload.MaxBodySize,
 		PHPSocket:     payload.PHPSocket,

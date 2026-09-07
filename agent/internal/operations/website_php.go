@@ -16,12 +16,17 @@ import (
 
 // websitePHPPayload describes a website whose PHP is changing.
 type websitePHPPayload struct {
-	WebsiteID    string   `json:"website_id"`
-	Domain       string   `json:"domain"`
-	Aliases      []string `json:"aliases"`
-	DocumentRoot string   `json:"document_root"`
-	SystemUser   string   `json:"system_user"`
-	Version      string   `json:"version"`
+	WebsiteID string   `json:"website_id"`
+	Domain    string   `json:"domain"`
+	Aliases   []string `json:"aliases"`
+	// AliasRoots are the names on this site served from directories of their
+	// own. Carried here because this operation rewrites the whole vhost:
+	// without them, every alias with a root of its own would quietly go back
+	// to the site's as a side effect of an unrelated change.
+	AliasRoots   []aliasRootPayload `json:"alias_roots"`
+	DocumentRoot string             `json:"document_root"`
+	SystemUser   string             `json:"system_user"`
+	Version      string             `json:"version"`
 	// The site's certificate. These operations rewrite the whole vhost, so
 	// without them switching PHP version would drop an HTTPS site back to
 	// plain HTTP — a working certificate turned off by an unrelated change.
@@ -173,6 +178,7 @@ func (r *Registry) handleWebsitePHPSet(ctx context.Context, req protocol.Request
 	result, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
 		Domain:        payload.Domain,
 		Aliases:       payload.Aliases,
+		AliasRoots:    toAliasRoots(payload.AliasRoots),
 		DocumentRoot:  payload.DocumentRoot,
 		MaxBodySize:   payload.MaxBodySize,
 		SSL:           payload.sslConfig(),
@@ -252,6 +258,7 @@ func (r *Registry) handleWebsitePHPUnset(ctx context.Context, req protocol.Reque
 	result, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
 		Domain:        payload.Domain,
 		Aliases:       payload.Aliases,
+		AliasRoots:    toAliasRoots(payload.AliasRoots),
 		DocumentRoot:  payload.DocumentRoot,
 		MaxBodySize:   payload.MaxBodySize,
 		SSL:           payload.sslConfig(),

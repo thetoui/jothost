@@ -252,46 +252,19 @@ lint: go-lint fe-lint ## Run all linters
 
 .PHONY: docker-test
 docker-test: ## Run the full containerised test suite (unit + integration)
+	# The suites are discovered, not listed. This target used to name each one
+	# by hand and six of them - including four written the same week - existed
+	# without it ever running them.
 	$(COMPOSE_TEST) run --rm go-tests
 	$(COMPOSE_TEST) run --rm frontend-tests
 	$(MAKE) docker-test-integration
-	$(MAKE) docker-test-auth
-	$(MAKE) docker-test-agent
-	$(MAKE) docker-test-dashboard
-	$(MAKE) docker-test-websites
-	$(MAKE) docker-test-php
-	$(MAKE) docker-test-ssl
-	$(MAKE) docker-test-files
-	$(MAKE) docker-test-editor
-	$(MAKE) docker-test-databases
-	$(MAKE) docker-test-subdomains
-	$(MAKE) docker-test-hybrid
-	$(MAKE) docker-test-services
-	$(MAKE) docker-test-logs
-	$(MAKE) docker-test-cron
-	$(MAKE) docker-test-ssh
-	$(MAKE) docker-test-fail2ban
-	$(MAKE) docker-test-ftp
-	$(MAKE) docker-test-site-ownership
-	$(MAKE) docker-test-audit
-	$(MAKE) docker-test-database-console
-	$(MAKE) docker-test-database-dump
-	$(MAKE) docker-test-dns
-	$(MAKE) docker-test-dns-templates
-	$(MAKE) docker-test-dns-repair
-	$(MAKE) docker-test-domain-roots
-	$(MAKE) docker-test-ssl-dns
-	$(MAKE) docker-test-updates
-	$(MAKE) docker-test-monitoring
-	$(MAKE) docker-test-backup
-	$(MAKE) docker-test-security
-	$(MAKE) docker-test-notifications
-	$(MAKE) docker-test-mail
-	$(MAKE) docker-test-deploy
-	$(MAKE) docker-test-tenancy
-	$(MAKE) docker-test-hardening
-	$(MAKE) docker-test-firewall
-	$(MAKE) docker-test-node
+	$(MAKE) docker-test-suite
+	# The deployment path and the drills, each needing a host of its own.
+	$(MAKE) docker-test-installer
+	$(MAKE) docker-test-installer-debian
+	$(MAKE) docker-test-security-audit
+	$(MAKE) docker-test-load
+	$(MAKE) docker-test-recovery
 
 .PHONY: docker-test-integration
 docker-test-integration: ## Run integration tests against the running dev stack
@@ -513,6 +486,26 @@ docker-test-installer: dist ## Run the Phase 23 installer checks on a clean host
 	# It depends on `dist` because an installer with nothing to install proves
 	# nothing.
 	$(COMPOSE_TEST) run --rm installer-test
+
+.PHONY: docker-test-installer-debian
+docker-test-installer-debian: dist ## Run the installer checks on Debian with systemd
+	# The other half of the installer. It picks its package manager and its
+	# service manager from what it finds, and every check until now ran on
+	# Alpine with OpenRC - so the apt and systemd branches, which is what most
+	# operators will actually run, had never been executed.
+	#
+	# systemd has to be PID 1 for systemctl to mean anything, so the host runs
+	# as a service and the suite is exec'd into it once systemd has settled.
+	$(COMPOSE_TEST) up -d --build installer-host-debian
+	@echo "Waiting for systemd..."
+	@for _ in $$(seq 1 60); do 		state=$$($(COMPOSE_TEST) exec -T installer-host-debian systemctl is-system-running 2>/dev/null || true); 		case "$$state" in running|degraded) echo "systemd is $$state"; break ;; esac; 		sleep 2; 	done
+	$(COMPOSE_TEST) exec -T installer-host-debian sh /tests/integration/phase23_installer.sh; 		status=$$?; 		$(COMPOSE_TEST) rm -sf installer-host-debian >/dev/null 2>&1 || true; 		exit $$status
+
+.PHONY: docker-test-suite
+docker-test-suite: create-integration-admin ## Run every integration suite against the dev stack
+	# Discovers the suites rather than listing them, so one added tomorrow runs
+	# without anybody remembering to wire it in.
+	sh tests/run-integration.sh
 
 .PHONY: docker-test-tenancy
 docker-test-tenancy: create-integration-admin ## Run the Phase 22 multi-tenancy checks

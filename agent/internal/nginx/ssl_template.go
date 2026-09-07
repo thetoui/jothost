@@ -30,9 +30,14 @@ const (
 // {{ if }} produced something no one could read and check.
 const sslServerBlock = `
 server {
+{{- if .LegacyHTTP2 }}
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+{{- else }}
     listen 443 ssl;
     listen [::]:443 ssl;
     http2 on;
+{{- end }}
 
     server_name {{ .PrimaryDomain }}{{ range .Aliases }} {{ . }}{{ end }};
 

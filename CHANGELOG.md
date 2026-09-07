@@ -40,6 +40,11 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Changed
 
+- The installer is now tested on Debian with systemd as well as Alpine with
+  OpenRC. It picks its package manager and its service manager from what it
+  finds, and only one of those pairs had ever been exercised.
+- Every integration suite is discovered rather than listed, by CI and by
+  `make docker-test` alike. Six existed without either running them.
 - Mail installation is a queued job. It ran inside the request that asked for
   it, and the HTTP server closes a connection after `API_WRITE_TIMEOUT`
   whatever the handler is doing — so installing a virus scanner reported a
@@ -52,6 +57,13 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Fixed
 
+- **HTTPS did not work on Debian, and the installer stopped before it
+  finished.** nginx moved the HTTP/2 switch in 1.25.1 — before that it is a
+  parameter on `listen`, after it a directive of its own — and the panel only
+  ever emitted the newer spelling. Debian 12 ships nginx 1.22, which rejects
+  it, so the installer aborted at the vhost step and every HTTPS website would
+  have been refused the same way. Both the installer and the Agent now emit
+  what the installed nginx accepts.
 - An agent call capped at `AGENT_TIMEOUT` even when the caller had set a longer
   deadline of its own, which made every longer timeout in the API dead code.
 - A PHP version that is not installed no longer offers to be removed.

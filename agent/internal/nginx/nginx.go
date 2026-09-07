@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/jothost/panel/agent/internal/command"
@@ -171,6 +172,8 @@ func (p *Provider) configPath(domain string) (string, error) {
 // restored if validation fails, so a bad generated config can never leave
 // nginx unable to reload — which would take every other site down with it.
 func (p *Provider) WriteSite(ctx context.Context, cfg SiteConfig) (string, error) {
+	cfg.LegacyHTTP2 = p.LegacyHTTP2(ctx)
+
 	rendered, err := Render(cfg)
 	if err != nil {
 		return "", err
@@ -375,6 +378,46 @@ func (p *Provider) Version(ctx context.Context) (string, error) {
 }
 
 var versionPattern = regexp.MustCompile(`nginx/([0-9]+\.[0-9]+\.[0-9]+)`)
+
+// http2DirectiveSince is the release that moved HTTP/2 off the listen line.
+//
+// Before 1.25.1 it is `listen 443 ssl http2`; from it, `http2 on;` and a plain
+// listen. Each version rejects the other spelling, and a rejected file is not
+// a site without HTTP/2 - nginx refuses to load the whole configuration, so a
+// reload leaves every site on the host serving what it had before.
+var http2DirectiveSince = [3]int{1, 25, 1}
+
+// LegacyHTTP2 reports whether this host needs HTTP/2 on the listen directive.
+//
+// Unknown versions are treated as modern. The alternative is to assume the old
+// spelling on a host whose version could not be read, which would break the
+// common case to protect the rare one - and both Alpine 3.21 (1.26) and the
+// nginx project's own packages are well past the change.
+func (p *Provider) LegacyHTTP2(ctx context.Context) bool {
+	version, err := p.Version(ctx)
+	if err != nil {
+		return false
+	}
+	return olderThan(version, http2DirectiveSince)
+}
+
+// olderThan compares a dotted version against a release.
+func olderThan(version string, than [3]int) bool {
+	parts := strings.SplitN(version, ".", 4)
+	if len(parts) < 3 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		n, err := strconv.Atoi(strings.TrimSpace(parts[i]))
+		if err != nil {
+			return false
+		}
+		if n != than[i] {
+			return n < than[i]
+		}
+	}
+	return false
+}
 
 // readIfExists returns a file's content, reporting whether it was there.
 func readIfExists(path string) ([]byte, bool, error) {

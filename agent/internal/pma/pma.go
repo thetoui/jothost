@@ -621,6 +621,11 @@ func (m *Manager) writeVhost(ctx context.Context, serverName, root, socket strin
 
 	rendered, err := nginx.Render(nginx.SiteConfig{
 		PrimaryDomain: serverName,
+		// Rendered directly rather than through WriteSite, so the spelling of
+		// the HTTP/2 switch has to be asked for here. nginx moved it in 1.25.1
+		// and each version rejects the other's - which is not a site without
+		// HTTP/2 but a file nginx refuses to load at all.
+		LegacyHTTP2: m.nginx.LegacyHTTP2(ctx),
 		// Loopback, on the panel's own instance. phpMyAdmin is reached through
 		// the panel's public vhost, which is what decides whether the visitor
 		// gets here at all; listening on every address would be a second front

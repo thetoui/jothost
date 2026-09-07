@@ -312,6 +312,51 @@ detect_host() {
 # It is called twice: once before anything is installed, for the report, and
 # again afterwards, because on a minimal Alpine the supervisor is a package
 # this installer has just laid down.
+# How this host's nginx wants HTTP/2 turned on.
+#
+# nginx moved it in 1.25.1: before that it is a parameter on the listen
+# directive, from it a directive of its own, and each version rejects the
+# other's spelling. Debian 12 ships 1.22 and Alpine 3.21 ships 1.26, so both
+# are live on platforms this panel supports - and getting it wrong is not a
+# panel without HTTP/2, it is nginx refusing the whole file and the install
+# stopping at the vhost step.
+#
+# Unknown versions are treated as modern, because that is what every current
+# distribution and nginx's own packages ship.
+detect_nginx_http2() {
+  NGINX_HTTP2_LISTEN=""
+  NGINX_HTTP2_DIRECTIVE="
+    http2 on;"
+
+  command -v nginx >/dev/null 2>&1 || return 0
+
+  # nginx writes its version banner to stderr, as "nginx version: nginx/1.22.1".
+  #
+  # Parameter expansion rather than sed: there is no backreference to get
+  # wrong, and the banner has a fixed enough shape that trimming around it
+  # reads better than a pattern nobody can check by eye.
+  banner=$(nginx -v 2>&1)
+  case "$banner" in
+    *nginx/*) ;;
+    *) return 0 ;;
+  esac
+  version=${banner##*nginx/}
+  version=${version%% *}
+  [ -n "$version" ] || return 0
+
+  major=${version%%.*}
+  rest=${version#*.}
+  minor=${rest%%.*}
+  patch=${rest#*.}
+
+  if [ "$major" -lt 1 ] ||
+     { [ "$major" -eq 1 ] && [ "$minor" -lt 25 ]; } ||
+     { [ "$major" -eq 1 ] && [ "$minor" -eq 25 ] && [ "$patch" -lt 1 ]; }; then
+    NGINX_HTTP2_LISTEN=" http2"
+    NGINX_HTTP2_DIRECTIVE=""
+  fi
+}
+
 detect_init() {
   INIT_SYSTEM=none
   INIT_RUNNING=0
@@ -861,6 +906,10 @@ web_group() {
 configure_nginx() {
   step "Configuring nginx for $DOMAIN"
 
+  # Asked here rather than at startup: nginx is installed by an earlier step,
+  # so before that there is no version to read.
+  detect_nginx_http2
+
   sites_dir=$(nginx_sites_dir)
   mkdir -p "$sites_dir" "$ACME_ROOT/.well-known/acme-challenge"
 
@@ -923,9 +972,8 @@ EOF
 }
 
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl$NGINX_HTTP2_LISTEN;
+    listen [::]:443 ssl$NGINX_HTTP2_LISTEN;$NGINX_HTTP2_DIRECTIVE
     server_name $DOMAIN;
     server_tokens off;
 

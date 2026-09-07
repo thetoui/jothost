@@ -82,6 +82,19 @@ type SiteConfig struct {
 	// block is omitted rather than pointing at a certificate that is not there
 	// — which nginx refuses to start with, taking every other site down too.
 	SSL *SSLConfig
+	// LegacyHTTP2 selects the older way of turning HTTP/2 on.
+	//
+	// nginx moved it in 1.25.1: before that it is a parameter on the listen
+	// directive, after it is a directive of its own, and each version rejects
+	// the other's spelling outright. A rejected file is not a site without
+	// HTTP/2 - it is a configuration nginx refuses to load, so a reload leaves
+	// every site on the host serving whatever it had before.
+	//
+	// Debian 12 ships 1.22 and Alpine 3.21 ships 1.26, so both spellings are
+	// live on platforms this panel supports. Provider.WriteSite fills this in
+	// from the installed version; a caller rendering directly has to set it.
+	LegacyHTTP2 bool
+
 	// Directives are additional configuration written into this site's server
 	// block, validated by shared/validate before it reaches here.
 	//

@@ -86,7 +86,15 @@ log ""
 
 log "0. A machine with nothing on it"
 
-apk add --no-cache curl >/dev/null 2>&1 || true
+# curl, however this host installs things. The suite runs on Alpine and on
+# Debian with systemd, because the installer picks its package manager and its
+# service manager from what it finds and both branches have to be exercised.
+if ! command -v curl >/dev/null 2>&1; then
+  apk add --no-cache curl >/dev/null 2>&1 ||
+    { apt-get update -qq >/dev/null 2>&1 &&
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl >/dev/null 2>&1; } ||
+    true
+fi
 
 for absent in nginx psql redis-server; do
   if command -v "$absent" >/dev/null 2>&1; then
@@ -169,7 +177,11 @@ elapsed=$(( $(date +%s) - start ))
 log "        (took ${elapsed}s)"
 
 install_out=$(cat /tmp/install.log)
-contains "it reported the host it found" "$install_out" "alpine"
+# The distribution the installer says it found. Asserted rather than ignored:
+# an installer that misidentifies the host carries on with the wrong package
+# manager and the wrong service manager, and every later failure describes a
+# symptom of that rather than the cause.
+contains "it reported the host it found" "$install_out" "${EXPECT_DISTRO:-alpine}"
 contains "it created the administrator" "$install_out" "administrator \"$ADMIN_USER\" created"
 contains "it installed PHP, so the first website can run one" "$install_out" \
   "PHP installed, so the first website can run an application"
@@ -296,7 +308,13 @@ probe_reply="proxied-to-the-panel-stack"
     # git normalises CRLF in the working tree, which would silently turn
     # this into a malformed HTTP response the next time it touched the file.
     printf 'HTTP/1.1 200 OK\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' \
-      "${#probe_reply}" "$probe_reply" | nc -l -p "$panel_port" -s 127.0.0.1 >/dev/null 2>&1 || break
+      "${#probe_reply}" "$probe_reply" |
+      # Two spellings, because the platforms ship different netcats: busybox
+      # wants "-l -p PORT -s ADDR" and OpenBSD's wants "-l ADDR PORT". Getting
+      # it wrong fails silently - the listener never starts, nginx answers 502,
+      # and the check reports a working proxy as broken.
+      { nc -l -p "$panel_port" -s 127.0.0.1 2>/dev/null ||
+        nc -l 127.0.0.1 "$panel_port" 2>/dev/null; } >/dev/null || break
   done
 ) &
 probe_pid=$!

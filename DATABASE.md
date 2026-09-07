@@ -308,6 +308,8 @@ website_id UUID REFERENCES websites(id)
 domain VARCHAR(255) UNIQUE NOT NULL
 type VARCHAR(30) NOT NULL
 status VARCHAR(30) NOT NULL
+redirect_to TEXT
+document_root TEXT
 created_at TIMESTAMPTZ NOT NULL
 ```
 
@@ -330,6 +332,23 @@ website — subdomains included — writes its primary name into it, so a name c
 be an alias of one site or the identity of another, never both. Two server
 blocks answering to one name is a configuration nginx resolves by picking one,
 which is not a decision the panel should leave to it.
+
+`document_root` (migration 0029) is where this name in particular is served
+from. **NULL means the website's own root**, which is what every row meant
+before the column existed — and it goes on meaning that as the site moves. It
+is nullable rather than backfilled for exactly that reason: a backfill would
+pin every alias to today's path, so moving a site would stop moving its
+aliases with it.
+
+Constrained to an absolute path with no `..` in it, the same shape
+`websites.document_root` requires and for the same reason: the string becomes
+an nginx `root` directive read by a process running as root. It is also refused
+on a `redirect` row, which answers with a Location header and serves no files
+at all — refused rather than ignored, because a path somebody set and the panel
+silently dropped reads back as configured.
+
+nginx has one root per server block, so a name with one of these gets a server
+block of its own rather than being another `server_name` on the site's.
 
 ---
 

@@ -23,6 +23,7 @@ const (
 	ActionWebsiteDelete = "website.delete"
 	ActionDomainCreate  = "domain.create"
 	ActionDomainDelete  = "domain.delete"
+	ActionDomainUpdate  = "domain.update"
 	ResourceTypeWebsite = "website"
 )
 
@@ -460,6 +461,65 @@ func (s *Service) RemoveDomain(ctx context.Context, req RemoveDomainRequest) (jo
 		req.IPAddress, req.UserAgent)
 
 	return job, nil
+}
+
+// SetDomainRootRequest points one name at a directory of its own.
+type SetDomainRootRequest struct {
+	DomainID string
+	// DocumentRoot is the absolute path, already composed and validated
+	// against the site's own directory by the handler. Nil clears the
+	// override, putting the name back on the website's root.
+	DocumentRoot *string
+	Actor        string
+	IPAddress    string
+	UserAgent    string
+}
+
+// SetDomainRoot changes where one of a site's names is served from.
+//
+// The vhost is rewritten afterwards, because until it is the panel and the
+// host disagree about where the name is served - and the panel's record is the
+// half nobody can see.
+func (s *Service) SetDomainRoot(ctx context.Context, req SetDomainRootRequest,
+) (Domain, jobs.Job, error) {
+	domain, err := s.repo.GetDomain(ctx, req.DomainID)
+	if err != nil {
+		return Domain{}, jobs.Job{}, err
+	}
+	// The primary name is the site: moving it is moving the site's own
+	// document root, which is what PATCH /websites/{id} is for. Two ways to
+	// set one value is how they end up disagreeing.
+	if domain.Type == DomainPrimary {
+		return Domain{}, jobs.Job{}, ErrPrimaryDomainRoot
+	}
+	if domain.Type == DomainRedirect {
+		return Domain{}, jobs.Job{}, ErrRedirectDomainRoot
+	}
+
+	site, err := s.repo.Get(ctx, domain.WebsiteID)
+	if err != nil {
+		return Domain{}, jobs.Job{}, err
+	}
+
+	updated, err := s.repo.SetDomainRoot(ctx, req.DomainID, req.DocumentRoot)
+	if err != nil {
+		return Domain{}, jobs.Job{}, err
+	}
+
+	job, err := s.queueVhostUpdate(ctx, site, req.Actor)
+	if err != nil {
+		return Domain{}, jobs.Job{}, err
+	}
+
+	root := "the website's own"
+	if req.DocumentRoot != nil {
+		root = *req.DocumentRoot
+	}
+	s.record(ctx, req.Actor, ActionDomainUpdate, site.ID, audit.StatusSuccess,
+		map[string]any{"domain": domain.Domain, "document_root": root, "job_id": job.ID},
+		req.IPAddress, req.UserAgent)
+
+	return updated, job, nil
 }
 
 // queueVhostUpdate asks the Agent to rewrite a site's nginx configuration.

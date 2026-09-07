@@ -75,8 +75,10 @@ func (m *Manager) Capabilities() Capabilities {
 
 // CreateRequest describes a website to provision.
 type CreateRequest struct {
-	Domain       string
-	Aliases      []string
+	Domain  string
+	Aliases []string
+	// AliasRoots are names served from directories of their own.
+	AliasRoots   []AliasRoot
 	DocumentRoot string
 	SystemUser   string
 	MaxBodySize  string
@@ -201,9 +203,15 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest, report func(int
 	}
 
 	progress(report, 70, "Writing the web server configuration")
+	aliasRoots, err := m.resolveAliasRoots(m.fs.SiteDir(domain), domain, req.AliasRoots)
+	if err != nil {
+		return CreateResult{}, err
+	}
+
 	configPath, err := m.nginx.WriteSite(ctx, nginx.SiteConfig{
 		PrimaryDomain: domain,
 		Aliases:       aliases,
+		AliasRoots:    aliasRoots,
 		DocumentRoot:  layout.Content,
 		AccessLog:     layout.AccessLog,
 		ErrorLog:      layout.ErrorLog,
@@ -490,10 +498,21 @@ func progress(report func(int, string), percent int, message string) {
 	}
 }
 
+// AliasRoot is a name on a site served from a directory of its own.
+type AliasRoot struct {
+	Domain string
+	// DocumentRoot is where this name is served from. It is confined to the
+	// site's own directory here, on the resolved path, so a symlink cannot
+	// carry it out of a directory it appears to be under.
+	DocumentRoot string
+}
+
 // UpdateRequest describes a configuration change to an existing website.
 type UpdateRequest struct {
-	Domain       string
-	Aliases      []string
+	Domain  string
+	Aliases []string
+	// AliasRoots are names served from directories of their own.
+	AliasRoots   []AliasRoot
 	DocumentRoot string
 	MaxBodySize  string
 	// PHPSocket is the FPM pool this site serves .php from. Empty rewrites the
@@ -599,10 +618,16 @@ func (m *Manager) Update(ctx context.Context, req UpdateRequest, report func(int
 		}
 	}
 
+	aliasRoots, err := m.resolveAliasRoots(m.fs.SiteDir(domain), domain, req.AliasRoots)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+
 	progress(report, 60, "Rewriting the web server configuration")
 	configPath, err := m.nginx.WriteSite(ctx, nginx.SiteConfig{
 		PrimaryDomain: domain,
 		Aliases:       aliases,
+		AliasRoots:    aliasRoots,
 		DocumentRoot:  layout.Content,
 		AccessLog:     layout.AccessLog,
 		ErrorLog:      layout.ErrorLog,
@@ -661,4 +686,48 @@ func (m *Manager) LookupAccount(name string) (Account, error) {
 		return Account{}, fmt.Errorf("system account %q does not exist", name)
 	}
 	return account, nil
+}
+
+// resolveAliasRoots confines each alias's document root to the site.
+//
+// Every path goes through LayoutIn, which resolves symlinks and refuses
+// anything that leaves the site's directory. The panel composes these paths
+// and the panel is not trusted with them: a document root is an nginx root
+// directive, and one pointing at /etc would publish the host's passwd file
+// under somebody's domain name.
+//
+// A directory that is not there yet is created, for the same reason the site's
+// own root is: naming where a build will land and then deploying into it is
+// the ordinary order, and nginx pointed at a missing directory answers 404 to
+// everything with nothing to say why.
+func (m *Manager) resolveAliasRoots(siteDir, primary string, requested []AliasRoot,
+) ([]nginx.AliasRoot, error) {
+	roots := make([]nginx.AliasRoot, 0, len(requested))
+	seen := make(map[string]bool, len(requested))
+
+	for _, alias := range requested {
+		name := validate.NormalizeDomain(alias.Domain)
+		if err := validate.ServerName(name); err != nil {
+			return nil, fmt.Errorf("alias %q: %w", alias.Domain, err)
+		}
+		if name == primary {
+			return nil, fmt.Errorf(
+				"alias %q is the site's own name, so it cannot have a root of its own", name)
+		}
+		if seen[name] {
+			return nil, fmt.Errorf("alias %q is named twice", name)
+		}
+		seen[name] = true
+
+		layout, err := m.fs.LayoutIn(siteDir, alias.DocumentRoot)
+		if err != nil {
+			return nil, fmt.Errorf("document root for %s: %w", name, err)
+		}
+		if err := m.fs.EnsureContent(layout); err != nil {
+			return nil, fmt.Errorf("document root for %s: %w", name, err)
+		}
+
+		roots = append(roots, nginx.AliasRoot{Domain: name, DocumentRoot: layout.Content})
+	}
+	return roots, nil
 }

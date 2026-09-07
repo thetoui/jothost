@@ -414,6 +414,13 @@ docker-test-dns-templates: create-integration-admin ## Run the DNS template chec
 	# written, not when somebody creates a domain.
 	$(COMPOSE) exec -T agent sh /tests/integration/dns_templates.sh
 
+.PHONY: docker-test-domain-roots
+docker-test-domain-roots: create-integration-admin ## Run the per-domain document root checks
+	# Gives an alias a directory of its own and reads the generated vhost off
+	# the host, then fetches both names to see which directory each is served
+	# from. A config that parses and serves the wrong one looks fine otherwise.
+	$(COMPOSE) exec -T agent sh /tests/integration/domain_roots.sh
+
 .PHONY: docker-test-ssl-dns
 docker-test-ssl-dns: create-integration-admin ## Run the certificate/DNS alignment checks
 	# Asks for a certificate on a name this host serves and reads the zone back.

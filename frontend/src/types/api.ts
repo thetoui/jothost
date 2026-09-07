@@ -253,7 +253,20 @@ export interface WebsiteDomain {
   type: DomainType;
   status: string;
   redirect_to: string | null;
+  /**
+   * Where this name in particular is served from.
+   *
+   * Null means the website's own document root — and keeps meaning that as the
+   * site moves, rather than pinning the name to wherever the site is today.
+   */
+  document_root: string | null;
   created_at: string;
+}
+
+/** The 202 from changing one name's own settings. */
+export interface DomainUpdated {
+  domain: WebsiteDomain;
+  job: Job;
 }
 
 /** Where a subdomain's files live. */

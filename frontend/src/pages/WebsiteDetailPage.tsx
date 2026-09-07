@@ -17,6 +17,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Modal } from '@/components/ui/Modal';
 import { EmptyState, ProgressBar, Skeleton, SkeletonRows } from '@/components/ui/Loading';
 import { TextField, Toggle } from '@/components/ui/Field';
 import { TextButton } from '@/components/ui/TextButton';
@@ -31,11 +32,13 @@ import { activityPreviewCount, groupActivity } from '@/features/websites/activit
 import { NginxDirectivesPanel } from '@/features/websites/components/NginxDirectivesPanel';
 import { SubdomainPanel } from '@/features/websites/components/SubdomainPanel';
 import { HtaccessPanel } from '@/features/websites/components/HtaccessPanel';
+import { relativeRoot } from '@/features/websites/paths';
 import {
   isJobRunning,
   useAddDomain,
   useDeleteWebsite,
   useRemoveDomain,
+  useSetDomainRoot,
   useWebsite,
   useWebsiteJobs,
 } from '@/features/websites/hooks';
@@ -47,7 +50,7 @@ import {
   websiteStatusPill,
 } from '@/features/websites/status';
 import { ApiError } from '@/services/apiClient';
-import type { Job } from '@/types/api';
+import type { Job, Website, WebsiteDomain } from '@/types/api';
 
 /** WebsiteDetailPage shows one site, its domains, and its recent work. */
 export function WebsiteDetailPage() {
@@ -427,6 +430,7 @@ function DomainSection({ websiteId }: { websiteId: string }) {
   const [value, setValue] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<{ id: string; domain: string } | null>(null);
+  const [movingRoot, setMovingRoot] = useState<WebsiteDomain | null>(null);
 
   const domains = site?.domains ?? [];
 
@@ -464,34 +468,69 @@ function DomainSection({ websiteId }: { websiteId: string }) {
       <ul className="divide-y divide-surface-border">
         {domains.map((domain) => (
           <li key={domain.id} className="flex items-center justify-between gap-3 px-5 py-3">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className="truncate text-sm text-slate-900">{domain.domain}</span>
-              <StatusPill
-                label={domain.type}
-                tone={domain.type === 'primary' ? 'info' : 'neutral'}
-              />
-              {domain.redirect_to && (
-                <span className="truncate text-xs text-slate-500">→ {domain.redirect_to}</span>
+            <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="truncate text-sm text-slate-900">{domain.domain}</span>
+                <StatusPill
+                  label={domain.type}
+                  tone={domain.type === 'primary' ? 'info' : 'neutral'}
+                />
+                {domain.redirect_to && (
+                  <span className="truncate text-xs text-slate-500">→ {domain.redirect_to}</span>
+                )}
+              </div>
+              {/* Where this name in particular is served from. A name with no
+                  root of its own says so rather than showing the website's
+                  path: the two look identical written out, and the difference
+                  is whether the name follows the site when the site moves. */}
+              {domain.type !== 'redirect' && (
+                <span className="truncate font-mono text-xs text-slate-500">
+                  {domain.document_root ??
+                    (domain.type === 'primary'
+                      ? site?.document_root
+                      : "the website's own directory")}
+                </span>
               )}
             </div>
 
-            {/* The primary domain is the site's identity and its vhost's
-                server_name, so it offers no removal control at all. */}
-            {domain.type !== 'primary' && (
-              <RequirePermission permission={Permission.WebsiteUpdate}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setRemoving({ id: domain.id, domain: domain.domain })}
-                  className="text-danger-600 hover:bg-danger-50 hover:text-danger-700"
-                >
-                  Remove
-                </Button>
-              </RequirePermission>
-            )}
+            <div className="flex shrink-0 items-center gap-1">
+              {/* The primary name is the site: its path is changed on the
+                  website itself, and a redirect serves no files at all. */}
+              {domain.type === 'alias' && (
+                <RequirePermission permission={Permission.WebsiteUpdate}>
+                  <Button variant="ghost" size="sm" onClick={() => setMovingRoot(domain)}>
+                    Document root
+                  </Button>
+                </RequirePermission>
+              )}
+
+              {/* The primary domain is the site's identity and its vhost's
+                  server_name, so it offers no removal control at all. */}
+              {domain.type !== 'primary' && (
+                <RequirePermission permission={Permission.WebsiteUpdate}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setRemoving({ id: domain.id, domain: domain.domain })}
+                    className="text-danger-600 hover:bg-danger-50 hover:text-danger-700"
+                  >
+                    Remove
+                  </Button>
+                </RequirePermission>
+              )}
+            </div>
           </li>
         ))}
       </ul>
+
+      {movingRoot && site && (
+        <DomainRootDialog
+          websiteId={websiteId}
+          site={site}
+          domain={movingRoot}
+          onClose={() => setMovingRoot(null)}
+        />
+      )}
 
       <RequirePermission permission={Permission.WebsiteUpdate}>
         <form onSubmit={handleSubmit} noValidate className="border-t border-surface-border p-5">
@@ -548,5 +587,90 @@ function DomainSection({ websiteId }: { websiteId: string }) {
         </p>
       </ConfirmDialog>
     </Card>
+  );
+}
+
+/**
+ * DomainRootDialog points one of a site's names at a directory of its own.
+ *
+ * The same shape as the website's own document root dialog, and relative to
+ * the same base for the same reason: an operator names a subpath of the
+ * directory that is already theirs, so there is no path to reject rather than
+ * a check that has to catch one.
+ *
+ * Clearing it is a first-class option and is why the field is not required.
+ * A name put back on the website's root follows the site when the site moves;
+ * one typed out to the same path today does not.
+ */
+function DomainRootDialog({
+  websiteId,
+  site,
+  domain,
+  onClose,
+}: {
+  websiteId: string;
+  site: Website;
+  domain: WebsiteDomain;
+  onClose: () => void;
+}) {
+  const move = useSetDomainRoot(websiteId);
+  const base = `/var/www/${site.primary_domain}`;
+  const [value, setValue] = useState(
+    domain.document_root ? relativeRoot(domain.document_root, base) : '',
+  );
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      busy={move.isPending}
+      title={`Document root for ${domain.domain}`}
+      description="Where this name in particular is served from. Somewhere inside the site's own directory."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={move.isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={move.isPending}
+            onClick={() =>
+              move.mutate(
+                { domainId: domain.id, documentRoot: value.trim() },
+                { onSuccess: onClose },
+              )
+            }
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {move.error instanceof ApiError && (
+          <Alert tone="danger" title="The document root was not changed">
+            {move.error.message}
+          </Alert>
+        )}
+
+        <TextField
+          id="domain-document-root"
+          label="Served from"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="shop"
+          // adornment, not prefix: "prefix" is a real HTML attribute, so
+          // TypeScript accepts it and React renders nothing at all.
+          adornment={<span className="font-mono text-xs text-slate-500">{base}/</span>}
+          hint="A path inside the site, such as shop or public/shop. It is created if it does not exist yet."
+        />
+
+        <p className="text-xs text-slate-500">
+          Leave it empty to serve this name from the website&rsquo;s own document root, which is
+          where it is served from now unless it says otherwise. Empty is not the same as typing
+          that path out: a name left empty follows the site if the site is moved later.
+        </p>
+      </div>
+    </Modal>
   );
 }

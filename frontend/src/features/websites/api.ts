@@ -2,6 +2,7 @@ import { request } from '@/services/apiClient';
 import type {
   DocumentRootMode,
   DomainCreated,
+  DomainUpdated,
   DomainList,
   DomainType,
   Job,
@@ -130,6 +131,18 @@ export const websitesApi = {
 
   removeDomain: (domainId: string) =>
     request<JobAccepted>(`/domains/${encodeURIComponent(domainId)}`, { method: 'DELETE' }),
+
+  /**
+   * Points one name at a directory of its own.
+   *
+   * The path is relative to the site's directory, as it is for the website
+   * itself; an empty string puts the name back on the website's root.
+   */
+  setDomainRoot: (domainId: string, documentRoot: string) =>
+    request<DomainUpdated>(`/domains/${encodeURIComponent(domainId)}`, {
+      method: 'PATCH',
+      body: { document_root: documentRoot },
+    }),
 };
 
 /** Job API calls. Jobs are how the UI follows work happening on the host. */

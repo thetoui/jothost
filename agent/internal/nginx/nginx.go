@@ -426,9 +426,16 @@ func validatePath(path string) error {
 		return fmt.Errorf("%w: must be absolute", validate.ErrInvalidPath)
 	case strings.Contains(path, ".."):
 		return fmt.Errorf("%w: must not contain '..'", validate.ErrInvalidPath)
-	case strings.ContainsAny(path, "\x00\n\r;{}"):
+	case strings.ContainsAny(path, "\x00\n\r;{}\"'"):
 		// A newline or brace would let a path close the directive and open a
 		// new one, which is how a path becomes arbitrary nginx configuration.
+		//
+		// The quotes cannot do that — nginx only treats one as a quote at the
+		// start of a token, and mid-token it refuses the file — but a refused
+		// file on a reload means every site on the host keeps serving the
+		// previous configuration until somebody notices. A document root has
+		// no legitimate reason to hold one: these paths are composed from a
+		// domain name and a validated relative path.
 		return fmt.Errorf("%w: contains an illegal character", validate.ErrInvalidPath)
 	default:
 		return nil

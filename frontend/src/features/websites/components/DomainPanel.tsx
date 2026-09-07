@@ -30,6 +30,7 @@ import { RequirePermission } from '@/features/auth/components/RequirePermission'
 import { Permission } from '@/features/auth/permissions';
 import { SiteLogsDialog } from '@/features/websites/components/SiteLogsDialog';
 import { useSetDocumentRoot } from '@/features/websites/hooks';
+import { logsDirFor, relativeRoot } from '@/features/websites/paths';
 import { ApiError } from '@/services/apiClient';
 import { Tabs } from '@/components/ui/Tabs';
 import { ToolGroup, ToolTile } from '@/components/ui/ToolTile';
@@ -233,20 +234,6 @@ export function DomainPanel({ site }: DomainPanelProps) {
   );
 }
 
-/**
- * logsDirFor says where a site's logs are.
- *
- * From the domain, not from the document root. It used to take the document
- * root's parent, which was right only while the document root was exactly one
- * level down — and once an operator can set it to "public/dist", that
- * inference claims the logs are at <site>/public/logs, which is both wrong and
- * inside the directory being served. The Agent had the identical bug and it is
- * fixed there too.
- */
-export function logsDirFor(domain: string): string {
-  return `/var/www/${domain}/logs`;
-}
-
 function DomainSummary({ site }: { site: Website }) {
   return (
     <div className="space-y-3">
@@ -408,20 +395,3 @@ function DocumentRootDialog({
   );
 }
 
-/**
- * relativeRoot turns the stored absolute path back into what the field edits.
- *
- * A path that is not under the site's own directory is shown whole rather than
- * mangled into something shorter: it means the record and the convention have
- * diverged, and hiding that would make the field lie about what is being
- * changed.
- */
-function relativeRoot(documentRoot: string, base: string): string {
-  if (documentRoot === base) {
-    return '';
-  }
-  if (documentRoot.startsWith(`${base}/`)) {
-    return documentRoot.slice(base.length + 1);
-  }
-  return documentRoot;
-}

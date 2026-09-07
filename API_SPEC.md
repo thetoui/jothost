@@ -428,7 +428,37 @@ DELETE /domains/:id
 ```
 
 **As implemented in Phase 4.** `POST` and `DELETE` are implemented and each
-returns the job rewriting the vhost. `PATCH /domains/:id` is not implemented.
+returns the job rewriting the vhost.
+
+`PATCH /domains/:id` changes one name's own settings. It takes `document_root`,
+relative to the site's own directory exactly as the website's own is:
+
+```json
+{ "document_root": "shop" }
+```
+
+and returns **202** with the changed domain and the job rewriting the vhost.
+
+An empty string clears it, putting the name back on the website's document
+root. That is not the same as typing today's path out: a name with no root of
+its own follows the site when the site is moved, and one pinned to a path does
+not. The stored value is `null` for the first and a path for the second.
+
+Aliases only. The primary domain is the site — its path is changed by
+`PATCH /websites/:id`, and two routes writing one value is how they come to
+disagree — so it returns **400**, as does a `redirect`, which answers with a
+Location header and serves no files at all.
+
+nginx has one `root` per server block, so a name with a root of its own is
+given a server block of its own. Those blocks are rendered by running the site
+template again with the name and the root swapped, rather than by a second
+template: the PHP location block is the one place where a divergence turns an
+uploaded file into executable code, so there is deliberately only ever one copy
+of it. The Agent confines each path to the site's own directory on the resolved
+path, so a symlink cannot carry a document root out of a directory it appears
+to be under.
+
+The change is audited as `domain.update`.
 
 Type `alias` and `subdomain` are accepted. Type `redirect` returns **400** for
 now: the Agent can write a redirect vhost but cannot remove a stale one, so

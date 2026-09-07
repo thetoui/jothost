@@ -47,8 +47,17 @@ type SiteConfig struct {
 	// application listening on every address would be a second way in that
 	// nothing authenticates the route to.
 	Listen string
-	// Aliases are additional names served by the same site.
+	// Aliases are additional names served by the same site, from the same
+	// directory. They become extra server_name entries on the site's own
+	// block.
 	Aliases []string
+	// AliasRoots are names on this site served from a directory of their own.
+	//
+	// Each becomes a server block of its own rather than another server_name,
+	// because nginx has one root per server block. See Render: those blocks
+	// are produced by running these same templates again with the name and the
+	// root swapped, so the PHP guards below cannot drift apart from the site's.
+	AliasRoots []AliasRoot
 	// DocumentRoot is the directory nginx serves from.
 	DocumentRoot string
 	// AccessLog and ErrorLog are absolute paths inside the site's log
@@ -83,6 +92,14 @@ type SiteConfig struct {
 	// configuration overrides the defaults rather than being silently ignored
 	// underneath them.
 	Directives string
+}
+
+// AliasRoot is a name served from a directory of its own.
+type AliasRoot struct {
+	Domain string
+	// DocumentRoot is absolute, and inside the site's own directory - which
+	// the caller enforces, because this package cannot know where that is.
+	DocumentRoot string
 }
 
 // Redirect is a domain that redirects elsewhere rather than serving content.
@@ -292,9 +309,44 @@ func Render(cfg SiteConfig) (string, error) {
 		return "", err
 	}
 
+	for _, alias := range cfg.AliasRoots {
+		if err := validate.ServerName(alias.Domain); err != nil {
+			return "", fmt.Errorf("alias %q: %w", alias.Domain, err)
+		}
+		if alias.Domain == cfg.PrimaryDomain {
+			return "", fmt.Errorf(
+				"%w: %q is the site's own name, so it cannot have a root of its own",
+				ErrInvalidConfig, alias.Domain)
+		}
+		if err := validatePath(alias.DocumentRoot); err != nil {
+			return "", fmt.Errorf("document root for %q: %w", alias.Domain, err)
+		}
+	}
+
 	var out bytes.Buffer
 	if err := siteTemplate.Execute(&out, cfg); err != nil {
 		return "", fmt.Errorf("render site config: %w", err)
+	}
+
+	// Each alias with a root of its own gets a server block of its own,
+	// produced by running the templates above again with the name and the root
+	// swapped. Writing a second template for it would mean two copies of the
+	// PHP location block - the one place in this file where a divergence turns
+	// an uploaded image into executable code - so there is deliberately only
+	// ever one, and this loop reuses it.
+	for _, alias := range cfg.AliasRoots {
+		own := cfg
+		own.PrimaryDomain = alias.Domain
+		own.DocumentRoot = alias.DocumentRoot
+		// Cleared, or the alias block would answer for the site's names too
+		// and whichever block nginx read first would win.
+		own.Aliases = nil
+		own.AliasRoots = nil
+
+		out.WriteString("\n")
+		if err := siteTemplate.Execute(&out, own); err != nil {
+			return "", fmt.Errorf("render config for %s: %w", alias.Domain, err)
+		}
 	}
 	return out.String(), nil
 }

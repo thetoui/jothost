@@ -29,6 +29,13 @@ type ServingState struct {
 	// Aliases are the additional names this site answers to. The primary
 	// domain is not among them.
 	Aliases []string
+	// AliasRoots are the aliases served from a directory of their own, each
+	// with the path it is served from.
+	//
+	// Separate from Aliases rather than a map over it, because the two become
+	// different things in the vhost: a plain alias is another server_name on
+	// the site's own block, and one of these is a server block of its own.
+	AliasRoots []AliasRoot
 	// PHPSocket is the FPM pool the site's .php requests go to. Empty means
 	// the site does not serve PHP.
 	//
@@ -129,6 +136,15 @@ func (r *Repository) ServingState(ctx context.Context, site Website) (ServingSta
 		if validate.NormalizeDomain(domain.Domain) == primary {
 			continue
 		}
+		if domain.DocumentRoot != nil && *domain.DocumentRoot != "" {
+			// Served from somewhere of its own, so it is not another name for
+			// the site's block — it needs one of its own.
+			state.AliasRoots = append(state.AliasRoots, AliasRoot{
+				Domain:       domain.Domain,
+				DocumentRoot: *domain.DocumentRoot,
+			})
+			continue
+		}
 		state.Aliases = append(state.Aliases, domain.Domain)
 	}
 
@@ -196,6 +212,12 @@ func (r *Repository) ServingState(ctx context.Context, site Website) (ServingSta
 	return state, nil
 }
 
+// AliasRoot is a name on this site served from a directory of its own.
+type AliasRoot struct {
+	Domain       string
+	DocumentRoot string
+}
+
 // VhostPayload builds the fields every vhost-rewriting job needs.
 //
 // Callers add their own fields on top — a certificate operation adds the
@@ -213,8 +235,22 @@ func (r *Repository) VhostPayload(ctx context.Context, site Website) (map[string
 		aliases = []string{}
 	}
 
+	// Always present, empty list included. The Agent renders the whole file
+	// from this payload, so a missing key on an unrelated change — adding an
+	// alias, switching PHP version — would silently put every alias back on
+	// the site's own root. That is the failure the nginx directives below are
+	// commented for, and it applies here for the same reason.
+	roots := make([]map[string]any, 0, len(state.AliasRoots))
+	for _, alias := range state.AliasRoots {
+		roots = append(roots, map[string]any{
+			"domain":        alias.Domain,
+			"document_root": alias.DocumentRoot,
+		})
+	}
+
 	payload := map[string]any{
 		"website_id":    site.ID,
+		"alias_roots":   roots,
 		"domain":        site.PrimaryDomain,
 		"document_root": site.DocumentRoot,
 		"system_user":   site.SystemUser,

@@ -42,7 +42,7 @@ services:
       retries: 20
 
   go-tests:
-    image: golang:1.23-alpine
+    image: golang:1.26-alpine
     working_dir: /src
     environment:
       GOFLAGS: -mod=mod

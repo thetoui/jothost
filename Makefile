@@ -7,7 +7,7 @@ SHELL := /bin/sh
 
 COMPOSE      := docker compose
 COMPOSE_TEST := docker compose -f docker-compose.test.yml
-GO_IMAGE     := golang:1.23-alpine
+GO_IMAGE     := golang:1.26-alpine
 GO_MODULES   := shared api agent
 
 # Credentials for the account the Phase 1 auth checks sign in with. Test-only.

@@ -457,6 +457,15 @@ func (p *Provisioner) WritePlaceholder(layout Layout, domain string, uid, gid in
 	if err := os.WriteFile(index, []byte(page), indexMode); err != nil {
 		return fmt.Errorf("write placeholder: %w", err)
 	}
+	// WriteFile's mode is filtered by the process umask, and the Agent runs
+	// with 0077 — so the group bit indexMode asks for was being dropped and
+	// the placeholder landed 0600. The directories above it are already
+	// chmodded explicitly for exactly this reason; this file was the one that
+	// was not, and nginx cannot open what it cannot read: every brand-new
+	// site answered 403 until something else rewrote the file.
+	if err := os.Chmod(index, indexMode); err != nil {
+		return fmt.Errorf("secure the placeholder: %w", err)
+	}
 	if uid >= 0 && gid >= 0 {
 		if err := os.Chown(index, uid, gid); err != nil {
 			return fmt.Errorf("chown placeholder: %w", err)

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jothost/panel/agent/internal/testsupport"
 )
 
 // A domain with everything on it, used by most of the tests below.
@@ -414,6 +416,8 @@ func TestAVacationReplyCoversTheAddressesMailArrivesThrough(t *testing.T) {
 // --------------------------------------------------------------------- DKIM
 
 func TestGeneratingAKeyLeavesThePrivateHalfOnTheHostOnly(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	dir := t.TempDir()
 	provider := &Provider{
 		paths:    Paths{StateDir: dir, MailRoot: filepath.Join(dir, "mail")}.withDefaults(),

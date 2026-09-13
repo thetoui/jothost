@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jothost/panel/agent/internal/testsupport"
 )
 
 // What these hold down is the separation itself.
@@ -87,6 +89,8 @@ func TestTheWorkersRunAsTheGroupThatOwnsTheSocket(t *testing.T) {
 }
 
 func TestThePHPMasterReadsOnlyThePanelPools(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	manager := managerIn(t)
 	if err := manager.EnsureLayout(); err != nil {
 		t.Fatalf("EnsureLayout: %v", err)
@@ -122,6 +126,8 @@ func TestTheRunDirectoryIsNotInsideTheAgentSocketDirectory(t *testing.T) {
 }
 
 func TestTheLayoutIsIdempotent(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	manager := managerIn(t)
 
 	for attempt := 1; attempt <= 3; attempt++ {
@@ -147,6 +153,8 @@ func TestTheLayoutIsIdempotent(t *testing.T) {
 }
 
 func TestNothingIsRunningBeforeAnythingStarts(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	manager := managerIn(t)
 
 	// An empty or missing pid file is not a running process. Reading one as

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jothost/panel/agent/internal/command"
+	"github.com/jothost/panel/agent/internal/testsupport"
 	"github.com/jothost/panel/shared/validate"
 )
 
@@ -493,6 +494,8 @@ func TestAccountsIsEmptyWhenThereIsNoFile(t *testing.T) {
 // The password goes to the child's standard input. As an argument it would be
 // visible in /proc to every account on the host for as long as the process ran.
 func TestCreateAccountNeverPutsThePasswordInAnArgument(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, _, calls := recording(t, map[string]string{})
 	const password = "correct-horse-battery"
 
@@ -516,6 +519,8 @@ func TestCreateAccountNeverPutsThePasswordInAnArgument(t *testing.T) {
 // A file of password hashes that every account on a shared host can read is one
 // they can all copy and attack offline.
 func TestCreateAccountLeavesThePasswordFileUnreadable(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, _, _ := recording(t, map[string]string{
 		// ftpasswd creates it 0644.
 		CommandFtpasswd: "", // the stub creates nothing, so make the file first
@@ -743,6 +748,8 @@ func TestReconcileReportsAnAccountItCannotRecreate(t *testing.T) {
 // The rest of the change still has to happen: the account that can be made is
 // made, and the configuration is still written.
 func TestReconcileCarriesOnPastAnAccountItCannotRecreate(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, _, calls := recording(t, map[string]string{})
 
 	result, err := p.Reconcile(context.Background(), Desired{

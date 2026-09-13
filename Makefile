@@ -122,6 +122,16 @@ dist-binaries:
 	# The version is compiled in rather than read from a file, so a binary
 	# always reports what it actually is.
 	#
+	# The commit is read from .git directly, because git is not guaranteed to
+	# be in the build container. .git/HEAD holds either "ref: refs/heads/x" or,
+	# when HEAD is detached, the commit itself - and detached is the normal
+	# case for the two builds that matter most: a CI checkout of a pull
+	# request, and a release cut by checking out a tag. Following the ref
+	# blindly turned the sha into a path that does not exist, so those builds
+	# were stamped "commit unknown" and release-verify rejected them as
+	# development builds. A ref that has been packed is read from packed-refs,
+	# which is where git puts it once the loose file is gone.
+	#
 	# The mode is set inside the container, by the user that wrote the files.
 	# The container runs as root, so on a Linux host the binaries land owned
 	# by root and a chmod afterwards - as whoever ran make - fails with EPERM.
@@ -135,7 +145,16 @@ dist-binaries:
 	# reason.
 	$(GO_RUN) 'set -e; \
 		version=$$(cat VERSION 2>/dev/null || echo 0.1.0-dev); \
-		commit=$$(cat .git/HEAD 2>/dev/null | sed "s|ref: ||" | xargs -I{} sh -c "cat .git/{} 2>/dev/null" | cut -c1-12); \
+		head=$$(cat .git/HEAD 2>/dev/null || true); \
+		case "$$head" in \
+			"ref: "*) \
+				ref=$${head#ref: }; \
+				commit=$$(cat ".git/$$ref" 2>/dev/null || true); \
+				[ -n "$$commit" ] || commit=$$(sed -n "s|^\([0-9a-f][0-9a-f]*\) $$ref$$|\1|p" .git/packed-refs 2>/dev/null || true); \
+				;; \
+			*) commit=$$head ;; \
+		esac; \
+		commit=$$(printf "%s" "$$commit" | cut -c1-12); \
 		[ -n "$$commit" ] || commit=unknown; \
 		built=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
 		flags="-s -w \

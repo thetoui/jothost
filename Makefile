@@ -121,6 +121,18 @@ dist-binaries:
 	#
 	# The version is compiled in rather than read from a file, so a binary
 	# always reports what it actually is.
+	#
+	# The mode is set inside the container, by the user that wrote the files.
+	# The container runs as root, so on a Linux host the binaries land owned
+	# by root and a chmod afterwards - as whoever ran make - fails with EPERM.
+	# Docker Desktop hands the files to the calling user instead, which is why
+	# that only ever showed up on a real Linux machine.
+	#
+	# 0755 rather than +x because symbolic modes are filtered by the umask:
+	# under a restrictive one, +x leaves the binaries executable by their
+	# owner alone, and the installer copies them to a host where a service
+	# user has to run them. `release` states the mode outright for the same
+	# reason.
 	$(GO_RUN) 'set -e; \
 		version=$$(cat VERSION 2>/dev/null || echo 0.1.0-dev); \
 		commit=$$(cat .git/HEAD 2>/dev/null | sed "s|ref: ||" | xargs -I{} sh -c "cat .git/{} 2>/dev/null" | cut -c1-12); \
@@ -136,8 +148,8 @@ dist-binaries:
 			-o /src/$(DIST_DIR)/bin/jothost-agent ./cmd/agent); \
 		printf "%s\n" "$$version" > /src/$(DIST_DIR)/VERSION; \
 		printf "%s\n" "$$commit" >> /src/$(DIST_DIR)/VERSION; \
-		printf "%s\n" "$$built" >> /src/$(DIST_DIR)/VERSION'
-	@chmod +x $(DIST_DIR)/bin/*
+		printf "%s\n" "$$built" >> /src/$(DIST_DIR)/VERSION; \
+		chmod 0755 /src/$(DIST_DIR)/bin/*'
 
 .PHONY: dist-frontend
 dist-frontend:

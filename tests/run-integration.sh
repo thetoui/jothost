@@ -18,7 +18,7 @@
 set -eu
 
 COMPOSE="${COMPOSE:-docker compose}"
-TEST_COMPOSE="${TEST_COMPOSE:-docker compose -f docker-compose.yml -f docker-compose.test.yml}"
+TEST_COMPOSE="${TEST_COMPOSE:-docker compose -f docker-compose.test.yml}"
 INTEGRATION_DIR="${INTEGRATION_DIR:-tests/integration}"
 
 # Suites that cannot run inside the agent container, and what does run them.
@@ -53,7 +53,40 @@ done || exit 1
 # Mailpit the notification suite says FATAL and exits, and without MinIO the
 # backup suite reports its S3 destination as broken - both of which read as
 # product failures and are neither.
-$TEST_COMPOSE up -d mailpit minio minio-init >/dev/null 2>&1 || true
+#
+# This used to end in `>/dev/null 2>&1 || true`. In CI neither service came
+# up, the reason went nowhere, and the run carried on to report the backup
+# and notification suites as failing - the exact misreading this block exists
+# to prevent. A dependency that cannot be provided now stops the run, says
+# which one, and shows what compose said.
+#
+# The test file on its own, and minio-init as a run rather than an up: that is
+# how the Makefile targets for these suites have always started them, and
+# `run` returns only once the bucket exists rather than racing the suites.
+started="$($TEST_COMPOSE up -d mailpit minio 2>&1)" || {
+  printf 'FATAL could not start mailpit and minio:\n%s\n' "$started" >&2
+  exit 1
+}
+seeded="$($TEST_COMPOSE run --rm minio-init 2>&1)" || {
+  printf 'FATAL could not create the backup bucket in minio:\n%s\n' "$seeded" >&2
+  exit 1
+}
+
+# Started is not reachable. The suites run inside the agent container and find
+# these by name on the stack's network, so that is where they are asked for -
+# with the same requests the suites themselves make first.
+wait_reachable() {
+  label="$1"; url="$2"; waited=0
+  until $COMPOSE exec -T agent curl -s -o /dev/null --max-time 5 "$url" >/dev/null 2>&1; do
+    if [ "$waited" -ge 60 ]; then
+      printf 'FATAL %s is not reachable from the agent at %s after 60s\n' "$label" "$url" >&2
+      exit 1
+    fi
+    sleep 3; waited=$((waited + 3))
+  done
+}
+wait_reachable mailpit http://mailpit:8025/api/v1/info
+wait_reachable minio http://minio:9000/minio/health/live
 
 for path in "$INTEGRATION_DIR"/*.sh; do
   name="$(basename "$path")"
@@ -77,8 +110,11 @@ for path in "$INTEGRATION_DIR"/*.sh; do
   else
     printf 'FAIL  %s\n' "$name"
     # The failing checks, not the whole transcript: a suite that fails one
-    # check should not bury it under two hundred passing lines.
-    printf '%s\n' "$out" | grep -E '^ +(FAIL|CTRL)' | head -8 | sed 's/^/        /'
+    # check should not bury it under two hundred passing lines. FATAL too: a
+    # suite that stops before its first check prints no FAIL line at all, and
+    # the notification suite was reported in CI as a bare "FAIL" with its
+    # reason - no mail server - thrown away.
+    printf '%s\n' "$out" | grep -E '^ +(FAIL|CTRL)|FATAL' | head -8 | sed 's/^/        /'
     fail=$((fail + 1))
     failed="$failed $name"
   fi

@@ -135,7 +135,14 @@ fi
 log ''
 log '4. A new zone is seeded from it'
 zone_name="tpl$STAMP.test"
-zone="$(api POST /api/v1/dns/zones "{\"name\":\"$zone_name\",\"seed_records\":true}")"
+# The zone names its own name servers. Without them the panel falls back to
+# the host's configured defaults and refuses the zone when there are none -
+# deliberately. This suite used to rely on phase13_dns.sh having configured
+# those defaults, which it only had on a machine where phase 13 had run at
+# some point before; on a fresh stack this suite runs first, alphabetically,
+# and every check below it failed on "a zone needs at least one name server".
+# Outside the zone, so no glue record is needed either.
+zone="$(api POST /api/v1/dns/zones "{\"name\":\"$zone_name\",\"seed_records\":true,\"nameservers\":[\"ns1.dns-templates.test.\"]}")"
 zone_id="$(field "$zone" id)"
 if [ -z "$zone_id" ]; then
   fail "the zone was not created: $zone"

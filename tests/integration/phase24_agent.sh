@@ -91,15 +91,46 @@ fi
 
 # The Agent must hold no TCP port. Its process is found first, so the check is
 # about *this* process rather than about the machine happening to be quiet.
-agent_pid=$(pgrep -f 'jothost-agent' 2>/dev/null | head -n 1)
-if [ -n "$agent_pid" ]; then
-  pass "the Agent is running (pid $agent_pid)"
-  listening=$(netstat -ltnp 2>/dev/null || ss -ltnp 2>/dev/null || true)
-  if printf '%s' "$listening" | grep -q "$agent_pid/"; then
-    fail "the Agent holds a listening TCP port:
-$(printf '%s' "$listening" | grep "$agent_pid/")"
+#
+# Found by exact process name, and matched against the socket table by exact
+# PID. This used `pgrep -f jothost-agent | head -n 1` and `grep "$pid/"`: the
+# first also matches any shell whose command line mentions the Agent, and the
+# second matches any listening process whose PID merely *ends* in the
+# Agent's. With the Agent as pid 7, sshd as pid 917 was reported as the Agent
+# holding port 22 - a failure that came and went with how PIDs were handed out.
+agent_pids=$(pidof jothost-agent 2>/dev/null || true)
+if [ -n "$agent_pids" ]; then
+  pass "the Agent is running (pid $agent_pids)"
+
+  # netstat shows "PID/program" in its seventh column; ss shows
+  # users:(("program",pid=PID,fd=N)). Each is matched on the whole PID.
+  if listening=$(netstat -ltnp 2>/dev/null) && [ -n "$listening" ]; then
+    table=netstat
+  elif listening=$(ss -ltnp 2>/dev/null) && [ -n "$listening" ]; then
+    table=ss
   else
-    pass "and holds no listening TCP port"
+    table=""
+  fi
+  # A control: without a socket table there is nothing to find the Agent in,
+  # and an empty table would read as "holds no port". nginx always listens.
+  if [ -n "$table" ] && printf '%s' "$listening" | grep -q LISTEN; then
+    pass "the listening sockets can be read ($table)"
+    held=""
+    for pid in $agent_pids; do
+      if [ "$table" = netstat ]; then
+        held="$held$(printf '%s\n' "$listening" | awk -v p="$pid" '$6 == "LISTEN" && index($7, p "/") == 1')"
+      else
+        held="$held$(printf '%s\n' "$listening" | grep -E "pid=$pid,")"
+      fi
+    done
+    if [ -n "$held" ]; then
+      fail "the Agent holds a listening TCP port:
+$held"
+    else
+      pass "and holds no listening TCP port"
+    fi
+  else
+    fail "no socket table could be read, so the Agent's ports cannot be checked"
   fi
 else
   fail "the Agent process could not be found"

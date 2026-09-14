@@ -279,22 +279,51 @@ services:
   # of the installer nothing ever ran. It stays up rather than running the
   # script as its command, because systemd has to be PID 1 for `systemctl` to
   # mean anything - so the suite is exec'd into it once it has settled.
-  installer-host-debian:
+  #
+  # Debian 12 and both current Ubuntu LTS releases, the PRD's production
+  # target, from one Dockerfile and one definition so the three cannot drift
+  # apart. Run each with tests/installer/systemd-host.sh.
+  installer-host-debian: &installer-systemd-host
     build:
       context: .
-      dockerfile: docker/installer-debian.Dockerfile
+      dockerfile: docker/installer-systemd.Dockerfile
+      args:
+        BASE_IMAGE: debian:12
     privileged: true
     cgroup: host
     environment:
       PANEL_DOMAIN: ${INSTALLER_TEST_DOMAIN:-panel.installer.test}
-      # What the installer is expected to report about the host it found. The
-      # check exists to catch the installer detecting the wrong platform and
-      # carrying on with the wrong package manager.
-      EXPECT_DISTRO: debian
+      # What the installer is expected to report about the host it found: the
+      # distribution's own name and version, not only its family. Every host
+      # here is in the Debian family, so expecting "debian" would pass on an
+      # Ubuntu host that had been mistaken for something else entirely.
+      EXPECT_DISTRO: "Debian GNU/Linux 12"
     volumes:
       - ./dist:/dist:ro
       - ./tests:/tests:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+  installer-host-ubuntu-2204:
+    <<: *installer-systemd-host
+    build:
+      context: .
+      dockerfile: docker/installer-systemd.Dockerfile
+      args:
+        BASE_IMAGE: ubuntu:22.04
+    environment:
+      PANEL_DOMAIN: ${INSTALLER_TEST_DOMAIN:-panel.installer.test}
+      EXPECT_DISTRO: "Ubuntu 22.04"
+
+  installer-host-ubuntu-2404:
+    <<: *installer-systemd-host
+    build:
+      context: .
+      dockerfile: docker/installer-systemd.Dockerfile
+      args:
+        BASE_IMAGE: ubuntu:24.04
+    environment:
+      PANEL_DOMAIN: ${INSTALLER_TEST_DOMAIN:-panel.installer.test}
+      EXPECT_DISTRO: "Ubuntu 24.04"
 
   # A plain container that did not build anything, so the binaries are asked
   # to run somewhere other than where they were compiled. Debian rather than

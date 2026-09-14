@@ -219,8 +219,16 @@ jobs:
       - name: Install onto a clean Alpine host
         run: docker compose -f docker-compose.test.yml run --rm installer-test
 
-      - name: Install onto a clean Debian host running systemd
-        run: make docker-test-installer-debian
+      # The script rather than the make targets: those depend on `dist`, which
+      # rebuilds every artefact, and it was built once above.
+      - name: Install onto a clean Debian 12 host running systemd
+        run: sh tests/installer/systemd-host.sh installer-host-debian
+
+      - name: Install onto a clean Ubuntu 22.04 host running systemd
+        run: sh tests/installer/systemd-host.sh installer-host-ubuntu-2204
+
+      - name: Install onto a clean Ubuntu 24.04 host running systemd
+        run: sh tests/installer/systemd-host.sh installer-host-ubuntu-2404
 
       - name: Check the release archive against what it claims to be
         run: make release

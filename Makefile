@@ -293,6 +293,7 @@ docker-test: ## Run the full containerised test suite (unit + integration)
 	# The deployment path and the drills, each needing a host of its own.
 	$(MAKE) docker-test-installer
 	$(MAKE) docker-test-installer-debian
+	$(MAKE) docker-test-installer-ubuntu
 	$(MAKE) docker-test-security-audit
 	$(MAKE) docker-test-load
 	$(MAKE) docker-test-recovery
@@ -519,18 +520,20 @@ docker-test-installer: dist ## Run the Phase 23 installer checks on a clean host
 	$(COMPOSE_TEST) run --rm installer-test
 
 .PHONY: docker-test-installer-debian
-docker-test-installer-debian: dist ## Run the installer checks on Debian with systemd
+docker-test-installer-debian: dist ## Run the installer checks on Debian 12 with systemd
 	# The other half of the installer. It picks its package manager and its
-	# service manager from what it finds, and every check until now ran on
+	# service manager from what it finds, and for a long time every check ran on
 	# Alpine with OpenRC - so the apt and systemd branches, which is what most
 	# operators will actually run, had never been executed.
-	#
-	# systemd has to be PID 1 for systemctl to mean anything, so the host runs
-	# as a service and the suite is exec'd into it once systemd has settled.
-	$(COMPOSE_TEST) up -d --build installer-host-debian
-	@echo "Waiting for systemd..."
-	@for _ in $$(seq 1 60); do 		state=$$($(COMPOSE_TEST) exec -T installer-host-debian systemctl is-system-running 2>/dev/null || true); 		case "$$state" in running|degraded) echo "systemd is $$state"; break ;; esac; 		sleep 2; 	done
-	$(COMPOSE_TEST) exec -T installer-host-debian sh /tests/integration/phase23_installer.sh; 		status=$$?; 		$(COMPOSE_TEST) rm -sf installer-host-debian >/dev/null 2>&1 || true; 		exit $$status
+	sh tests/installer/systemd-host.sh installer-host-debian
+
+.PHONY: docker-test-installer-ubuntu
+docker-test-installer-ubuntu: dist ## Run the installer checks on Ubuntu 22.04 and 24.04 with systemd
+	# PRD.md names Ubuntu and Debian as the production target, and until these
+	# ran only Debian had been installed onto. Both LTS releases, because they
+	# ship different majors of nginx, PostgreSQL and PHP.
+	sh tests/installer/systemd-host.sh installer-host-ubuntu-2204
+	sh tests/installer/systemd-host.sh installer-host-ubuntu-2404
 
 .PHONY: docker-test-suite
 docker-test-suite: create-integration-admin ## Run every integration suite against the dev stack

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -83,6 +84,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/websites/{id}/domains", guarded(rbac.PermWebsiteView, h.listDomains))
 	mux.Handle("POST /api/v1/websites/{id}/domains", guarded(rbac.PermWebsiteUpdate, h.addDomain))
 	mux.Handle("DELETE /api/v1/domains/{id}", guarded(rbac.PermWebsiteUpdate, h.removeDomain))
+	mux.Handle("PATCH /api/v1/domains/{id}", guarded(rbac.PermWebsiteUpdate, h.updateDomain))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +195,15 @@ type updateBody struct {
 	// Apache vhost, so it is applied through the same rewrite every other
 	// configuration change goes through rather than by editing a file.
 	AllowOverride *bool `json:"allow_override"`
+	// DocumentRoot is where in the site's own directory the web server should
+	// serve from — "public/dist", not "/var/www/example.com/public/dist".
+	//
+	// Relative on purpose. An operator cannot name another site's files,
+	// cannot name /etc and cannot escape with "../", because they are not
+	// naming a directory at all: only a subpath of the one already theirs.
+	// Taking an absolute path and checking it afterwards would mean trusting a
+	// check to catch every way a path can be written.
+	DocumentRoot *string `json:"document_root"`
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -219,11 +230,34 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	site, err := h.service.Update(ctx, id, UpdateParams{
+	params := UpdateParams{
 		Name:          body.Name,
 		HTTPSRedirect: body.HTTPSRedirect,
 		AllowOverride: body.AllowOverride,
-	}, UpdateActor{
+	}
+
+	if body.DocumentRoot != nil {
+		// The site is read first because the path is composed against its own
+		// directory, and that directory is derived from the site's domain
+		// rather than from anything in the request.
+		existing, err := h.repo.Get(ctx, id)
+		if err != nil {
+			httpx.Error(w, r, translate(err))
+			return
+		}
+
+		relative, err := validate.DocumentRoot(*body.DocumentRoot)
+		if err != nil {
+			httpx.Error(w, r, httpx.ValidationFailed(err.Error()))
+			return
+		}
+
+		absolute := validate.DocumentRootPath(
+			path.Join(SiteRoot, existing.PrimaryDomain), relative)
+		params.DocumentRoot = &absolute
+	}
+
+	site, err := h.service.Update(ctx, id, params, UpdateActor{
 		Actor:     actorID(r),
 		IPAddress: clientIP(r),
 		UserAgent: r.UserAgent(),
@@ -482,6 +516,90 @@ func (h *Handler) addDomain(w http.ResponseWriter, r *http.Request) {
 	httpx.Created(w, r, map[string]any{"domain": domain, "job": job})
 }
 
+// domainPatchBody changes one name's own settings.
+type domainPatchBody struct {
+	// DocumentRoot is relative to the site's directory, as it is for the
+	// website itself. An empty string clears the override and puts the name
+	// back on the website's root; a null leaves it alone.
+	//
+	// Two levels of pointer would be needed to tell "absent" from "null", so
+	// absent and null are the same thing here and "" is the clear. That is the
+	// distinction an operator can actually express in a form.
+	DocumentRoot *string `json:"document_root"`
+}
+
+// updateDomain changes where one of a site's names is served from.
+//
+// Aliases only. The primary name is the site, and moving it is what
+// PATCH /websites/{id} does - having two routes set one value is how they come
+// to disagree.
+func (h *Handler) updateDomain(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r)
+	defer cancel()
+
+	id := r.PathValue("id")
+	if !isUUID(id) {
+		httpx.Error(w, r, httpx.BadRequest("id must be a UUID"))
+		return
+	}
+
+	var body domainPatchBody
+	if err := decode(w, r, &body); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if body.DocumentRoot == nil {
+		httpx.Error(w, r, httpx.ValidationFailed("nothing to change"))
+		return
+	}
+
+	domain, err := h.repo.GetDomain(ctx, id)
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+	site, err := h.repo.Get(ctx, domain.WebsiteID)
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+
+	// Composed against the site's own directory, which comes from the site's
+	// record rather than from anything in the request. A path the client sent
+	// whole would be an nginx root directive chosen by the client.
+	var absolute *string
+	if trimmed := strings.TrimSpace(*body.DocumentRoot); trimmed != "" {
+		relative, err := validate.DocumentRoot(trimmed)
+		if err != nil {
+			httpx.Error(w, r, httpx.ValidationFailed(err.Error()))
+			return
+		}
+		composed := validate.DocumentRootPath(
+			path.Join(SiteRoot, site.PrimaryDomain), relative)
+		absolute = &composed
+	}
+
+	claims, _ := auth.ClaimsFromContext(r.Context())
+
+	updated, job, err := h.service.SetDomainRoot(ctx, SetDomainRootRequest{
+		DomainID:     id,
+		DocumentRoot: absolute,
+		Actor:        claims.UserID,
+		IPAddress:    clientIP(r),
+		UserAgent:    r.UserAgent(),
+	})
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+
+	// 202: the record has changed and the vhost has not been rewritten yet.
+	httpx.WriteJSON(w, r, http.StatusAccepted, httpx.Envelope{
+		Success: true,
+		Data:    map[string]any{"domain": updated, "job": job},
+	})
+}
+
 func (h *Handler) removeDomain(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r)
 	defer cancel()
@@ -526,6 +644,13 @@ func translate(err error) error {
 	case errors.Is(err, ErrPrimaryDomain):
 		return httpx.BadRequest(
 			"The primary domain cannot be removed; delete the website instead")
+	case errors.Is(err, ErrPrimaryDomainRoot):
+		return httpx.BadRequest(
+			"The primary domain is served from the website's own document root; " +
+				"change it on the website instead")
+	case errors.Is(err, ErrRedirectDomainRoot):
+		return httpx.BadRequest(
+			"A redirecting domain serves no files, so it has no document root")
 	case errors.Is(err, ErrSSLUnsupported):
 		return httpx.BadRequest("SSL is not available yet")
 	case errors.Is(err, ErrRedirectUnsupported):

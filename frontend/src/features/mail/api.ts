@@ -1,5 +1,6 @@
 import { request } from '@/services/apiClient';
 import type {
+  JobAccepted,
   Mailbox,
   MailAlias,
   MailAliasInput,
@@ -20,8 +21,15 @@ export const mailApi = {
   saveSettings: (body: Partial<MailSettings>) =>
     request<MailSettings>('/mail/settings', { method: 'PUT', body }),
 
+  /**
+   * Queues installation. Returns the job, not the finished server.
+   *
+   * The packages take minutes and the virus scanner's signature database is
+   * several hundred megabytes, so this cannot be the request that waits for
+   * it: the API closes a connection long before either finishes.
+   */
   install: (body: { filtering: boolean; antivirus: boolean }) =>
-    request<unknown>('/mail/install', { method: 'POST', body }),
+    request<JobAccepted>('/mail/install', { method: 'POST', body }),
 
   createDomain: (body: MailDomainInput) =>
     request<MailDomain>('/mail/domains', { method: 'POST', body }),

@@ -3,7 +3,7 @@
 # through a local replace directive.
 
 # ---------- builder ----------
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 ARG VERSION=0.1.0-dev
 ARG COMMIT=unknown
@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 # ---------- dev ----------
 # Source is bind-mounted; the API is rebuilt on container start.
-FROM golang:1.23-alpine AS dev
+FROM golang:1.26-alpine AS dev
 RUN adduser -D -u 10001 jothost
 WORKDIR /src/api
 ENV GOCACHE=/tmp/gocache GOFLAGS=-mod=mod

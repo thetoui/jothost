@@ -105,18 +105,32 @@ func (w Website) InheritsPHPPool() bool {
 
 // Domain is a hostname pointing at a website.
 type Domain struct {
-	ID         string    `json:"id"`
-	WebsiteID  string    `json:"website_id"`
-	Domain     string    `json:"domain"`
-	Type       string    `json:"type"`
-	Status     string    `json:"status"`
-	RedirectTo *string   `json:"redirect_to"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID         string  `json:"id"`
+	WebsiteID  string  `json:"website_id"`
+	Domain     string  `json:"domain"`
+	Type       string  `json:"type"`
+	Status     string  `json:"status"`
+	RedirectTo *string `json:"redirect_to"`
+	// DocumentRoot is where this name in particular is served from.
+	//
+	// Nil means the website's own root, which is what an alias meant before
+	// there was anywhere else to put one. It is nil rather than a copy of the
+	// site's path on purpose: a copy would freeze the alias where the site is
+	// today, so moving the site would stop moving its aliases with it.
+	DocumentRoot *string   `json:"document_root"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // Errors returned by the repository.
 var (
 	ErrNotFound = errors.New("website not found")
+	// ErrPrimaryDomainRoot means somebody tried to move the site's own name
+	// through the per-domain route. That value belongs to the website.
+	ErrPrimaryDomainRoot = errors.New(
+		"the primary domain is served from the website's own document root")
+	// ErrRedirectDomainRoot means a root was set on a redirecting domain,
+	// which answers with a Location header and serves no files at all.
+	ErrRedirectDomainRoot = errors.New("a redirecting domain serves no files")
 	// ErrDomainTaken means another website already claims the hostname. Two
 	// sites answering to one name makes the vhost's server_name ambiguous.
 	ErrDomainTaken = errors.New("domain is already in use")
@@ -166,12 +180,13 @@ func scanWebsite(row pgx.Row) (Website, error) {
 }
 
 const domainColumns = `
-	id::text, website_id::text, domain, type, status, redirect_to, created_at`
+	id::text, website_id::text, domain, type, status, redirect_to, document_root,
+	created_at`
 
 func scanDomain(row pgx.Row) (Domain, error) {
 	var domain Domain
 	err := row.Scan(&domain.ID, &domain.WebsiteID, &domain.Domain, &domain.Type,
-		&domain.Status, &domain.RedirectTo, &domain.CreatedAt)
+		&domain.Status, &domain.RedirectTo, &domain.DocumentRoot, &domain.CreatedAt)
 	return domain, err
 }
 
@@ -426,6 +441,11 @@ type UpdateParams struct {
 	// string clears it, which is why this is a pointer: "" and "leave it
 	// alone" are different requests and a plain string cannot tell them apart.
 	NginxDirectives *string
+	// DocumentRoot is the absolute path the site is served from, composed by
+	// the service from a path relative to the site's own directory. Stored
+	// absolute because that is what the vhost needs and what every reader of
+	// this row already expects.
+	DocumentRoot *string
 }
 
 // Update applies mutable fields to a website.
@@ -436,11 +456,12 @@ func (r *Repository) Update(ctx context.Context, id string, params UpdateParams)
 		    https_redirect = COALESCE($3, https_redirect),
 		    allow_override = COALESCE($4, allow_override),
 		    nginx_directives = COALESCE($5, nginx_directives),
+		    document_root  = COALESCE($6, document_root),
 		    updated_at     = now()
 		WHERE id = $1::uuid
 		RETURNING `+websiteColumns,
 		id, params.Name, params.HTTPSRedirect, params.AllowOverride,
-		params.NginxDirectives)
+		params.NginxDirectives, params.DocumentRoot)
 
 	site, err := scanWebsite(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -555,4 +576,23 @@ func (r *Repository) DeleteDomain(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// SetDomainRoot points one name at a directory of its own.
+//
+// A nil root clears the override, which puts the name back on the website's
+// own document root — and keeps it there as the site moves, rather than
+// leaving it behind at whatever the path happened to be today.
+func (r *Repository) SetDomainRoot(ctx context.Context, id string, root *string) (Domain, error) {
+	domain, err := scanDomain(r.pool.QueryRow(ctx, `
+		UPDATE domains SET document_root = $2
+		WHERE id = $1::uuid
+		RETURNING `+domainColumns, id, root))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Domain{}, ErrNotFound
+	}
+	if err != nil {
+		return Domain{}, fmt.Errorf("set the domain document root: %w", err)
+	}
+	return domain, nil
 }

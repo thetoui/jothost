@@ -4,7 +4,7 @@
 # (ARCHITECTURE.md section 16).
 
 # ---------- builder ----------
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 ARG VERSION=0.1.0-dev
 ARG COMMIT=unknown
@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
       -o /out/jothost-agent ./cmd/agent
 
 # ---------- dev ----------
-FROM golang:1.23-alpine AS dev
+FROM golang:1.26-alpine AS dev
 WORKDIR /src/agent
 ENV GOCACHE=/tmp/gocache GOFLAGS=-mod=mod
 CMD ["go", "run", "./cmd/agent"]

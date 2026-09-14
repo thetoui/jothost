@@ -60,6 +60,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 
 	mux.Handle("GET /api/v1/dns", guarded(rbac.PermServerView, h.overview))
 	mux.Handle("POST /api/v1/dns/install", guarded(rbac.PermDNSManage, h.install))
+	mux.Handle("POST /api/v1/dns/repair", guarded(rbac.PermDNSManage, h.repair))
 	mux.Handle("PUT /api/v1/dns/settings", guarded(rbac.PermDNSManage, h.settings))
 
 	mux.Handle("GET /api/v1/dns/zones", guarded(rbac.PermServerView, h.listZones))
@@ -113,6 +114,31 @@ func (h *Handler) install(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.OK(w, r, status)
+}
+
+// repair rewrites the host's DNS configuration from the panel's record.
+//
+// The overview reports when a host needs this - a named.conf not including the
+// panel's zones means every zone is written to disk and served by nobody - and
+// this is the control that answer belongs to.
+func (h *Handler) repair(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	defer cancel()
+
+	if err := h.service.Repair(ctx, actorFrom(r), httpx.RequestIDFromContext(ctx)); err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+
+	// The overview is re-read rather than a bare ok returned: the caller's next
+	// question is whether the warning has gone, and answering it here saves a
+	// round trip and a moment of the page showing the old one.
+	overview, err := h.service.Overview(ctx, httpx.RequestIDFromContext(ctx))
+	if err != nil {
+		httpx.Error(w, r, translate(err))
+		return
+	}
+	httpx.OK(w, r, overview)
 }
 
 // settingsBody is the settings PUT.

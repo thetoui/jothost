@@ -63,8 +63,19 @@ func (c *Client) Do(ctx context.Context, req protocol.Request) (protocol.Respons
 	// forget it and no caller needs to hold the secret.
 	req.Token = c.token
 
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
+	// A caller that set its own deadline keeps it; anything else gets the
+	// default. Both are bounded, which is what CLAUDE.md section 6 asks for -
+	// but the previous unconditional WithTimeout capped every call at
+	// AGENT_TIMEOUT regardless, which made a deliberately longer deadline dead
+	// code. The mail handler asks for twenty minutes to install a virus
+	// scanner whose signature database is several hundred megabytes; it was
+	// cut off at thirty seconds and reported a failure while the install
+	// carried on and succeeded.
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
 
 	conn, err := c.dialer.DialContext(ctx, "unix", c.socketPath)
 	if err != nil {

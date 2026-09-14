@@ -76,6 +76,19 @@ func (r *Registry) logSources(ctx context.Context) []logs.Source {
 		extra = append(extra, logs.CronSources(names)...)
 	}
 
+	// Each website's own access and error logs. They are not in the static
+	// catalogue: they belong to a site rather than to the host, and the API
+	// serves them through the website routes so that seeing one site's logs
+	// does not mean seeing every log on the machine.
+	if r.deps.Sites != nil {
+		domains, err := r.deps.Sites.Domains()
+		if err != nil {
+			r.log.Warn("the website list could not be read for the log catalogue",
+				"error", err.Error())
+		}
+		extra = append(extra, logs.SiteSources(r.deps.Sites.Root(), domains)...)
+	}
+
 	return extra
 }
 

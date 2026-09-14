@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jothost/panel/agent/internal/command"
+	"github.com/jothost/panel/agent/internal/fsperm"
 	"github.com/jothost/panel/shared/validate"
 )
 
@@ -249,12 +250,27 @@ func (c *Certbot) Revoke(ctx context.Context, domain, certPath string, report fu
 // It is world-readable because nginx serves from it as an unprivileged user,
 // and it holds nothing but short-lived random tokens.
 func (c *Certbot) prepareChallengeDir() error {
-	dir := filepath.Join(c.root, ACMEChallengeDir, ".well-known", "acme-challenge")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	base := filepath.Join(c.root, ACMEChallengeDir)
+	dir := filepath.Join(base, ".well-known", "acme-challenge")
+	if err := fsperm.MkdirAll(dir, challengeDirMode); err != nil {
 		return fmt.Errorf("create ACME challenge directory: %w", err)
+	}
+	// Every level is set, including ones that already exist. A plain
+	// MkdirAll under the Agent's 0077 umask left .well-known and
+	// acme-challenge at 0700, so nginx could not serve a single token and
+	// every HTTP-01 validation failed - and those directories persist on disk
+	// on hosts that ran the earlier code. These are the panel's own
+	// directories, world-readable by design, so repairing them is safe.
+	for _, level := range []string{base, filepath.Join(base, ".well-known"), dir} {
+		if err := os.Chmod(level, challengeDirMode); err != nil {
+			return fmt.Errorf("open %s to the web server: %w", level, err)
+		}
 	}
 	return nil
 }
+
+// challengeDirMode lets nginx, running unprivileged, reach the tokens.
+const challengeDirMode os.FileMode = 0o755
 
 // normalizeDomains validates and normalises a certificate's names.
 func normalizeDomains(domains []string) ([]string, error) {

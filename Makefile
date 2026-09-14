@@ -7,7 +7,7 @@ SHELL := /bin/sh
 
 COMPOSE      := docker compose
 COMPOSE_TEST := docker compose -f docker-compose.test.yml
-GO_IMAGE     := golang:1.23-alpine
+GO_IMAGE     := golang:1.26-alpine
 GO_MODULES   := shared api agent
 
 # Credentials for the account the Phase 1 auth checks sign in with. Test-only.
@@ -121,9 +121,40 @@ dist-binaries:
 	#
 	# The version is compiled in rather than read from a file, so a binary
 	# always reports what it actually is.
+	#
+	# The commit is read from .git directly, because git is not guaranteed to
+	# be in the build container. .git/HEAD holds either "ref: refs/heads/x" or,
+	# when HEAD is detached, the commit itself - and detached is the normal
+	# case for the two builds that matter most: a CI checkout of a pull
+	# request, and a release cut by checking out a tag. Following the ref
+	# blindly turned the sha into a path that does not exist, so those builds
+	# were stamped "commit unknown" and release-verify rejected them as
+	# development builds. A ref that has been packed is read from packed-refs,
+	# which is where git puts it once the loose file is gone.
+	#
+	# The mode is set inside the container, by the user that wrote the files.
+	# The container runs as root, so on a Linux host the binaries land owned
+	# by root and a chmod afterwards - as whoever ran make - fails with EPERM.
+	# Docker Desktop hands the files to the calling user instead, which is why
+	# that only ever showed up on a real Linux machine.
+	#
+	# 0755 rather than +x because symbolic modes are filtered by the umask:
+	# under a restrictive one, +x leaves the binaries executable by their
+	# owner alone, and the installer copies them to a host where a service
+	# user has to run them. `release` states the mode outright for the same
+	# reason.
 	$(GO_RUN) 'set -e; \
 		version=$$(cat VERSION 2>/dev/null || echo 0.1.0-dev); \
-		commit=$$(cat .git/HEAD 2>/dev/null | sed "s|ref: ||" | xargs -I{} sh -c "cat .git/{} 2>/dev/null" | cut -c1-12); \
+		head=$$(cat .git/HEAD 2>/dev/null || true); \
+		case "$$head" in \
+			"ref: "*) \
+				ref=$${head#ref: }; \
+				commit=$$(cat ".git/$$ref" 2>/dev/null || true); \
+				[ -n "$$commit" ] || commit=$$(sed -n "s|^\([0-9a-f][0-9a-f]*\) $$ref$$|\1|p" .git/packed-refs 2>/dev/null || true); \
+				;; \
+			*) commit=$$head ;; \
+		esac; \
+		commit=$$(printf "%s" "$$commit" | cut -c1-12); \
 		[ -n "$$commit" ] || commit=unknown; \
 		built=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
 		flags="-s -w \
@@ -136,8 +167,8 @@ dist-binaries:
 			-o /src/$(DIST_DIR)/bin/jothost-agent ./cmd/agent); \
 		printf "%s\n" "$$version" > /src/$(DIST_DIR)/VERSION; \
 		printf "%s\n" "$$commit" >> /src/$(DIST_DIR)/VERSION; \
-		printf "%s\n" "$$built" >> /src/$(DIST_DIR)/VERSION'
-	@chmod +x $(DIST_DIR)/bin/*
+		printf "%s\n" "$$built" >> /src/$(DIST_DIR)/VERSION; \
+		chmod 0755 /src/$(DIST_DIR)/bin/*'
 
 .PHONY: dist-frontend
 dist-frontend:
@@ -146,6 +177,76 @@ dist-frontend:
 		-w /app node:22-alpine sh -euc 'npm ci --no-audit --no-fund && npm run build'
 	rm -rf $(DIST_DIR)/frontend
 	cp -r frontend/dist $(DIST_DIR)/frontend
+
+# ---------------------------------------------------------------- release
+
+# RELEASE_DIR holds the archives a release is published as. Separate from
+# dist/, which is the unpacked tree the installer runs from: an operator
+# downloads one file and a checksum, and `dist` is what comes out of it.
+RELEASE_DIR ?= release
+
+.PHONY: release
+release: dist ## Build the release archive and its checksum into release/
+	# The version comes from the VERSION file and is already compiled into the
+	# binaries by dist-binaries, so the archive cannot be named one thing and
+	# contain another. `make release-verify` checks that rather than trusting it.
+	#
+	# Packaged inside a Linux container, like everything else here. The
+	# executable bit is part of a tar archive, and a Windows or macOS working
+	# copy does not necessarily carry one - packaged from there, the archive
+	# unpacks to binaries nothing can run, and the installer fails on a host
+	# that is perfectly fine.
+	@mkdir -p $(RELEASE_DIR)
+	@docker run --rm -v "$(CURDIR):/w" -w /w $(GO_IMAGE) sh -euc '\
+		version=$$(cat VERSION); \
+		name=jothost-$$version-linux-amd64; \
+		rm -rf $(RELEASE_DIR)/$$name $(RELEASE_DIR)/$$name.tar.gz; \
+		cp -r $(DIST_DIR) $(RELEASE_DIR)/$$name; \
+		chmod 0755 $(RELEASE_DIR)/$$name/install.sh $(RELEASE_DIR)/$$name/bin/*; \
+		tar -C $(RELEASE_DIR) -czf $(RELEASE_DIR)/$$name.tar.gz $$name; \
+		rm -rf $(RELEASE_DIR)/$$name; \
+		cd $(RELEASE_DIR) && sha256sum $$name.tar.gz > $$name.tar.gz.sha256'
+	@version=$$(cat VERSION); name=jothost-$$version-linux-amd64; \
+		echo ""; echo "Release $$version:"; \
+		ls -1 $(RELEASE_DIR)/$$name.tar.gz $(RELEASE_DIR)/$$name.tar.gz.sha256; \
+		echo ""; \
+		echo "Verify it with:  cd $(RELEASE_DIR) && sha256sum -c $$name.tar.gz.sha256"
+
+.PHONY: release-images
+release-images: ## Build and tag the release container images
+	# The same version, commit and build date the binaries carry, passed in as
+	# build args. An image tagged 0.1.0 whose binary reports something else is
+	# the thing this exists to prevent, so the tag is checked against what the
+	# image says about itself before either is considered built.
+	@version=$$(cat VERSION); \
+		commit=$$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown); \
+		built=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+		for part in api agent; do \
+			echo "Building jothost/$$part:$$version"; \
+			docker build -f docker/$$part.Dockerfile \
+				--build-arg VERSION=$$version \
+				--build-arg COMMIT=$$commit \
+				--build-arg BUILD_DATE=$$built \
+				-t jothost/$$part:$$version -t jothost/$$part:latest . ; \
+		done; \
+		for part in api agent; do \
+			reported=$$(docker run --rm --entrypoint /usr/local/bin/jothost-$$part \
+				jothost/$$part:$$version version 2>/dev/null || true); \
+			case "$$reported" in \
+				*$$version*) echo "  ok   jothost/$$part:$$version reports $$reported" ;; \
+				*) echo "  FAIL jothost/$$part:$$version reports '$$reported', not $$version"; exit 1 ;; \
+			esac; \
+		done
+
+.PHONY: release-verify
+release-verify: ## Check the release archive against what it claims to be
+	# A release that says one version and ships another is the kind of thing
+	# nobody notices until a bug report names a build that was never shipped.
+	$(COMPOSE_TEST) run --rm release-check
+
+.PHONY: release-clean
+release-clean: ## Remove the built release archives
+	rm -rf $(RELEASE_DIR)
 
 .PHONY: dist-support
 dist-support:
@@ -182,40 +283,19 @@ lint: go-lint fe-lint ## Run all linters
 
 .PHONY: docker-test
 docker-test: ## Run the full containerised test suite (unit + integration)
+	# The suites are discovered, not listed. This target used to name each one
+	# by hand and six of them - including four written the same week - existed
+	# without it ever running them.
 	$(COMPOSE_TEST) run --rm go-tests
 	$(COMPOSE_TEST) run --rm frontend-tests
 	$(MAKE) docker-test-integration
-	$(MAKE) docker-test-auth
-	$(MAKE) docker-test-agent
-	$(MAKE) docker-test-dashboard
-	$(MAKE) docker-test-websites
-	$(MAKE) docker-test-php
-	$(MAKE) docker-test-ssl
-	$(MAKE) docker-test-files
-	$(MAKE) docker-test-editor
-	$(MAKE) docker-test-databases
-	$(MAKE) docker-test-subdomains
-	$(MAKE) docker-test-hybrid
-	$(MAKE) docker-test-services
-	$(MAKE) docker-test-logs
-	$(MAKE) docker-test-cron
-	$(MAKE) docker-test-ssh
-	$(MAKE) docker-test-fail2ban
-	$(MAKE) docker-test-ftp
-	$(MAKE) docker-test-site-ownership
-	$(MAKE) docker-test-audit
-	$(MAKE) docker-test-dns
-	$(MAKE) docker-test-updates
-	$(MAKE) docker-test-monitoring
-	$(MAKE) docker-test-backup
-	$(MAKE) docker-test-security
-	$(MAKE) docker-test-notifications
-	$(MAKE) docker-test-mail
-	$(MAKE) docker-test-deploy
-	$(MAKE) docker-test-tenancy
-	$(MAKE) docker-test-hardening
-	$(MAKE) docker-test-firewall
-	$(MAKE) docker-test-node
+	$(MAKE) docker-test-suite
+	# The deployment path and the drills, each needing a host of its own.
+	$(MAKE) docker-test-installer
+	$(MAKE) docker-test-installer-debian
+	$(MAKE) docker-test-security-audit
+	$(MAKE) docker-test-load
+	$(MAKE) docker-test-recovery
 
 .PHONY: docker-test-integration
 docker-test-integration: ## Run integration tests against the running dev stack
@@ -324,6 +404,45 @@ docker-test-audit: create-integration-admin ## Run the audit trail integration c
 	# The trail was written from Phase 1 and readable by nothing until now.
 	$(COMPOSE) exec -T agent sh /tests/integration/audit.sh
 
+.PHONY: docker-test-database-console
+docker-test-database-console: create-integration-admin ## Run the phpMyAdmin console-session checks
+	# Drives the sign-in a browser performs, not just the endpoint that hands
+	# out the credentials: the first version of this feature passed its own
+	# tests and could not sign anybody in.
+	$(COMPOSE) exec -T agent sh /tests/integration/database_console.sh
+
+.PHONY: docker-test-database-dump
+docker-test-database-dump: create-integration-admin ## Run the database export/import checks
+	# Creates a table directly in MySQL, exports it through the panel, drops it,
+	# and imports it back. The panel is not asked whether it worked.
+	$(COMPOSE) exec -T agent sh /tests/integration/database_dump.sh
+
+.PHONY: docker-test-dns-templates
+docker-test-dns-templates: create-integration-admin ## Run the DNS template checks
+	# Creates a template, makes a zone from it, and reads the zone back. A
+	# template that cannot produce valid records must be refused when it is
+	# written, not when somebody creates a domain.
+	$(COMPOSE) exec -T agent sh /tests/integration/dns_templates.sh
+
+.PHONY: docker-test-dns-repair
+docker-test-dns-repair: create-integration-admin ## Run the DNS configuration repair checks
+	# Deletes named.conf from underneath the panel and asks it to put the file
+	# back, then reads the file rather than the panel's answer about it.
+	$(COMPOSE) exec -T agent sh /tests/integration/dns_repair.sh
+
+.PHONY: docker-test-domain-roots
+docker-test-domain-roots: create-integration-admin ## Run the per-domain document root checks
+	# Gives an alias a directory of its own and reads the generated vhost off
+	# the host, then fetches both names to see which directory each is served
+	# from. A config that parses and serves the wrong one looks fine otherwise.
+	$(COMPOSE) exec -T agent sh /tests/integration/domain_roots.sh
+
+.PHONY: docker-test-ssl-dns
+docker-test-ssl-dns: create-integration-admin ## Run the certificate/DNS alignment checks
+	# Asks for a certificate on a name this host serves and reads the zone back.
+	# A name already pointing at another machine must be reported and left alone.
+	$(COMPOSE) exec -T agent sh /tests/integration/ssl_dns.sh
+
 .PHONY: docker-test-dns
 docker-test-dns: create-integration-admin ## Run the Phase 13 DNS integration checks
 	$(COMPOSE) exec -T agent sh /tests/integration/phase13_dns.sh
@@ -398,6 +517,26 @@ docker-test-installer: dist ## Run the Phase 23 installer checks on a clean host
 	# It depends on `dist` because an installer with nothing to install proves
 	# nothing.
 	$(COMPOSE_TEST) run --rm installer-test
+
+.PHONY: docker-test-installer-debian
+docker-test-installer-debian: dist ## Run the installer checks on Debian with systemd
+	# The other half of the installer. It picks its package manager and its
+	# service manager from what it finds, and every check until now ran on
+	# Alpine with OpenRC - so the apt and systemd branches, which is what most
+	# operators will actually run, had never been executed.
+	#
+	# systemd has to be PID 1 for systemctl to mean anything, so the host runs
+	# as a service and the suite is exec'd into it once systemd has settled.
+	$(COMPOSE_TEST) up -d --build installer-host-debian
+	@echo "Waiting for systemd..."
+	@for _ in $$(seq 1 60); do 		state=$$($(COMPOSE_TEST) exec -T installer-host-debian systemctl is-system-running 2>/dev/null || true); 		case "$$state" in running|degraded) echo "systemd is $$state"; break ;; esac; 		sleep 2; 	done
+	$(COMPOSE_TEST) exec -T installer-host-debian sh /tests/integration/phase23_installer.sh; 		status=$$?; 		$(COMPOSE_TEST) rm -sf installer-host-debian >/dev/null 2>&1 || true; 		exit $$status
+
+.PHONY: docker-test-suite
+docker-test-suite: create-integration-admin ## Run every integration suite against the dev stack
+	# Discovers the suites rather than listing them, so one added tomorrow runs
+	# without anybody remembering to wire it in.
+	sh tests/run-integration.sh
 
 .PHONY: docker-test-tenancy
 docker-test-tenancy: create-integration-admin ## Run the Phase 22 multi-tenancy checks

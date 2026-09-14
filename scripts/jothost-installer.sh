@@ -312,6 +312,51 @@ detect_host() {
 # It is called twice: once before anything is installed, for the report, and
 # again afterwards, because on a minimal Alpine the supervisor is a package
 # this installer has just laid down.
+# How this host's nginx wants HTTP/2 turned on.
+#
+# nginx moved it in 1.25.1: before that it is a parameter on the listen
+# directive, from it a directive of its own, and each version rejects the
+# other's spelling. Debian 12 ships 1.22 and Alpine 3.21 ships 1.26, so both
+# are live on platforms this panel supports - and getting it wrong is not a
+# panel without HTTP/2, it is nginx refusing the whole file and the install
+# stopping at the vhost step.
+#
+# Unknown versions are treated as modern, because that is what every current
+# distribution and nginx's own packages ship.
+detect_nginx_http2() {
+  NGINX_HTTP2_LISTEN=""
+  NGINX_HTTP2_DIRECTIVE="
+    http2 on;"
+
+  command -v nginx >/dev/null 2>&1 || return 0
+
+  # nginx writes its version banner to stderr, as "nginx version: nginx/1.22.1".
+  #
+  # Parameter expansion rather than sed: there is no backreference to get
+  # wrong, and the banner has a fixed enough shape that trimming around it
+  # reads better than a pattern nobody can check by eye.
+  banner=$(nginx -v 2>&1)
+  case "$banner" in
+    *nginx/*) ;;
+    *) return 0 ;;
+  esac
+  version=${banner##*nginx/}
+  version=${version%% *}
+  [ -n "$version" ] || return 0
+
+  major=${version%%.*}
+  rest=${version#*.}
+  minor=${rest%%.*}
+  patch=${rest#*.}
+
+  if [ "$major" -lt 1 ] ||
+     { [ "$major" -eq 1 ] && [ "$minor" -lt 25 ]; } ||
+     { [ "$major" -eq 1 ] && [ "$minor" -eq 25 ] && [ "$patch" -lt 1 ]; }; then
+    NGINX_HTTP2_LISTEN=" http2"
+    NGINX_HTTP2_DIRECTIVE=""
+  fi
+}
+
 detect_init() {
   INIT_SYSTEM=none
   INIT_RUNNING=0
@@ -861,6 +906,10 @@ web_group() {
 configure_nginx() {
   step "Configuring nginx for $DOMAIN"
 
+  # Asked here rather than at startup: nginx is installed by an earlier step,
+  # so before that there is no version to read.
+  detect_nginx_http2
+
   sites_dir=$(nginx_sites_dir)
   mkdir -p "$sites_dir" "$ACME_ROOT/.well-known/acme-challenge"
 
@@ -923,9 +972,8 @@ EOF
 }
 
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl$NGINX_HTTP2_LISTEN;
+    listen [::]:443 ssl$NGINX_HTTP2_LISTEN;$NGINX_HTTP2_DIRECTIVE
     server_name $DOMAIN;
     server_tokens off;
 
@@ -997,6 +1045,52 @@ EOF
         # else framing Grafana is still refused.
         proxy_hide_header X-Frame-Options;
         add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    # phpMyAdmin, when it has been installed. The upstream is the panel's own
+    # nginx on loopback, a separate process from this one: a website whose
+    # configuration nginx refuses cannot take the database console down with
+    # it, and nothing the website system enumerates can see the panel's own
+    # configuration.
+    #
+    # Served here rather than only on its own hostname: phpMyAdmin's login is a POST carrying a CSRF token
+    # bound to the session cookie set on the page the form came from, and
+    # reading that page is something only same-origin JavaScript may do. Off
+    # this origin, "open this database" could never be more than a login form
+    # with the username filled in.
+    #
+    # phpMyAdmin still authenticates its own visitors with a real database
+    # account. This proxy carries the request; it does not vouch for whoever
+    # sent it.
+    location /phpmyadmin/ {
+        proxy_pass http://127.0.0.1:8791/;
+        proxy_http_version 1.1;
+        proxy_set_header Host phpmyadmin.internal;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120s;
+
+        # phpMyAdmin sees this request with the /phpmyadmin/ prefix stripped,
+        # so the redirects it issues are root-relative and carry no prefix: a
+        # sign-in answers 302 Location: /index.php?route=/&db=... and the
+        # browser follows that to the panel's own single-page application. The
+        # operator ends up back in the panel, never signed in, having done
+        # nothing wrong.
+        #
+        # PmaAbsoluteUri does not cover this. It is set, and the Location
+        # header still comes back without the prefix, so nginx has to put it
+        # back.
+        #
+        # It was invisible to every check written before a real browser drove
+        # this: they asked for the database page by its full URL instead of
+        # following where phpMyAdmin sent them.
+        # \$http_host, not a bare path: a path-only replacement makes nginx
+        # rebuild the URL from its own listening port, which is not the port
+        # the browser asked on wherever the two differ - and the operator is
+        # redirected to a port nothing answers. This echoes back exactly the
+        # host and port the request arrived with.
+        proxy_redirect / \$scheme://\$http_host/phpmyadmin/;
     }
 
     location = /healthz { proxy_pass http://127.0.0.1:8080; proxy_set_header Host \$host; }

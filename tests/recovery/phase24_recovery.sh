@@ -43,8 +43,25 @@
 set -eu
 
 COMPOSE="${COMPOSE:-docker compose}"
-API_URL="${RECOVERY_API_URL:-http://localhost:18080}"
-SITES_URL="${RECOVERY_SITES_URL:-http://localhost:18090}"
+
+# Where the stack actually published its ports, asked of the stack itself.
+#
+# These were hardcoded to 18080 and 18090, which is what one developer's .env
+# maps them to. compose defaults to 8080 and 8090 and .env.example sets those,
+# so in CI the drill polled a port nothing was listening on, waited two minutes
+# and gave up before running a single drill — reporting the stack unready when
+# the stack was fine. A port belongs to whoever started the containers, so ask
+# them rather than guess.
+published_port() {
+  # "0.0.0.0:8080" and "[::]:8080" both end in the port.
+  $COMPOSE port "$1" "$2" 2>/dev/null | head -1 | sed 's/.*://'
+}
+
+api_port="$(published_port api 8080)"
+sites_port="$(published_port agent 80)"
+
+API_URL="${RECOVERY_API_URL:-http://localhost:${api_port:-8080}}"
+SITES_URL="${RECOVERY_SITES_URL:-http://localhost:${sites_port:-8090}}"
 ADMIN_USER="${INTEGRATION_ADMIN_USERNAME:-integration_admin}"
 ADMIN_PASS="${INTEGRATION_ADMIN_PASSWORD:-integration-admin-pw-9271}"
 

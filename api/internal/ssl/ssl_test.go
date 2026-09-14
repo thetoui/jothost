@@ -133,13 +133,14 @@ func TestIssueRecordsTheCertificateAndQueuesTheWork(t *testing.T) {
 
 	site := f.activeSite(t, "example.test")
 
-	job, err := f.service.Issue(ctx, ssl.IssueRequest{
+	issued, err := f.service.Issue(ctx, ssl.IssueRequest{
 		WebsiteID: site.ID,
 		Provider:  ssl.ProviderSelfSigned,
 	})
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
+	job := issued.Job
 
 	if job.Type != jobs.TypeSSLIssue {
 		t.Fatalf("job type = %q, want ssl.issue", job.Type)
@@ -394,13 +395,14 @@ func TestJobSuccessRecordsWhatTheAgentProduced(t *testing.T) {
 	ctx := context.Background()
 
 	site := f.activeSite(t, "example.test")
-	job, err := f.service.Issue(ctx, ssl.IssueRequest{
+	issued, err := f.service.Issue(ctx, ssl.IssueRequest{
 		WebsiteID: site.ID,
 		Provider:  ssl.ProviderSelfSigned,
 	})
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
+	job := issued.Job
 
 	stored, err := f.jobs.Get(ctx, job.ID)
 	if err != nil {
@@ -442,13 +444,14 @@ func TestJobSuccessWithoutAnExpiryIsAFailure(t *testing.T) {
 	ctx := context.Background()
 
 	site := f.activeSite(t, "example.test")
-	job, err := f.service.Issue(ctx, ssl.IssueRequest{
+	issued, err := f.service.Issue(ctx, ssl.IssueRequest{
 		WebsiteID: site.ID,
 		Provider:  ssl.ProviderSelfSigned,
 	})
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
+	job := issued.Job
 	stored, err := f.jobs.Get(ctx, job.ID)
 	if err != nil {
 		t.Fatalf("get job: %v", err)
@@ -471,13 +474,14 @@ func TestJobFailureRecordsTheReason(t *testing.T) {
 	ctx := context.Background()
 
 	site := f.activeSite(t, "example.test")
-	job, err := f.service.Issue(ctx, ssl.IssueRequest{
+	issued, err := f.service.Issue(ctx, ssl.IssueRequest{
 		WebsiteID: site.ID,
 		Provider:  ssl.ProviderLetsEncrypt,
 	})
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
+	job := issued.Job
 	stored, err := f.jobs.Get(ctx, job.ID)
 	if err != nil {
 		t.Fatalf("get job: %v", err)

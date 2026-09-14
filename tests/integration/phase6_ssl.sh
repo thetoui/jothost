@@ -258,6 +258,13 @@ log "The ACME challenge survives the redirect"
 # has not issued yet, so a redirect that catches this path breaks renewal
 # silently — sixty days later, when the certificate lapses and the site goes
 # down for every visitor at once.
+#
+# What this does NOT show is that the Agent creates a directory nginx can
+# serve from: the directory is made here, by this shell, under its own umask
+# of 0022. The Agent runs with 0077, and its own creation of this path left
+# .well-known and acme-challenge at 0700 - so this check passed while every
+# real HTTP-01 validation would have failed. That property is tested where the
+# Agent's umask can be reproduced: agent/internal/ssl/challenge_mode_test.go.
 mkdir -p /var/www/.acme-challenge/.well-known/acme-challenge
 printf 'acme-token-payload' > /var/www/.acme-challenge/.well-known/acme-challenge/probe
 chmod 644 /var/www/.acme-challenge/.well-known/acme-challenge/probe

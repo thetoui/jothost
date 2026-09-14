@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/jothost/panel/agent/internal/nginx"
+	"github.com/jothost/panel/agent/internal/panelweb"
 	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/sites"
 	"github.com/jothost/panel/shared/validate"
@@ -104,24 +105,17 @@ type PackageInstaller interface {
 	RemovePackage(ctx context.Context, pkg string, report func(int, string)) error
 }
 
-// FPMControl starts and reloads PHP-FPM.
-//
-// Writing a pool file does nothing on its own: FPM has to be told to read it,
-// and the socket has to exist before nginx is pointed at it. Skipping either
-// produces a site that returns 502 with a configuration that looks correct.
-type FPMControl interface {
-	StartFPM(ctx context.Context, version string, detector *php.Detector) error
-	ReloadFPM(ctx context.Context, version string) error
-}
-
 // Options configure a Manager.
 type Options struct {
 	Installer PackageInstaller
-	FPM       FPMControl
-	PHP       *php.Detector
-	Pools     *php.Provider
-	Nginx     *nginx.Provider
-	Users     *sites.UserProvider
+	// Panel is the panel's own web stack: its private nginx and its own
+	// PHP-FPM master. phpMyAdmin is served by that rather than by the nginx
+	// and PHP that serve customer websites, so a website cannot take the
+	// database console down with it and nothing the website system enumerates
+	// can see phpMyAdmin's configuration.
+	Panel *panelweb.Manager
+	PHP   *php.Detector
+	Users *sites.UserProvider
 	// WebGroup owns the FPM socket so nginx can open it. Without it every
 	// request returns 502 with nothing obviously wrong.
 	WebGroup string
@@ -134,13 +128,25 @@ type Options struct {
 // Manager installs, configures, and serves phpMyAdmin.
 type Manager struct {
 	installer PackageInstaller
-	fpm       FPMControl
+	panel     *panelweb.Manager
 	php       *php.Detector
-	pools     *php.Provider
-	nginx     *nginx.Provider
-	users     *sites.UserProvider
-	webGroup  string
-	log       *slog.Logger
+	// nginx is the panel's private instance, taken from panel. Held directly
+	// because almost everything here writes a vhost or reloads.
+	nginx    *nginx.Provider
+	users    *sites.UserProvider
+	webGroup string
+	log      *slog.Logger
+}
+
+// panelNginx returns the panel stack's nginx provider, or nil when there is no
+// stack. Nil rather than a provider pointing at the host's nginx: a phpMyAdmin
+// that silently fell back to writing into the websites' directory would undo
+// the separation without saying so.
+func panelNginx(panel *panelweb.Manager) *nginx.Provider {
+	if panel == nil {
+		return nil
+	}
+	return panel.Nginx()
 }
 
 // NewManager builds a Manager.
@@ -151,13 +157,15 @@ func NewManager(opts Options) *Manager {
 	}
 	return &Manager{
 		installer: opts.Installer,
-		fpm:       opts.FPM,
-		php:       opts.PHP,
-		pools:     opts.Pools,
-		nginx:     opts.Nginx,
-		users:     opts.Users,
-		webGroup:  opts.WebGroup,
-		log:       log,
+		panel:     opts.Panel,
+		// The panel's own nginx, not the host's. Every WriteSiteRaw,
+		// RemoveSite, Reload and SitesDir below therefore acts on the
+		// instance that serves only panel applications.
+		nginx:    panelNginx(opts.Panel),
+		php:      opts.PHP,
+		users:    opts.Users,
+		webGroup: opts.WebGroup,
+		log:      log,
 	}
 }
 
@@ -170,6 +178,12 @@ type Status struct {
 	Served     bool   `json:"served"`
 	Webroot    string `json:"webroot,omitempty"`
 	ServerName string `json:"server_name,omitempty"`
+	// URL is where a browser reaches phpMyAdmin: the path the panel proxies
+	// it at, on the panel's own origin.
+	//
+	// Not "http://<server_name>/". That name is answered only by the panel's
+	// own nginx on loopback, so reporting it as a URL invites somebody to try
+	// an address that resolves to nothing.
 	URL        string `json:"url,omitempty"`
 	PHPVersion string `json:"php_version,omitempty"`
 	// CanInstall reports whether this host has what installation needs.
@@ -190,7 +204,7 @@ func (m *Manager) Status(ctx context.Context) Status {
 		if name, err := m.servedName(); err == nil && name != "" {
 			status.Served = true
 			status.ServerName = name
-			status.URL = "http://" + name + "/"
+			status.URL = BaseURI
 		}
 	}
 
@@ -212,7 +226,7 @@ func (m *Manager) readiness(ctx context.Context) (bool, string) {
 		return false, "this host has no supported package manager, so phpMyAdmin cannot be installed"
 	case m.nginx == nil || !m.nginx.Available():
 		return false, "nginx was not found, so phpMyAdmin could not be served"
-	case m.pools == nil || !m.pools.Available():
+	case m.panel == nil || m.php == nil || !m.php.Available():
 		return false, "no PHP-FPM was found, so phpMyAdmin could not run"
 	case m.users == nil || !m.users.Available():
 		return false, "no user management tool was found, so phpMyAdmin has no account to run as"
@@ -256,6 +270,15 @@ func (m *Manager) pickPHP(ctx context.Context) (string, error) {
 // failing on what the previous attempt already did (CLAUDE.md section 17).
 func (m *Manager) Install(ctx context.Context, serverName string, report func(int, string)) (Status, error) {
 	serverName = validate.NormalizeDomain(serverName)
+	if serverName == "" {
+		// The panel does not choose a name any more, because there is no name
+		// to choose: this vhost listens on the panel's own loopback address
+		// and is reached only through the panel's /phpmyadmin/ location, which
+		// sends InternalName as the Host header. A name the operator picked
+		// was displayed as an address and could never be used to reach
+		// anything.
+		serverName = InternalName
+	}
 	if err := validate.Domain(serverName); err != nil {
 		return Status{}, fmt.Errorf("%w: %v", ErrInvalidServerName, err)
 	}
@@ -313,7 +336,9 @@ func (m *Manager) Install(ctx context.Context, serverName string, report func(in
 	}
 
 	progress(report, 72, "Creating the PHP pool")
-	socket := php.SocketPathFor(PoolName, version)
+	// In the panel's own run directory, not the websites' - it is served by
+	// the panel's master and opened by the panel's nginx.
+	socket := m.panel.Socket(PoolName)
 	if err := m.writePool(ctx, version, root, account, socket); err != nil {
 		return Status{}, err
 	}
@@ -326,6 +351,15 @@ func (m *Manager) Install(ctx context.Context, serverName string, report func(in
 	// The vhost goes last, and only once the socket is really there. Pointing
 	// nginx at a socket that does not exist yet makes the first request a 502
 	// with nothing obviously wrong in the configuration.
+	// Anything this package published under another name goes first. Without
+	// this, asking for a new name added a server block instead of moving one:
+	// the console stayed reachable at the old name, and the panel reported
+	// whichever the directory listed first.
+	progress(report, 88, "Removing any previous site")
+	if err := m.removeOtherVhosts(ctx, serverName); err != nil {
+		return Status{}, err
+	}
+
 	progress(report, 90, "Publishing the site")
 	if err := m.writeVhost(ctx, serverName, root, socket); err != nil {
 		return Status{}, err
@@ -342,11 +376,15 @@ func (m *Manager) Install(ctx context.Context, serverName string, report func(in
 // looks like a broken panel rather than a removed feature.
 func (m *Manager) Uninstall(ctx context.Context, report func(int, string)) error {
 	if m.nginx != nil {
-		name, err := m.servedName()
-		if err == nil && name != "" {
+		// Every one of them. A host that somehow ended up with two marked
+		// vhosts must not be left serving the one this did not look at.
+		names, err := m.servedNames()
+		if err == nil && len(names) > 0 {
 			progress(report, 15, "Removing the site")
-			if _, err := m.nginx.RemoveSite(ctx, name); err != nil {
-				return fmt.Errorf("remove the phpMyAdmin site: %w", err)
+			for _, name := range names {
+				if _, err := m.nginx.RemoveSite(ctx, name); err != nil {
+					return fmt.Errorf("remove the phpMyAdmin site %s: %w", name, err)
+				}
 			}
 			if err := m.nginx.Reload(ctx); err != nil {
 				return fmt.Errorf("reload nginx: %w", err)
@@ -354,13 +392,15 @@ func (m *Manager) Uninstall(ctx context.Context, report func(int, string)) error
 		}
 	}
 
-	if m.pools != nil {
+	if m.panel != nil {
 		progress(report, 35, "Removing the PHP pool")
-		version, err := m.pickPHP(ctx)
-		if err == nil {
-			if err := m.pools.RemovePool(ctx, version, PoolName); err != nil {
-				m.log.Warn("could not remove the phpMyAdmin pool", "error", err.Error())
-			}
+		if err := m.panel.RemovePool(PoolName); err != nil {
+			m.log.Warn("could not remove the phpMyAdmin pool", "error", err.Error())
+		}
+		// The panel's PHP master exists to run this and nothing else so far.
+		// Left running it would hold a socket for a pool that is gone.
+		if err := m.panel.StopFPM(ctx); err != nil {
+			m.log.Warn("could not stop the panel's PHP master", "error", err.Error())
 		}
 	}
 
@@ -392,14 +432,35 @@ func (m *Manager) Uninstall(ctx context.Context, report func(int, string)) error
 	return nil
 }
 
-// servedName reports the server_name phpMyAdmin is published under, by reading
-// the marker the vhost carries. Empty means it is not being served.
+// servedName reports the server_name phpMyAdmin is published under. Empty
+// means it is not being served.
+//
+// Where more than one vhost carries the marker this returns the first in
+// directory order, which is what callers wanting a single answer need. Anything
+// that has to act on all of them uses servedNames.
 func (m *Manager) servedName() (string, error) {
-	entries, err := os.ReadDir(m.nginx.SitesDir())
-	if err != nil {
+	names, err := m.servedNames()
+	if err != nil || len(names) == 0 {
 		return "", err
 	}
+	return names[0], nil
+}
 
+// servedNames reports every vhost carrying the marker this package owns.
+//
+// There should only ever be one, and for a long time the code assumed so and
+// returned the first it found. Installing under a second name wrote a second
+// vhost and left the first published, so the panel reported one name, served
+// two, and on uninstall removed whichever the filesystem happened to list
+// first - leaving a database console live on a name the operator believed they
+// had removed.
+func (m *Manager) servedNames() ([]string, error) {
+	entries, err := os.ReadDir(m.nginx.SitesDir())
+	if err != nil {
+		return nil, err
+	}
+
+	var names []string
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".conf") {
 			continue
@@ -411,9 +472,35 @@ func (m *Manager) servedName() (string, error) {
 		if !strings.Contains(string(content), vhostMarker) {
 			continue
 		}
-		return strings.TrimSuffix(entry.Name(), ".conf"), nil
+		names = append(names, strings.TrimSuffix(entry.Name(), ".conf"))
 	}
-	return "", nil
+	// os.ReadDir already sorts, so the same host gives the same answer twice.
+	return names, nil
+}
+
+// removeOtherVhosts deletes every vhost this package owns except the one about
+// to be written.
+//
+// nginx is not reloaded here: the new vhost is written immediately afterwards
+// and reloads once, so there is no moment where phpMyAdmin is unreachable
+// because its old site was removed and its new one not yet published.
+func (m *Manager) removeOtherVhosts(ctx context.Context, keep string) error {
+	if m.nginx == nil {
+		return nil
+	}
+	names, err := m.servedNames()
+	if err != nil {
+		return fmt.Errorf("read the published sites: %w", err)
+	}
+	for _, name := range names {
+		if name == keep {
+			continue
+		}
+		if _, err := m.nginx.RemoveSite(ctx, name); err != nil {
+			return fmt.Errorf("remove the previous phpMyAdmin site %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // vhostMarker identifies the vhost this package owns, so uninstalling finds it
@@ -504,13 +591,26 @@ func (m *Manager) writePool(ctx context.Context, version, root string, account s
 		MaxChildren: php.DefaultMaxChildren,
 	}
 
-	if _, err := m.pools.WritePool(ctx, pool); err != nil {
+	rendered, err := php.RenderPool(pool)
+	if err != nil {
+		return fmt.Errorf("render the phpMyAdmin pool: %w", err)
+	}
+	// Into the panel's own pool directory, read by the panel's own master. A
+	// pool here cannot be stopped from loading by a website's pool, and
+	// reloading for phpMyAdmin does not signal the master every customer site
+	// runs on.
+	if _, err := m.panel.WritePool(PoolName, rendered); err != nil {
 		return fmt.Errorf("write the phpMyAdmin pool: %w", err)
 	}
 	return nil
 }
 
 // writeVhost publishes phpMyAdmin under one server name.
+// InternalName is the server_name the panel's reverse proxy addresses
+// phpMyAdmin by. It must match the Host header in the panel's /phpmyadmin/
+// location, in docker/nginx/dev.conf and in scripts/jothost-installer.sh.
+const InternalName = "phpmyadmin.internal"
+
 func (m *Manager) writeVhost(ctx context.Context, serverName, root, socket string) error {
 	if err := os.MkdirAll(filepath.Dir(LogDir), 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", filepath.Dir(LogDir), err)
@@ -521,11 +621,31 @@ func (m *Manager) writeVhost(ctx context.Context, serverName, root, socket strin
 
 	rendered, err := nginx.Render(nginx.SiteConfig{
 		PrimaryDomain: serverName,
-		DocumentRoot:  root,
-		AccessLog:     filepath.Join(LogDir, "access.log"),
-		ErrorLog:      filepath.Join(LogDir, "error.log"),
-		MaxBodySize:   "256m",
-		PHPSocket:     socket,
+		// Rendered directly rather than through WriteSite, so the spelling of
+		// the HTTP/2 switch has to be asked for here. nginx moved it in 1.25.1
+		// and each version rejects the other's - which is not a site without
+		// HTTP/2 but a file nginx refuses to load at all.
+		LegacyHTTP2: m.nginx.LegacyHTTP2(ctx),
+		// Loopback, on the panel's own instance. phpMyAdmin is reached through
+		// the panel's public vhost, which is what decides whether the visitor
+		// gets here at all; listening on every address would be a second front
+		// door that nothing authenticates the route to.
+		Listen: m.panel.Address(),
+		// Absolute: nginx resolves a bare include against its prefix, and this
+		// instance's prefix is the panel's tree rather than /etc/nginx.
+		FastCGIParams: m.panel.FastCGIParams(),
+		// A second, fixed name so the panel's own vhost can proxy phpMyAdmin
+		// under /phpmyadmin/ without knowing what the operator called it. The
+		// panel's proxy passes this as the Host header; it is how a static
+		// configuration file written at install time reaches a site created
+		// later. Nothing new is exposed — this is the same site, and it is not
+		// a name any resolver answers for.
+		Aliases:      []string{InternalName},
+		DocumentRoot: root,
+		AccessLog:    filepath.Join(LogDir, "access.log"),
+		ErrorLog:     filepath.Join(LogDir, "error.log"),
+		MaxBodySize:  "256m",
+		PHPSocket:    socket,
 	})
 	if err != nil {
 		return fmt.Errorf("render the phpMyAdmin site: %w", err)
@@ -534,40 +654,50 @@ func (m *Manager) writeVhost(ctx context.Context, serverName, root, socket strin
 	if _, err := m.nginx.WriteSiteRaw(ctx, serverName, vhostMarker+"\n"+rendered); err != nil {
 		return fmt.Errorf("write the phpMyAdmin site: %w", err)
 	}
-	return m.nginx.Reload(ctx)
+	// Start, not reload. On a first install the panel's nginx has never run,
+	// and reloading asks a pid file holding nothing to accept a signal - which
+	// is exactly what the first attempt at this reported, from an install that
+	// had otherwise worked. StartNginx reloads when it is up and starts it when
+	// it is not.
+	return m.panel.StartNginx(ctx)
 }
 
-// startPHP makes FPM read the new pool and waits for its socket.
+// startPHP starts the panel's own PHP master and waits for the pool socket.
+//
+// The panel's master, not the host's. phpMyAdmin used to share a master with
+// every customer website on that PHP version: a website pool that stopped the
+// master starting took the database console with it, and the console going
+// dark is exactly when an operator most needs it.
+//
+// Nothing enables a unit here, because there is no unit. This master is the
+// Agent's, and the Agent starts at boot and reconciles what it owns - which is
+// how phpMyAdmin comes back after a restart now.
 func (m *Manager) startPHP(ctx context.Context, version, socket string) error {
-	if m.fpm == nil {
-		return fmt.Errorf("%w: PHP-FPM cannot be controlled on this host", ErrUnsupported)
+	if m.panel == nil {
+		return fmt.Errorf("%w: the panel's web stack is not available on this host",
+			ErrUnsupported)
 	}
 
-	start := func() error {
-		if php.FPMRunning(version) {
-			return m.fpm.ReloadFPM(ctx, version)
-		}
-		return m.fpm.StartFPM(ctx, version, m.php)
+	if err := m.panel.StartFPM(ctx, version); err != nil {
+		return fmt.Errorf("start the panel's PHP master: %w", err)
 	}
-
-	if err := start(); err != nil {
-		return fmt.Errorf("start PHP-FPM %s: %w", version, err)
-	}
-
 	if err := waitForSocket(socket, socketWaitTimeout); err == nil {
 		return nil
 	}
 
-	// A reload that went to a master which is not actually serving. Starting a
-	// fresh one is the recovery, and it is tried before giving up: the
-	// alternative is phpMyAdmin left installed but permanently 502ing.
-	m.log.Warn("the phpMyAdmin pool socket did not appear after a reload; starting php-fpm",
+	// A reload that went to a master which is not actually serving the new
+	// pool. A fresh start is the recovery, and it is tried before giving up:
+	// the alternative is phpMyAdmin installed and permanently 502ing.
+	m.log.Warn("the phpMyAdmin pool socket did not appear; restarting the panel's PHP master",
 		"version", version)
-	if err := m.fpm.StartFPM(ctx, version, m.php); err != nil {
-		return fmt.Errorf("start PHP-FPM %s: %w", version, err)
+	if err := m.panel.StopFPM(ctx); err != nil {
+		return fmt.Errorf("stop the panel's PHP master: %w", err)
+	}
+	if err := m.panel.StartFPM(ctx, version); err != nil {
+		return fmt.Errorf("start the panel's PHP master: %w", err)
 	}
 	if err := waitForSocket(socket, socketWaitTimeout); err != nil {
-		return fmt.Errorf("PHP-FPM started but its socket never appeared: %w", err)
+		return fmt.Errorf("the panel's PHP master started but its socket never appeared: %w", err)
 	}
 	return nil
 }

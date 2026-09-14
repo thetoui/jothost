@@ -74,6 +74,14 @@ const (
 	// request, so it is the one that goes through the queue.
 	TypePHPMyAdminInstall   = "phpmyadmin.install"
 	TypePHPMyAdminUninstall = "phpmyadmin.uninstall"
+
+	// Installing a mail server downloads packages, and with the scanner it
+	// downloads a virus signature database of several hundred megabytes. It
+	// went through the request that asked for it until the day somebody asked
+	// for the scanner: the HTTP server closes a connection after
+	// API_WRITE_TIMEOUT whatever the handler is doing, so the caller was told
+	// the install had failed while it ran on to completion behind them.
+	TypeMailInstall = "mail.install"
 )
 
 // Job is one unit of durable work.

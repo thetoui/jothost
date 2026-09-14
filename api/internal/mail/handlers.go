@@ -128,16 +128,25 @@ func (h *Handler) install(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	// Queueing is quick; the install itself is the job's problem. The long
+	// timeout that used to be here could never take effect, because the HTTP
+	// server closes the connection after API_WRITE_TIMEOUT whatever the
+	// handler is doing.
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
 
-	status, err := h.service.Install(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
+	job, err := h.service.Install(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
 		body.Filtering, body.Antivirus)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	httpx.OK(w, r, status)
+
+	// 202: nothing is installed yet, only the intent to install it.
+	httpx.WriteJSON(w, r, http.StatusAccepted, httpx.Envelope{
+		Success: true,
+		Data:    map[string]any{"job": job},
+	})
 }
 
 func (h *Handler) listDomains(w http.ResponseWriter, r *http.Request) {

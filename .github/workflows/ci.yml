@@ -59,7 +59,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.26'
           # The Go modules have no third-party dependencies, so there is no
           # go.sum to key a module cache on.
           cache: false
@@ -87,6 +87,14 @@ jobs:
       - name: test
         working-directory: ${{ matrix.module }}
         run: go test -p 1 -race -count=1 ./...
+
+      # The Agent runs as root and the API holds every credential the panel
+      # has. A known advisory in a dependency is worth failing a build for.
+      - name: govulncheck
+        working-directory: ${{ matrix.module }}
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
 
   frontend:
     name: Frontend
@@ -175,6 +183,96 @@ jobs:
 
       - name: Run Phase 7.5 code editor checks
         run: docker compose exec -T agent sh /tests/integration/phase75_editor.sh
+
+      # Everything else, discovered rather than listed. This job used to stop
+      # at phase 7.5 and name each suite by hand, so twenty-eight of them -
+      # databases, DNS, mail, backups, deployments, tenancy, and every suite
+      # written since - were never run by CI at all.
+      - name: Run every remaining integration suite
+        run: sh tests/run-integration.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # The deployment path: installing onto a host that has nothing on it, on both
+  # platforms this panel claims to support, and checking the archive is what it
+  # says it is.
+  #
+  # None of this was in CI. A stray unescaped "$" in a comment inside the nginx
+  # heredoc once made the installer abort before it configured anything - and
+  # every other job stayed green, because nothing else executes that file.
+  deployment:
+    name: Installer and release
+    runs-on: ubuntu-latest
+    needs: [go, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the installable artefacts
+        run: make dist
+
+      - name: Install onto a clean Alpine host
+        run: docker compose -f docker-compose.test.yml run --rm installer-test
+
+      - name: Install onto a clean Debian host running systemd
+        run: make docker-test-installer-debian
+
+      - name: Check the release archive against what it claims to be
+        run: make release
+      - name: Verify it
+        run: make release-verify
+
+  # What the panel does under load, what it refuses to an attacker, and what
+  # survives losing the API, the Agent or the database.
+  resilience:
+    name: Hardening and recovery
+    runs-on: ubuntu-latest
+    needs: [go, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start the stack
+        run: |
+          cp .env.example .env
+          docker compose up -d --build
+
+      - name: Wait for healthy services
+        run: |
+          for _ in $(seq 1 40); do
+            state="$(docker compose ps --format '{{.Health}}' api nginx | sort -u | tr '\n' ' ')"
+            case "$state" in
+              *unhealthy*) echo "A service is unhealthy"; docker compose ps; exit 1 ;;
+            esac
+            if [ "$state" = "healthy " ]; then
+              echo "Stack is healthy"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Timed out waiting for healthy services"
+          docker compose ps
+          exit 1
+
+      - name: Create the integration administrator
+        run: |
+          docker compose exec -T -e JOTHOST_ADMIN_USERNAME=integration_admin -e JOTHOST_ADMIN_PASSWORD=integration-admin-pw-9271 api jothost-api create-admin
+
+      - name: Adversarial checks
+        run: docker compose -f docker-compose.test.yml run --rm security-audit
+
+      - name: Load
+        run: docker compose -f docker-compose.test.yml run --rm load-test
+
+      # Last, because it stops services on purpose. It puts them back, but a
+      # check that ran after it would be reporting on a stack that had just
+      # been through three outages.
+      - name: Recovery drills
+        run: sh tests/recovery/phase24_recovery.sh
 
       - name: Dump logs on failure
         if: failure()

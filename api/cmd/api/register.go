@@ -10,6 +10,7 @@ import (
 
 	"github.com/jothost/panel/api/internal/agentclient"
 	"github.com/jothost/panel/api/internal/config"
+	"github.com/jothost/panel/api/internal/dns"
 	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/servers"
 	"github.com/jothost/panel/shared/logger"
@@ -89,6 +90,19 @@ func registerLocalServer(ctx context.Context, cfg config.Config, pool *pgxpool.P
 		"hostname", server.Hostname,
 		"status", server.Status,
 	)
+
+	// The template new zones are seeded from. Here rather than in a migration,
+	// because on a fresh install the migrations run before this server exists.
+	// A failure is logged and not fatal: the panel is usable without it, and a
+	// zone created meanwhile is created empty rather than refused.
+	created, err := dns.EnsureBuiltinTemplate(ctx, pool, server.ID)
+	switch {
+	case err != nil:
+		log.Error("could not give the local server its built-in DNS template",
+			"server_id", server.ID, logger.KeyError, err.Error())
+	case created:
+		log.Info("seeded the built-in DNS template", "server_id", server.ID)
+	}
 	return server.ID
 }
 

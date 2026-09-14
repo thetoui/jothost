@@ -253,7 +253,20 @@ export interface WebsiteDomain {
   type: DomainType;
   status: string;
   redirect_to: string | null;
+  /**
+   * Where this name in particular is served from.
+   *
+   * Null means the website's own document root — and keeps meaning that as the
+   * site moves, rather than pinning the name to wherever the site is today.
+   */
+  document_root: string | null;
   created_at: string;
+}
+
+/** The 202 from changing one name's own settings. */
+export interface DomainUpdated {
+  domain: WebsiteDomain;
+  job: Job;
 }
 
 /** Where a subdomain's files live. */
@@ -722,6 +735,36 @@ export interface WebsiteCreated {
 /** A queued change that only returns the job following it. */
 export interface JobAccepted {
   job: Job;
+}
+
+/** What the panel found, and did, for one name on a certificate. */
+export interface DNSNameOutcome {
+  name: string;
+  /**
+   * ready — already points here; added — the panel wrote the missing record;
+   * elsewhere — points at another machine and will fail validation there;
+   * aliased — a CNAME, which may or may not lead here; not_served — no zone
+   * on this host covers it; no_address — this host's own address is unknown.
+   */
+  status: 'ready' | 'added' | 'elsewhere' | 'aliased' | 'not_served' | 'no_address';
+  zone?: string;
+  detail: string;
+}
+
+/** What issuance did to this host's zones before asking for a certificate. */
+export interface DNSAlignment {
+  address: string;
+  names: DNSNameOutcome[] | null;
+  added: number;
+  /** Names that will fail the challenge as things stand. */
+  blocked: number;
+}
+
+/** The issuance response: the queued work, and what DNS had to become. */
+export interface SSLIssueAccepted {
+  job: Job;
+  /** Absent for a self-signed certificate, and where no name server runs here. */
+  dns?: DNSAlignment;
 }
 
 export interface DomainCreated {
@@ -2170,7 +2213,13 @@ export interface MailStatus {
   postfix: MailDaemon;
   dovecot: MailDaemon;
   rspamd: MailDaemon;
+  /**
+   * Whether scanning is switched on and able to work — not whether the
+   * package is on the host. `antivirus_present` is that question.
+   */
   antivirus: MailDaemon;
+  /** Whether ClamAV is installed on this host at all. */
+  antivirus_present: boolean;
   hostname: string;
   tls: {
     configured: boolean;
@@ -2712,4 +2761,83 @@ export interface GrafanaState {
   /** The dashboard the panel provisioned, so the page need not hard-code it. */
   dashboard_uid?: string;
   detail?: string;
+}
+
+
+/**
+ * What a browser needs to open phpMyAdmin on one database, signed in.
+ *
+ * The password is in here. phpMyAdmin authenticates with a database account,
+ * the panel already stores these passwords because MySQL and PostgreSQL keep
+ * only a hash, and the same permission can already reveal them directly — so
+ * this hands the caller nothing new. It is posted as a form body and never put
+ * in a URL.
+ */
+export interface DatabaseConsoleSession {
+  url: string;
+  database: string;
+  username: string;
+  password: string;
+  host?: string;
+}
+
+/**
+ * One line of a DNS template.
+ *
+ * The same shape as a DNSRecord minus the zone: a template is a list of
+ * records with two things left to fill in, not a language.
+ */
+export interface DNSTemplateRecord {
+  id?: string;
+  name: string;
+  type: DNSRecordType;
+  ttl: number;
+  value: string;
+  priority: number;
+  weight: number;
+  port: number;
+  position?: number;
+}
+
+/** A named set of records a new zone is seeded from. */
+export interface DNSTemplate {
+  id: string;
+  server_id: string;
+  name: string;
+  description: string;
+  is_default: boolean;
+  /**
+   * Installed with the panel. Editable, so an operator wanting different
+   * defaults needs no second template, but not removable: deleting the only
+   * one leaves new zones starting with nothing at all.
+   */
+  builtin: boolean;
+  records: DNSTemplateRecord[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** What a template may substitute, as the API reports it. */
+export interface DNSPlaceholder {
+  token: string;
+  means: string;
+}
+
+/** The templates listing. */
+export interface DNSTemplateList {
+  templates: DNSTemplate[] | null;
+  /**
+   * Named by the server rather than hard-coded here. A form offering a
+   * placeholder the panel cannot fill is a template that silently produces a
+   * broken zone weeks later.
+   */
+  placeholders: DNSPlaceholder[] | null;
+}
+
+/** A template to create or replace. The records are the whole list. */
+export interface DNSTemplateInput {
+  name: string;
+  description?: string;
+  is_default?: boolean;
+  records: DNSTemplateRecord[];
 }

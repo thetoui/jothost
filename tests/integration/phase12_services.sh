@@ -175,6 +175,11 @@ log '3. Control'
 
 # nginx_masters — how many nginx master processes this host is running, read
 # from the process table rather than from anything the panel said.
+# Masters of the nginx that serves websites, which is not the only nginx on
+# the host: the panel runs a second one for its own applications, and the
+# kernel calls both of them "nginx". Counting them together made stopping the
+# website nginx look like it had not stopped - the same confusion the panel
+# itself had to be taught to avoid.
 nginx_masters() {
   count=0
   for entry in /proc/[0-9]*; do
@@ -183,7 +188,16 @@ nginx_masters() {
     [ "$name" = "nginx" ] || continue
     # A worker's parent is the master; a master's parent is not nginx. Reading
     # the pid's own cmdline distinguishes them without pattern-matching ps.
-    tr '\0' ' ' < "$entry/cmdline" 2>/dev/null | grep -q 'master process' && count=$((count + 1))
+    cmdline="$(tr '\0' ' ' < "$entry/cmdline" 2>/dev/null)"
+    case "$cmdline" in
+      *'master process'*) ;;
+      *) continue ;;
+    esac
+    # The panel's own instance names its configuration root.
+    case "$cmdline" in
+      */etc/jothost/web/*) continue ;;
+    esac
+    count=$((count + 1))
   done
   printf '%s' "$count"
 }

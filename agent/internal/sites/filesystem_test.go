@@ -316,3 +316,50 @@ func TestDeleteThenCreateDoesNotHandOverTheDirectory(t *testing.T) {
 		t.Fatalf("the retained content is owned by uid %d, not root", got)
 	}
 }
+
+// The placeholder has to be readable by the web server's group.
+//
+// nginx runs as its own unprivileged user and opens the file it serves. The
+// site's directories are 0750 and group-owned by that group, so nginx can
+// walk in; if the index inside is 0600 it cannot open it, and the visitor
+// gets a 403 from a site the panel has just reported as active. The server
+// answers, the vhost is right, the file is there — and every brand-new site
+// is broken until something happens to rewrite it.
+//
+// The umask is the whole point. os.WriteFile's mode argument is filtered by
+// it, and the Agent runs with 0077, so a plain WriteFile(0640) lands as 0600.
+// This test sets that umask deliberately: without it the test passes against
+// the broken code on any developer machine running the usual 0022.
+func TestThePlaceholderIsReadableByTheWebServer(t *testing.T) {
+	requireRoot(t)
+
+	previous := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(previous) })
+
+	p, root := newTestProvisioner(t)
+	layout := layoutFor(t, p, root, "placeholder.test")
+
+	if err := p.Provision(layout, uidFirstSite, uidFirstSite); err != nil {
+		t.Fatalf("Provision: %v", err)
+	}
+	if err := p.WritePlaceholder(layout, "placeholder.test", uidFirstSite, uidFirstSite); err != nil {
+		t.Fatalf("WritePlaceholder: %v", err)
+	}
+
+	index := filepath.Join(layout.Content, "index.html")
+	info, err := os.Stat(index)
+	if err != nil {
+		t.Fatalf("stat the placeholder: %v", err)
+	}
+	if mode := info.Mode().Perm(); mode != indexMode {
+		t.Fatalf("the placeholder is %04o, so the web server's group cannot read it; want %04o",
+			mode, indexMode)
+	}
+
+	// Stated as the property rather than the number, so this still means
+	// something if indexMode is ever changed.
+	if info.Mode().Perm()&0o040 == 0 {
+		t.Fatalf("the placeholder is not group-readable (%04o): every new site would answer 403",
+			info.Mode().Perm())
+	}
+}

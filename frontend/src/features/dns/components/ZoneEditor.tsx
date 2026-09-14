@@ -4,6 +4,7 @@ import { DownloadCloud, KeyRound, Pencil, Plus, Trash2, UploadCloud } from 'luci
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextField, Toggle } from '@/components/ui/Field';
+import { TextLink } from '@/components/ui/Link';
 import { SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
@@ -556,8 +557,20 @@ function RemoteSync({ detail }: { detail: DNSZoneDetail }) {
   const [prune, setPrune] = useState(false);
   const [replace, setReplace] = useState(false);
 
+  // Said rather than hidden. Returning null here left an operator with a zone
+  // editor that never mentioned synchronisation and a panel with nowhere to
+  // enter a credential — the feature existed and nothing pointed at it.
   if (providers.length === 0) {
-    return null;
+    return (
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-slate-900">Publish elsewhere</h3>
+        <p className="text-sm text-slate-600">
+          No DNS provider is connected. Connect one under{' '}
+          <TextLink to="/dns">Providers</TextLink> to publish this zone to it, or to import
+          the records it already has.
+        </p>
+      </section>
+    );
   }
 
   const result = sync.data;

@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/jothost/panel/agent/internal/fsperm"
 )
 
 // Archive errors a caller can act on.
@@ -251,7 +253,7 @@ func (m *Manager) Extract(archivePath, destination string) (ArchiveResult, error
 			// outside every check this package makes.
 			return ArchiveResult{}, ErrArchiveUnsafe
 		case entry.FileInfo().IsDir():
-			if err := os.MkdirAll(path, newDirMode); err != nil {
+			if err := fsperm.MkdirAll(path, newDirMode); err != nil {
 				return ArchiveResult{}, fmt.Errorf("create extracted directory: %w", err)
 			}
 			if err := inheritOwner(path); err != nil {
@@ -308,9 +310,11 @@ func (m *Manager) extractFile(entry *zip.File, path string, budget int64) (int64
 	if budget <= 0 {
 		return 0, ErrArchiveTooLarge
 	}
-	if err := os.MkdirAll(filepath.Dir(path), newDirMode); err != nil {
+	if err := fsperm.MkdirAll(filepath.Dir(path), newDirMode); err != nil {
 		return 0, fmt.Errorf("create directory for extracted file: %w", err)
 	}
+	_, statErr := os.Lstat(path)
+	created := errors.Is(statErr, fs.ErrNotExist)
 
 	source, err := entry.Open()
 	if err != nil {
@@ -322,6 +326,15 @@ func (m *Manager) extractFile(entry *zip.File, path string, budget int64) (int64
 		os.O_CREATE|os.O_TRUNC|os.O_WRONLY, newFileMode)
 	if err != nil {
 		return 0, translate(err)
+	}
+	// Extracting a site's zip is the common way content arrives, and under
+	// the umask every file in it came out 0600: the site extracted, and
+	// answered 403 for all of it. An existing file keeps its mode.
+	if created {
+		if err := fsperm.SetCreated(target, newFileMode); err != nil {
+			_ = target.Close()
+			return 0, err
+		}
 	}
 
 	// One byte past the budget is read deliberately: a copy that stops exactly

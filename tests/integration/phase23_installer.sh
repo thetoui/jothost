@@ -86,7 +86,15 @@ log ""
 
 log "0. A machine with nothing on it"
 
-apk add --no-cache curl >/dev/null 2>&1 || true
+# curl, however this host installs things. The suite runs on Alpine and on
+# Debian with systemd, because the installer picks its package manager and its
+# service manager from what it finds and both branches have to be exercised.
+if ! command -v curl >/dev/null 2>&1; then
+  apk add --no-cache curl >/dev/null 2>&1 ||
+    { apt-get update -qq >/dev/null 2>&1 &&
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl >/dev/null 2>&1; } ||
+    true
+fi
 
 for absent in nginx psql redis-server; do
   if command -v "$absent" >/dev/null 2>&1; then
@@ -169,7 +177,11 @@ elapsed=$(( $(date +%s) - start ))
 log "        (took ${elapsed}s)"
 
 install_out=$(cat /tmp/install.log)
-contains "it reported the host it found" "$install_out" "alpine"
+# The distribution the installer says it found. Asserted rather than ignored:
+# an installer that misidentifies the host carries on with the wrong package
+# manager and the wrong service manager, and every later failure describes a
+# symptom of that rather than the cause.
+contains "it reported the host it found" "$install_out" "${EXPECT_DISTRO:-alpine}"
 contains "it created the administrator" "$install_out" "administrator \"$ADMIN_USER\" created"
 contains "it installed PHP, so the first website can run one" "$install_out" \
   "PHP installed, so the first website can run an application"
@@ -276,6 +288,50 @@ fi
 # route, or a reload of /websites is a 404.
 code=$(curl -s -o /dev/null -w '%{http_code}' -k --max-time 10 "https://$DOMAIN/websites" || true)
 same "a deep link falls through to the application" "$code" "200"
+
+# The panel's own applications are proxied to its private nginx, which runs on
+# loopback and is a different process from the one serving websites. Nothing
+# checked this before, and the failure it hides is a quiet one: with no
+# location block, /phpmyadmin/ falls through to the single-page application
+# above and answers 200 with the panel's own HTML. The browser then fetches
+# what it thinks is phpMyAdmin's login form, parses the panel's index page,
+# finds no CSRF token, and reports that phpMyAdmin returned no login form.
+#
+# So this stands something on the panel's port and checks the answer came from
+# there. A 502 would prove only that *something* is proxied; it would pass
+# just as happily against a proxy aimed at the wrong port.
+panel_port=8791
+probe_reply="proxied-to-the-panel-stack"
+(
+  while true; do
+    # The escapes are spelled out rather than embedded as real CR bytes:
+    # git normalises CRLF in the working tree, which would silently turn
+    # this into a malformed HTTP response the next time it touched the file.
+    printf 'HTTP/1.1 200 OK\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' \
+      "${#probe_reply}" "$probe_reply" |
+      # Two spellings, because the platforms ship different netcats: busybox
+      # wants "-l -p PORT -s ADDR" and OpenBSD's wants "-l ADDR PORT". Getting
+      # it wrong fails silently - the listener never starts, nginx answers 502,
+      # and the check reports a working proxy as broken.
+      { nc -l -p "$panel_port" -s 127.0.0.1 2>/dev/null ||
+        nc -l 127.0.0.1 "$panel_port" 2>/dev/null; } >/dev/null || break
+  done
+) &
+probe_pid=$!
+sleep 1
+
+body=$(curl -s -k --max-time 10 "https://$DOMAIN/phpmyadmin/index.php" 2>/dev/null || true)
+kill "$probe_pid" >/dev/null 2>&1 || true
+wait "$probe_pid" 2>/dev/null || true
+
+case "$body" in
+  *"$probe_reply"*)
+    pass "/phpmyadmin/ is proxied to the panel's own web stack on $panel_port" ;;
+  *"<!doctype html"*|*"<!DOCTYPE html"*)
+    fail "/phpmyadmin/ fell through to the single-page application: no proxy is configured" ;;
+  *)
+    fail "/phpmyadmin/ did not reach the panel's stack on $panel_port (got: $(printf '%.60s' "$body"))" ;;
+esac
 
 # Self-signed was asked for, so the certificate must not be trusted — and the
 # installer must have said so rather than implying otherwise.

@@ -2,6 +2,7 @@ import { request } from '@/services/apiClient';
 import type {
   Database,
   DatabaseConsole,
+  DatabaseConsoleSession,
   DatabaseCreated,
   DatabaseDetail,
   DatabaseEngineName,
@@ -131,4 +132,17 @@ export const consoleApi = {
 
   uninstall: () =>
     request<{ job: unknown }>('/databases/console', { method: 'DELETE' }),
+
+  /**
+   * consoleSession returns what a browser needs to open phpMyAdmin on one
+   * database, signed in.
+   *
+   * POST, and the credentials come back in the body rather than in a URL: a
+   * GET is the shape browsers cache, prefetch and keep in history.
+   */
+  consoleSession: (databaseId: string) =>
+    request<DatabaseConsoleSession>(
+      `/databases/${encodeURIComponent(databaseId)}/console-session`,
+      { method: 'POST' },
+    ),
 };

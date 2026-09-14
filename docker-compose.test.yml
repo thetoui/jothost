@@ -42,7 +42,7 @@ services:
       retries: 20
 
   go-tests:
-    image: golang:1.23-alpine
+    image: golang:1.26-alpine
     working_dir: /src
     environment:
       GOFLAGS: -mod=mod
@@ -147,8 +147,14 @@ services:
   #
   # It is on the dev stack's network because the Agent is what talks to it, and
   # the Agent runs there.
+  #
+  # From quay.io, not Docker Hub. MinIO no longer publishes to Docker Hub and
+  # the Docker Hub tags now refuse to pull, so a machine that had not already
+  # cached this image could not start the backup checks - CI, on its first
+  # run. The same release tags are published on quay.io, where MinIO ships
+  # its images.
   minio:
-    image: minio/minio:RELEASE.2024-09-22T00-33-43Z
+    image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jothost_backup_test}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jothost-backup-test-secret}
@@ -169,7 +175,8 @@ services:
   # on-disk layout is its own business, and a test that depended on it would
   # break on an upgrade for reasons that had nothing to do with this panel.
   minio-init:
-    image: minio/mc:RELEASE.2024-09-16T17-43-14Z
+    # quay.io for the same reason as minio above.
+    image: quay.io/minio/mc:RELEASE.2024-09-16T17-43-14Z
     depends_on:
       minio:
         condition: service_healthy
@@ -267,6 +274,42 @@ services:
       - ./dist:/dist:ro
       - ./tests:/tests:ro
     command: ["sh", "/tests/integration/phase23_installer.sh"]
+
+  # The same installer checks on Debian with systemd, which is the other half
+  # of the installer nothing ever ran. It stays up rather than running the
+  # script as its command, because systemd has to be PID 1 for `systemctl` to
+  # mean anything - so the suite is exec'd into it once it has settled.
+  installer-host-debian:
+    build:
+      context: .
+      dockerfile: docker/installer-debian.Dockerfile
+    privileged: true
+    cgroup: host
+    environment:
+      PANEL_DOMAIN: ${INSTALLER_TEST_DOMAIN:-panel.installer.test}
+      # What the installer is expected to report about the host it found. The
+      # check exists to catch the installer detecting the wrong platform and
+      # carrying on with the wrong package manager.
+      EXPECT_DISTRO: debian
+    volumes:
+      - ./dist:/dist:ro
+      - ./tests:/tests:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+  # A plain container that did not build anything, so the binaries are asked
+  # to run somewhere other than where they were compiled. Debian rather than
+  # Alpine on purpose: a dynamically linked Go binary built on Alpine does not
+  # run here, and the failure is a bare "not found" that names nothing.
+  release-check:
+    image: debian:12-slim
+    working_dir: /src
+    environment:
+      SRC_DIR: /src
+      RELEASE_DIR: /release
+    volumes:
+      - ./:/src:ro
+      - ./release:/release:ro
+    command: ["sh", "/src/tests/integration/release.sh"]
 
 volumes:
   go-build-cache:

@@ -10,6 +10,7 @@ import {
   Wrench,
 } from 'lucide-react';
 
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
 import { Modal } from '@/components/ui/Modal';
@@ -18,6 +19,8 @@ import { ToolGroup, ToolTile } from '@/components/ui/ToolTile';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
 import { ConnectionInfo } from '@/features/databases/components/ConnectionInfo';
+import { useOpenConsole } from '@/features/databases/components/ConsoleLauncher';
+import { useDumpTransfer } from '@/features/databases/components/DumpTransfer';
 import {
   useDatabase,
   useDatabaseConsole,
@@ -39,10 +42,14 @@ export function DatabasePanel({ database }: { database: Database }) {
   const detail = useDatabase(database.id);
   const refresh = useRefreshDatabaseSize();
   const console_ = useDatabaseConsole();
+  const consoleSession = useOpenConsole();
+  const dump = useDumpTransfer(database);
   const [showingConnection, setShowingConnection] = useState(false);
 
   const users = detail.data?.users ?? [];
-  const consoleURL = console_.data?.served ? console_.data.url : undefined;
+  // Served, not merely installed: phpMyAdmin unpacked into a directory that
+  // no vhost points at is not something a browser can open.
+  const consoleServed = Boolean(console_.data?.served && console_.data.url);
 
   return (
     <div className="border-t border-surface-border bg-surface-sunken/40 px-5 py-4">
@@ -50,8 +57,14 @@ export function DatabasePanel({ database }: { database: Database }) {
         <ToolTile
           icon={<Table2 className="h-4 w-4" />}
           label="phpMyAdmin"
-          {...(consoleURL
-            ? { detail: 'Browse and edit tables', tone: 'blue' as const, href: consoleURL }
+          {...(consoleServed
+            ? {
+                detail: consoleSession.isPending
+                  ? 'Signing in…'
+                  : `Open ${database.name} signed in`,
+                tone: 'blue' as const,
+                onClick: () => consoleSession.open(database.id),
+              }
             : { unavailable: 'Install it below to use this' })}
         />
         <ToolTile
@@ -61,20 +74,25 @@ export function DatabasePanel({ database }: { database: Database }) {
           tone="violet"
           onClick={() => setShowingConnection(true)}
         />
+        {/* These two were links to the Backups page, which is a different
+            thing wearing the same word: a backup is an archive of the host,
+            restored whole. This is one database, as a file. */}
         <ToolTile
           icon={<Download className="h-4 w-4" />}
           label="Export dump"
-          detail="Back up this database"
+          detail={dump.state.busy ? 'Working…' : `Download ${database.name}.sql`}
           tone="amber"
-          to="/backups"
+          onClick={() => void dump.exportDump()}
         />
-        <ToolTile
-          icon={<Upload className="h-4 w-4" />}
-          label="Import dump"
-          detail="Restore from a backup"
-          tone="amber"
-          to="/backups"
-        />
+        <RequirePermission permission={Permission.DatabaseManage}>
+          <ToolTile
+            icon={<Upload className="h-4 w-4" />}
+            label="Import dump"
+            detail={dump.state.busy ? 'Working…' : 'Load a .sql file into it'}
+            tone="amber"
+            onClick={dump.chooseFile}
+          />
+        </RequirePermission>
         <ToolTile
           icon={<CopyPlus className="h-4 w-4" />}
           label="Copy database"
@@ -92,6 +110,34 @@ export function DatabasePanel({ database }: { database: Database }) {
           tone="slate"
         />
       </ToolGroup>
+
+      {/* Off-screen, and outside the tile: a file input inside a button is
+          not a control anybody can reach with a keyboard. */}
+      <input
+        ref={dump.input}
+        type="file"
+        accept=".sql,application/sql,text/plain"
+        className="hidden"
+        onChange={dump.onFileChosen}
+      />
+
+      {dump.state.error && (
+        <Alert tone="danger" title="The dump could not be transferred" className="mt-3">
+          {dump.state.error}
+        </Alert>
+      )}
+
+      {dump.state.done && (
+        <Alert tone="success" title="Imported" className="mt-3">
+          {dump.state.done}. Reload the table list in phpMyAdmin to see it.
+        </Alert>
+      )}
+
+      {consoleSession.error && (
+        <Alert tone="danger" title="phpMyAdmin could not be opened" className="mt-3">
+          {consoleSession.error}
+        </Alert>
+      )}
 
       {/* The facts strip Plesk puts under a database. It answers "where is this,
           who can reach it, and how big is it" without opening anything. */}

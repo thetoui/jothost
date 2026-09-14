@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jothost/panel/agent/internal/fsperm"
 	"github.com/jothost/panel/shared/validate"
 )
 
@@ -296,7 +297,7 @@ func extractPrefix(archivePath, prefix, target string) (int, int64, error) {
 	}
 	defer archive.close()
 
-	if err := os.MkdirAll(target, 0o750); err != nil {
+	if err := fsperm.MkdirAll(target, restoredDirMode); err != nil {
 		return 0, 0, fmt.Errorf("%w: %s", ErrRestoreFailed, err)
 	}
 
@@ -336,7 +337,7 @@ func extractPrefix(archivePath, prefix, target string) (int, int64, error) {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(destination, 0o750); err != nil {
+			if err := fsperm.MkdirAll(destination, restoredDirMode); err != nil {
 				return files, bytes, fmt.Errorf("%w: %s", ErrRestoreFailed, err)
 			}
 			dirs = append(dirs, pending{path: destination, mode: header.FileInfo().Mode().Perm()})
@@ -344,7 +345,7 @@ func extractPrefix(archivePath, prefix, target string) (int, int64, error) {
 			if err := safeLinkTarget(target, relative, header.Linkname); err != nil {
 				return files, bytes, err
 			}
-			if err := os.MkdirAll(filepath.Dir(destination), 0o750); err != nil {
+			if err := fsperm.MkdirAll(filepath.Dir(destination), restoredDirMode); err != nil {
 				return files, bytes, fmt.Errorf("%w: %s", ErrRestoreFailed, err)
 			}
 			if err := os.Symlink(header.Linkname, destination); err != nil {
@@ -355,7 +356,7 @@ func extractPrefix(archivePath, prefix, target string) (int, int64, error) {
 				return files, bytes, fmt.Errorf("%w: %s is %d bytes",
 					ErrTooLarge, name, header.Size)
 			}
-			if err := os.MkdirAll(filepath.Dir(destination), 0o750); err != nil {
+			if err := fsperm.MkdirAll(filepath.Dir(destination), restoredDirMode); err != nil {
 				return files, bytes, fmt.Errorf("%w: %s", ErrRestoreFailed, err)
 			}
 			written, err := writeMember(archive.tar, destination,
@@ -382,6 +383,12 @@ func extractPrefix(archivePath, prefix, target string) (int, int64, error) {
 	return files, bytes, nil
 }
 
+// restoredDirMode is what a directory the archive does not describe is
+// created with: the site's own directory convention, owner and web server
+// group. Directories the archive does describe are set to their recorded mode
+// once extraction finishes.
+const restoredDirMode os.FileMode = 0o750
+
 // writeMember writes one file, refusing to follow anything already there.
 //
 // O_EXCL is what makes that true: if a symlink was planted at this path — by an
@@ -393,6 +400,14 @@ func writeMember(source io.Reader, destination string, mode os.FileMode, size in
 	}
 	handle, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
 	if err != nil {
+		return 0, fmt.Errorf("%w: %s", ErrRestoreFailed, err)
+	}
+	// The archive recorded this file's mode, and a restore puts it back. The
+	// umask would not: a site's 0644 files came back 0600, and the restored
+	// site answered 403 to every visitor. O_EXCL means this is always a file
+	// this call created.
+	if err := fsperm.SetCreated(handle, mode); err != nil {
+		_ = handle.Close()
 		return 0, fmt.Errorf("%w: %s", ErrRestoreFailed, err)
 	}
 	written, err := io.Copy(handle, io.LimitReader(source, size))

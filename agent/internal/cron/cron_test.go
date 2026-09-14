@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jothost/panel/agent/internal/testsupport"
 )
 
 // The crontab writer is tested against real files, because what it must get
@@ -66,6 +68,8 @@ func writeFor(t *testing.T, p *Provider, account string, jobs []Job) string {
 }
 
 func TestWriteProducesAnEntryCronCanRead(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, _ := provider(t)
 
 	content := writeFor(t, p, "web_shop", []Job{job(nil)})
@@ -88,6 +92,8 @@ func TestWriteProducesAnEntryCronCanRead(t *testing.T) {
 // `a; b >> log` redirects only b. The half that would be missing from the log
 // is, reliably, the half that failed.
 func TestTheWholeCommandIsRedirected(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, _ := provider(t)
 
 	content := writeFor(t, p, "web_shop", []Job{
@@ -108,6 +114,8 @@ func TestTheWholeCommandIsRedirected(t *testing.T) {
 // The file is shared with whoever else uses this account. What the panel did
 // not write, it does not touch.
 func TestWriteLeavesTheCustomersOwnEntriesAlone(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, spool := provider(t)
 	path := filepath.Join(spool, "web_shop")
 
@@ -136,6 +144,8 @@ func TestWriteLeavesTheCustomersOwnEntriesAlone(t *testing.T) {
 }
 
 func TestWriteReplacesTheBlockRatherThanAppendingAnother(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, _ := provider(t)
 
 	writeFor(t, p, "web_shop", []Job{job(nil)})
@@ -158,6 +168,8 @@ func TestWriteReplacesTheBlockRatherThanAppendingAnother(t *testing.T) {
 // manage jobs rather than refusing until a person repairs a file they may not
 // know exists.
 func TestWriteRecoversFromABlockWithNoEnd(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, spool := provider(t)
 	path := filepath.Join(spool, "web_shop")
 
@@ -195,6 +207,8 @@ func TestADisabledJobIsNotInTheFileAtAll(t *testing.T) {
 // written inside the panel's block would change how the customer's own entries
 // below it behave.
 func TestTheBlockSetsNoEnvironment(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, _ := provider(t)
 
 	content := writeFor(t, p, "web_shop", []Job{job(nil)})
@@ -206,6 +220,8 @@ func TestTheBlockSetsNoEnvironment(t *testing.T) {
 }
 
 func TestWriteRemovesAFileWithNothingLeftInIt(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, spool := provider(t)
 
 	writeFor(t, p, "web_shop", []Job{job(nil)})
@@ -217,6 +233,8 @@ func TestWriteRemovesAFileWithNothingLeftInIt(t *testing.T) {
 }
 
 func TestTheCrontabIsPrivate(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, spool := provider(t)
 	writeFor(t, p, "web_shop", []Job{job(nil)})
 
@@ -290,6 +308,8 @@ func TestLogPathsStayInTheLogDirectory(t *testing.T) {
 // per job that nothing in the panel can name, sitting in the log viewer for
 // ever.
 func TestRemovingAnAccountsBlockTakesItsJobLogsWithIt(t *testing.T) {
+	testsupport.RequireRoot(t)
+
 	p, spool := provider(t)
 
 	first := job(nil)

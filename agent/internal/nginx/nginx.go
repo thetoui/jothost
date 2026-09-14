@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/jothost/panel/agent/internal/command"
@@ -37,6 +38,18 @@ type Provider struct {
 	// procRoot is where worker processes are observed, so a drain can be
 	// waited for. Configurable so tests need no real nginx.
 	procRoot string
+	// configPath and prefix name a private nginx instance. Empty means the
+	// host's own nginx, started by its init system and reading /etc/nginx.
+	//
+	// The panel runs a second instance for its own applications, so a website
+	// whose configuration nginx refuses cannot take phpMyAdmin down with it,
+	// and a website the panel writes can never be confused with one of the
+	// panel's own. Both instances are driven through this one type, so the
+	// allowlisting, the validate-before-reload rule and the drain wait are
+	// written once.
+	instanceConfig string
+	instancePrefix string
+	instanceLog    string
 }
 
 // Options configures a Provider.
@@ -47,6 +60,17 @@ type Options struct {
 	SitesDir string
 	// ProcRoot defaults to /proc.
 	ProcRoot string
+	// ConfigPath and Prefix select a private instance. Both empty means the
+	// host's own nginx; setting them makes every command carry -c and -p.
+	ConfigPath string
+	Prefix     string
+	// ErrorLog is where a private instance writes errors it hits before it has
+	// parsed its own error_log directive.
+	//
+	// Without it nginx opens its compiled-in default, which is relative and so
+	// resolves against Prefix — a path inside the panel's tree that nothing
+	// created, and the instance refuses to start over it.
+	ErrorLog string
 }
 
 // DefaultSitesDir is where generated vhosts live.
@@ -62,11 +86,45 @@ func NewProvider(opts Options) *Provider {
 	if procRoot == "" {
 		procRoot = DefaultProcRoot
 	}
-	return &Provider{
+	provider := &Provider{
 		runner:   opts.Runner,
 		sitesDir: filepath.Clean(sitesDir),
 		procRoot: filepath.Clean(procRoot),
 	}
+	if opts.ConfigPath != "" {
+		provider.instanceConfig = filepath.Clean(opts.ConfigPath)
+	}
+	if opts.Prefix != "" {
+		provider.instancePrefix = filepath.Clean(opts.Prefix)
+	}
+	if opts.ErrorLog != "" {
+		provider.instanceLog = filepath.Clean(opts.ErrorLog)
+	}
+	return provider
+}
+
+// Private reports whether this provider drives an instance of the panel's own
+// rather than the host's nginx.
+func (p *Provider) Private() bool { return p.instanceConfig != "" }
+
+// args prefixes a command with the flags that select this instance.
+//
+// Every nginx invocation goes through here. An instance flag left off one
+// command is the failure that is hardest to see: the command succeeds, against
+// the wrong nginx.
+func (p *Provider) args(rest ...string) []string {
+	if p.instanceConfig == "" {
+		return rest
+	}
+	out := make([]string, 0, len(rest)+4)
+	if p.instancePrefix != "" {
+		out = append(out, "-p", p.instancePrefix)
+	}
+	out = append(out, "-c", p.instanceConfig)
+	if p.instanceLog != "" {
+		out = append(out, "-e", p.instanceLog)
+	}
+	return append(out, rest...)
 }
 
 // Available reports whether nginx can be used.
@@ -114,6 +172,8 @@ func (p *Provider) configPath(domain string) (string, error) {
 // restored if validation fails, so a bad generated config can never leave
 // nginx unable to reload — which would take every other site down with it.
 func (p *Provider) WriteSite(ctx context.Context, cfg SiteConfig) (string, error) {
+	cfg.LegacyHTTP2 = p.LegacyHTTP2(ctx)
+
 	rendered, err := Render(cfg)
 	if err != nil {
 		return "", err
@@ -265,7 +325,7 @@ func (p *Provider) Validate(ctx context.Context) error {
 		return ErrUnavailable
 	}
 
-	result, err := p.runner.Run(ctx, CommandName, "-t")
+	result, err := p.runner.Run(ctx, CommandName, p.args("-t")...)
 	if err != nil {
 		return fmt.Errorf("run nginx -t: %w", err)
 	}
@@ -288,7 +348,7 @@ func (p *Provider) Reload(ctx context.Context) error {
 		return err
 	}
 
-	result, err := p.runner.Run(ctx, CommandName, "-s", "reload")
+	result, err := p.runner.Run(ctx, CommandName, p.args("-s", "reload")...)
 	if err != nil {
 		return fmt.Errorf("reload nginx: %w", err)
 	}
@@ -318,6 +378,46 @@ func (p *Provider) Version(ctx context.Context) (string, error) {
 }
 
 var versionPattern = regexp.MustCompile(`nginx/([0-9]+\.[0-9]+\.[0-9]+)`)
+
+// http2DirectiveSince is the release that moved HTTP/2 off the listen line.
+//
+// Before 1.25.1 it is `listen 443 ssl http2`; from it, `http2 on;` and a plain
+// listen. Each version rejects the other spelling, and a rejected file is not
+// a site without HTTP/2 - nginx refuses to load the whole configuration, so a
+// reload leaves every site on the host serving what it had before.
+var http2DirectiveSince = [3]int{1, 25, 1}
+
+// LegacyHTTP2 reports whether this host needs HTTP/2 on the listen directive.
+//
+// Unknown versions are treated as modern. The alternative is to assume the old
+// spelling on a host whose version could not be read, which would break the
+// common case to protect the rare one - and both Alpine 3.21 (1.26) and the
+// nginx project's own packages are well past the change.
+func (p *Provider) LegacyHTTP2(ctx context.Context) bool {
+	version, err := p.Version(ctx)
+	if err != nil {
+		return false
+	}
+	return olderThan(version, http2DirectiveSince)
+}
+
+// olderThan compares a dotted version against a release.
+func olderThan(version string, than [3]int) bool {
+	parts := strings.SplitN(version, ".", 4)
+	if len(parts) < 3 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		n, err := strconv.Atoi(strings.TrimSpace(parts[i]))
+		if err != nil {
+			return false
+		}
+		if n != than[i] {
+			return n < than[i]
+		}
+	}
+	return false
+}
 
 // readIfExists returns a file's content, reporting whether it was there.
 func readIfExists(path string) ([]byte, bool, error) {
@@ -369,9 +469,16 @@ func validatePath(path string) error {
 		return fmt.Errorf("%w: must be absolute", validate.ErrInvalidPath)
 	case strings.Contains(path, ".."):
 		return fmt.Errorf("%w: must not contain '..'", validate.ErrInvalidPath)
-	case strings.ContainsAny(path, "\x00\n\r;{}"):
+	case strings.ContainsAny(path, "\x00\n\r;{}\"'"):
 		// A newline or brace would let a path close the directive and open a
 		// new one, which is how a path becomes arbitrary nginx configuration.
+		//
+		// The quotes cannot do that — nginx only treats one as a quote at the
+		// start of a token, and mid-token it refuses the file — but a refused
+		// file on a reload means every site on the host keeps serving the
+		// previous configuration until somebody notices. A document root has
+		// no legitimate reason to hold one: these paths are composed from a
+		// domain name and a validated relative path.
 		return fmt.Errorf("%w: contains an illegal character", validate.ErrInvalidPath)
 	default:
 		return nil

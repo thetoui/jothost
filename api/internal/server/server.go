@@ -320,7 +320,11 @@ func New(opts Options) (*Server, error) {
 		PHP:        phpRepo,
 		Jobs:       jobRepo,
 		Audit:      auditRecorder,
-		Log:        log,
+		// Issuance points the certificate's names at this host in the zones
+		// the panel serves first: a name that resolves nowhere fails the
+		// HTTP-01 challenge, and a failed challenge is spent.
+		DNS: dnsService,
+		Log: log,
 	})
 	s.ssl = sslpkg.NewHandler(sslpkg.HandlerOptions{
 		Service: sslService,
@@ -549,6 +553,11 @@ func New(opts Options) (*Server, error) {
 			Zones:    mailZones{dns: dnsService},
 			Agent:    agent,
 			Audit:    auditRecorder,
+			// Installing a mail server goes through the queue: the packages
+			// take minutes and the virus scanner's signature database is
+			// several hundred megabytes, neither of which fits inside a
+			// request the HTTP server closes after API_WRITE_TIMEOUT.
+			Jobs:     jobRepo,
 			Log:      log,
 			ServerID: opts.LocalServerID,
 		}),
@@ -612,6 +621,9 @@ func New(opts Options) (*Server, error) {
 		}),
 		Auth: authService,
 		Log:  log,
+		// So a website's own logs can be served on the website's own routes,
+		// under website.view rather than server.view.
+		Websites: websiteRepo,
 	})
 
 	// The host's packet filter. No state of the panel's own: the provisional
@@ -838,6 +850,7 @@ func (s *Server) routes() http.Handler {
 	s.webserver.Routes(mux)
 	s.services.Routes(mux)
 	s.logs.Routes(mux)
+	s.logs.WebsiteRoutes(mux)
 	s.cron.Routes(mux)
 	s.ssh.Routes(mux)
 	s.fail2ban.Routes(mux)
@@ -845,6 +858,7 @@ func (s *Server) routes() http.Handler {
 	s.mail.Routes(mux)
 	s.deploy.Routes(mux)
 	s.dns.Routes(mux)
+	s.dns.TemplateRoutes(mux)
 	s.updates.Routes(mux)
 	s.auditReader.Routes(mux)
 	s.monitoring.Routes(mux)

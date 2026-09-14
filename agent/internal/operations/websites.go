@@ -12,6 +12,12 @@ import (
 	"github.com/jothost/panel/shared/validate"
 )
 
+// aliasRootPayload is one name with a document root of its own.
+type aliasRootPayload struct {
+	Domain       string `json:"domain"`
+	DocumentRoot string `json:"document_root"`
+}
+
 // websiteCreatePayload describes a website to provision.
 type websiteCreatePayload struct {
 	// WebsiteID is the panel's id for the site. The Agent does not act on it —
@@ -22,8 +28,12 @@ type websiteCreatePayload struct {
 	Domain       string   `json:"domain"`
 	Aliases      []string `json:"aliases"`
 	DocumentRoot string   `json:"document_root"`
-	SystemUser   string   `json:"system_user"`
-	MaxBodySize  string   `json:"max_body_size"`
+	// AliasRoots are the names on this site served from a directory of their
+	// own. Each becomes a server block of its own, because nginx has one root
+	// per block.
+	AliasRoots  []aliasRootPayload `json:"alias_roots"`
+	SystemUser  string             `json:"system_user"`
+	MaxBodySize string             `json:"max_body_size"`
 	// ProxyPort points the vhost at an application on 127.0.0.1 instead of at
 	// files. Zero serves files, which is how a Node.js site becomes static
 	// again.
@@ -104,6 +114,7 @@ func (r *Registry) handleWebsiteCreate(ctx context.Context, req protocol.Request
 	result, err := r.deps.Sites.Create(ctx, sites.CreateRequest{
 		Domain:        payload.Domain,
 		Aliases:       payload.Aliases,
+		AliasRoots:    payload.aliasRoots(),
 		DocumentRoot:  payload.DocumentRoot,
 		SystemUser:    payload.SystemUser,
 		MaxBodySize:   payload.MaxBodySize,
@@ -308,6 +319,7 @@ func (r *Registry) handleWebsiteUpdate(ctx context.Context, req protocol.Request
 	result, err := r.deps.Sites.Update(ctx, sites.UpdateRequest{
 		Domain:        payload.Domain,
 		Aliases:       payload.Aliases,
+		AliasRoots:    payload.aliasRoots(),
 		DocumentRoot:  payload.DocumentRoot,
 		MaxBodySize:   payload.MaxBodySize,
 		PHPSocket:     payload.PHPSocket,
@@ -446,4 +458,32 @@ func websiteError(err error) error {
 	default:
 		return err
 	}
+}
+
+// aliasRoots converts the payload's per-name roots for the site manager.
+//
+// Nothing is validated here: the manager re-checks every name and every path
+// against the site's own directory, which is the only place that knows where
+// that is. Checking in two places and trusting the first is how a check gets
+// removed from the one that mattered.
+func (p websiteCreatePayload) aliasRoots() []sites.AliasRoot {
+	return toAliasRoots(p.AliasRoots)
+}
+
+// toAliasRoots converts the payload form for the site manager.
+//
+// Shared by every operation that rewrites a vhost. Each of them rewrites the
+// whole file, so one that dropped these would take every alias off its own
+// document root as a side effect of switching PHP version or issuing a
+// certificate - the same failure the certificate and proxy fields in those
+// payloads are commented for.
+func toAliasRoots(payload []aliasRootPayload) []sites.AliasRoot {
+	roots := make([]sites.AliasRoot, 0, len(payload))
+	for _, alias := range payload {
+		roots = append(roots, sites.AliasRoot{
+			Domain:       alias.Domain,
+			DocumentRoot: alias.DocumentRoot,
+		})
+	}
+	return roots
 }

@@ -160,7 +160,22 @@ type Status struct {
 
 	// Antivirus is ClamAV, reported through Rspamd because that is what
 	// actually calls it.
+	//
+	// Its Installed means "scanning is switched on and can work", not "the
+	// package is on the host" - it is off whenever the setting is off, however
+	// complete the install. AntivirusPresent below is the other question.
 	Antivirus Daemon `json:"antivirus"`
+
+	// AntivirusPresent reports whether ClamAV is on this host at all.
+	//
+	// Separate from Antivirus.Installed because the panel has to tell two
+	// states apart that look identical otherwise: a host with no scanner, and
+	// a host with one that nobody has switched on. The first needs a package
+	// download of several hundred megabytes and the second needs a toggle, and
+	// offering the download to somebody who only needs the toggle is how a
+	// setting that says "needs the scanner installed" sits above a scanner
+	// that is installed.
+	AntivirusPresent bool `json:"antivirus_present"`
 
 	// Hostname is what the server currently calls itself, read back from
 	// Postfix rather than from the panel's record — the two disagreeing is

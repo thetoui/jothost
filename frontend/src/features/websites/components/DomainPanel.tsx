@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Activity,
   Clock,
@@ -12,6 +12,7 @@ import {
   KeyRound,
   Lock,
   Package,
+  Pencil,
   Plug,
   ScrollText,
   Settings2,
@@ -19,7 +20,18 @@ import {
   Terminal,
 } from 'lucide-react';
 
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/Field';
+import { IconButton } from '@/components/ui/IconButton';
 import { LinkButton, TextLink } from '@/components/ui/Link';
+import { Modal } from '@/components/ui/Modal';
+import { RequirePermission } from '@/features/auth/components/RequirePermission';
+import { Permission } from '@/features/auth/permissions';
+import { SiteLogsDialog } from '@/features/websites/components/SiteLogsDialog';
+import { useSetDocumentRoot } from '@/features/websites/hooks';
+import { logsDirFor, relativeRoot } from '@/features/websites/paths';
+import { ApiError } from '@/services/apiClient';
 import { Tabs } from '@/components/ui/Tabs';
 import { ToolGroup, ToolTile } from '@/components/ui/ToolTile';
 import type { Website } from '@/types/api';
@@ -39,6 +51,8 @@ type PanelTab = 'dashboard' | 'hosting';
  */
 export function DomainPanel({ site }: DomainPanelProps) {
   const [tab, setTab] = useState<PanelTab>('dashboard');
+  const [movingRoot, setMovingRoot] = useState(false);
+  const [showingLogs, setShowingLogs] = useState(false);
 
   const files = `/files?path=${encodeURIComponent(site.document_root)}`;
   const detail = `/websites/${site.id}`;
@@ -114,12 +128,14 @@ export function DomainPanel({ site }: DomainPanelProps) {
                   tone={site.php_version ? 'violet' : 'slate'}
                   to={detail}
                 />
+                {/* This site's own logs, not the host's. It used to link to
+                    the site's detail page, which does not show them. */}
                 <ToolTile
                   icon={<ScrollText className="h-4 w-4" />}
                   label="Logs"
-                  detail="Access and error"
+                  detail="This site's requests and errors"
                   tone="amber"
-                  to={detail}
+                  onClick={() => setShowingLogs(true)}
                 />
                 <ToolTile
                   icon={<Clock className="h-4 w-4" />}
@@ -183,10 +199,18 @@ export function DomainPanel({ site }: DomainPanelProps) {
       <dl className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-surface-border pt-3 text-xs text-slate-500">
         <div className="flex gap-1.5">
           <dt>Website at</dt>
-          <dd>
+          <dd className="flex items-center gap-1.5">
             <TextLink to={files} tone="neutral" className="font-mono">
               {site.document_root}
             </TextLink>
+            <RequirePermission permission={Permission.WebsiteUpdate}>
+              <IconButton
+                size="sm"
+                onClick={() => setMovingRoot(true)}
+                label={`Change the document root for ${site.primary_domain}`}
+                icon={<Pencil aria-hidden="true" className="h-3 w-3" />}
+              />
+            </RequirePermission>
           </dd>
         </div>
         <div className="flex gap-1.5">
@@ -195,19 +219,19 @@ export function DomainPanel({ site }: DomainPanelProps) {
         </div>
         <div className="flex gap-1.5">
           <dt>Logs at</dt>
-          <dd className="font-mono text-slate-700">{logsDirFor(site.document_root)}</dd>
+          <dd className="font-mono text-slate-700">{logsDirFor(site.primary_domain)}</dd>
         </div>
       </dl>
+
+      <DocumentRootDialog
+        site={site}
+        open={movingRoot}
+        onClose={() => setMovingRoot(false)}
+      />
+
+      <SiteLogsDialog site={site} open={showingLogs} onClose={() => setShowingLogs(false)} />
     </div>
   );
-}
-
-/** logsDirFor derives a site's log directory from its document root. */
-export function logsDirFor(documentRoot: string): string {
-  // The Agent's layout is <root>/public alongside <root>/logs. Deriving it
-  // rather than storing it keeps the two from drifting apart in the UI.
-  const parent = documentRoot.replace(/\/+$/, '').split('/').slice(0, -1).join('/');
-  return parent ? `${parent}/logs` : documentRoot;
 }
 
 function DomainSummary({ site }: { site: Website }) {
@@ -262,7 +286,7 @@ function HostingFacts({ site }: { site: Website }) {
     <div className="space-y-4">
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         <Fact label="Document root" value={site.document_root} mono />
-        <Fact label="Log directory" value={logsDirFor(site.document_root)} mono />
+        <Fact label="Log directory" value={logsDirFor(site.primary_domain)} mono />
         <Fact label="System user" value={site.system_user} mono />
         <Fact label="PHP version" value={site.php_version ?? 'Static site, no PHP'} />
         <Fact label="Primary domain" value={site.primary_domain} />
@@ -288,3 +312,86 @@ function Fact({ label, value, mono = false }: { label: string; value: string; mo
     </div>
   );
 }
+
+/**
+ * DocumentRootDialog moves where a site is served from.
+ *
+ * The field is relative to the site's own directory, and the prefix is shown
+ * beside it rather than being editable. An operator setting "public/dist"
+ * cannot name another site's files or anywhere outside their own — not because
+ * a check catches it, but because there is nothing to catch: they are not
+ * naming a directory, only a subpath of the one already theirs.
+ */
+function DocumentRootDialog({
+  site,
+  open,
+  onClose,
+}: {
+  site: Website;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const move = useSetDocumentRoot(site.id);
+  const base = `/var/www/${site.primary_domain}`;
+  const current = relativeRoot(site.document_root, base);
+  const [value, setValue] = useState(current);
+
+  useEffect(() => {
+    if (open) {
+      setValue(current);
+      move.reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, current]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Document root"
+      description="Where the web server serves this site from. Somewhere inside the site's own directory."
+      busy={move.isPending}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={move.isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={move.isPending}
+            onClick={() => move.mutate(value.trim(), { onSuccess: onClose })}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {move.error instanceof ApiError && (
+          <Alert tone="danger" title="The document root was not changed">
+            {move.error.message}
+          </Alert>
+        )}
+
+        <TextField
+          id="document-root"
+          label="Served from"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="public"
+          // adornment, not prefix: "prefix" is a real HTML attribute, so
+          // TypeScript accepts it, React passes it to the input, and it
+          // renders nothing at all.
+          adornment={<span className="font-mono text-xs text-slate-500">{base}/</span>}
+          hint="A path inside the site, such as public or public/dist. Leave it empty to serve the site's own directory. It is created if it does not exist yet."
+        />
+
+        <p className="text-xs text-slate-500">
+          The site&rsquo;s logs stay where they are, beside the site rather than inside what is
+          served — an access log under the document root would be a file anybody could fetch.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+

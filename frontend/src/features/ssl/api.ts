@@ -3,6 +3,7 @@ import type {
   JobAccepted,
   SSLCertificateList,
   SSLProvider,
+  SSLIssueAccepted,
   SSLProviders,
   WebsiteSSL,
 } from '@/types/api';
@@ -38,7 +39,7 @@ export const sslApi = {
     ),
 
   issue: ({ websiteId, ...body }: IssueInput) =>
-    request<JobAccepted>(`/websites/${encodeURIComponent(websiteId)}/ssl/issue`, {
+    request<SSLIssueAccepted>(`/websites/${encodeURIComponent(websiteId)}/ssl/issue`, {
       method: 'POST',
       body,
     }),

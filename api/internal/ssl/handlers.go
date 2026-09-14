@@ -183,14 +183,23 @@ func (h *Handler) issue(w http.ResponseWriter, r *http.Request) {
 		request.AutoRenew = *body.AutoRenew
 	}
 
-	job, err := h.service.Issue(ctx, request)
+	result, err := h.service.Issue(ctx, request)
 	if err != nil {
 		httpx.Error(w, r, translate(err))
 		return
 	}
 
 	// 202: the certificate does not exist yet, only the intent to obtain one.
-	accepted(w, r, job)
+	//
+	// The DNS report rides along rather than being left in the log: names the
+	// panel could not point at this host are the usual reason issuance fails,
+	// and the moment to say so is while somebody is still looking at the
+	// dialog they clicked Issue in.
+	payload := map[string]any{"job": result.Job}
+	if result.DNS != nil {
+		payload["dns"] = result.DNS
+	}
+	httpx.WriteJSON(w, r, http.StatusAccepted, httpx.Envelope{Success: true, Data: payload})
 }
 
 func (h *Handler) renew(w http.ResponseWriter, r *http.Request) {

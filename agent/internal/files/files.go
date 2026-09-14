@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jothost/panel/agent/internal/fsperm"
 	"github.com/jothost/panel/agent/internal/pathsec"
 )
 
@@ -255,10 +256,13 @@ func (m *Manager) Mkdir(path string, parents bool) (Entry, error) {
 		return Entry{}, ErrExists
 	}
 
+	// Through fsperm: under the Agent's 0077 umask these came out 0700, a
+	// folder nginx could not enter, so everything later put inside it from
+	// the panel answered 403.
 	if parents {
-		err = os.MkdirAll(resolved, newDirMode)
+		err = fsperm.MkdirAll(resolved, newDirMode)
 	} else {
-		err = os.Mkdir(resolved, newDirMode)
+		err = fsperm.Mkdir(resolved, newDirMode)
 	}
 	if err != nil {
 		if os.IsExist(err) {
@@ -297,6 +301,12 @@ func (m *Manager) Create(path string) (Entry, error) {
 			return Entry{}, ErrNotFound
 		}
 		return Entry{}, fmt.Errorf("create file: %w", err)
+	}
+	// 0640 was asked for and 0600 was made, which nginx - reading site
+	// content through its group - cannot open.
+	if err := fsperm.SetCreated(handle, newFileMode); err != nil {
+		_ = handle.Close()
+		return Entry{}, err
 	}
 	if err := handle.Close(); err != nil {
 		return Entry{}, fmt.Errorf("close new file: %w", err)

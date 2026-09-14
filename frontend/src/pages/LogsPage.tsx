@@ -98,7 +98,17 @@ export function LogsPage() {
             title="Sources"
             icon={<TintedIcon tone="brand" icon={<ScrollText className="h-4 w-4" />} />}
           />
-          <CardBody className="p-0">
+          {/* The list scrolls inside the card rather than growing the page.
+              Every website contributes an access log and an error log, so a
+              host with sixty sites has a picker a hundred and twenty entries
+              long - and the log being read, which sits to the right of it,
+              ends up somewhere above the top of the window. */}
+          {/* A plain div, not CardBody: this region is deliberately unpadded,
+              and CardBody hard-codes p-5, which wins over a p-0 passed in as a
+              class because Tailwind emits p-0 before p-5. The p-0 that was
+              here did nothing, and the inset it left put the sticky heading
+              below the top of the scroll port with a row visible above it. */}
+          <div className="max-h-[calc(100vh-14rem)] overflow-y-auto overscroll-contain">
             {isPending ? (
               <SkeletonRows rows={5} />
             ) : sources.length === 0 ? (
@@ -114,7 +124,7 @@ export function LogsPage() {
                 .filter((group) => group.entries.length > 0)
                 .map((group) => (
                   <div key={group.key} className="border-b border-surface-border last:border-0">
-                    <p className="flex items-center gap-2 px-4 pb-1 pt-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400">
+                    <p className="sticky top-0 z-10 flex items-center gap-2 bg-surface px-4 pb-1 pt-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400">
                       {group.icon}
                       {group.title}
                     </p>
@@ -129,7 +139,7 @@ export function LogsPage() {
                   </div>
                 ))
             )}
-          </CardBody>
+          </div>
         </Card>
 
         {source ? (

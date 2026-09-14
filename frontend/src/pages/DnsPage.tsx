@@ -16,10 +16,14 @@ import { ZoneEditor } from '@/features/dns/components/ZoneEditor';
 import {
   useCreateDNSZone,
   useDNSOverview,
+  useDNSTemplates,
   useDeleteDNSZone,
   useInstallDNS,
+  useRepairDNS,
   useSaveDNSSettings,
 } from '@/features/dns/hooks';
+import { ProviderCard } from '@/features/dns/components/ProviderCard';
+import { TemplateCard } from '@/features/dns/components/TemplateCard';
 import { ApiError } from '@/services/apiClient';
 import type { DNSOverview, DNSZone } from '@/types/api';
 
@@ -110,6 +114,8 @@ export function DnsPage() {
             overview={data}
             onOpen={(id) => setOpenZone(id)}
           />
+          <TemplateCard />
+          <ProviderCard overview={data} />
           <ServerSettings overview={data} />
         </>
       )}
@@ -139,6 +145,7 @@ export function DnsPage() {
  * out loud rather than left to be discovered.
  */
 function HostWarnings({ overview }: { overview: DNSOverview }) {
+  const repair = useRepairDNS();
   const warnings = overview.warnings ?? [];
   const closed = !overview.firewall_open;
 
@@ -158,9 +165,29 @@ function HostWarnings({ overview }: { overview: DNSOverview }) {
       )}
       {!overview.config_included && (
         <Alert tone="warning" title="The name server is not reading the panel's zones">
-          <code className="font-mono text-xs">{overview.config_path}</code> does not include{' '}
-          <code className="font-mono text-xs">{overview.include_path}</code>, so every zone below is
-          written to disk and served by nobody.
+          <p>
+            <code className="font-mono text-xs">{overview.config_path}</code> does not include{' '}
+            <code className="font-mono text-xs">{overview.include_path}</code>, so every zone below
+            is written to disk and served by nobody.
+          </p>
+          {/* The repair is the same reconcile a zone change runs, and it was
+              reachable only by opening Name server settings and saving them
+              unchanged — which is not a thing anybody would guess from this
+              message. */}
+          <RequirePermission permission={Permission.DNSManage}>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="mt-2"
+              loading={repair.isPending}
+              onClick={() => repair.mutate()}
+            >
+              Rewrite the configuration
+            </Button>
+          </RequirePermission>
+          {repair.error instanceof ApiError && (
+            <p className="mt-2 text-danger-700">{repair.error.message}</p>
+          )}
         </Alert>
       )}
       {warnings.map((warning) => (
@@ -200,11 +227,7 @@ function ServerCard({ overview }: { overview: DNSOverview }) {
         <Detail label="Zone files">
           <code className="font-mono text-xs">{overview.zone_dir}</code>
         </Detail>
-        <Detail label="Answers on">
-          {overview.listen_on && overview.listen_on.length > 0
-            ? overview.listen_on.join(', ')
-            : 'every address'}
-        </Detail>
+        <Detail label="Answers on">{listenSummary(overview.listen_on)}</Detail>
         <Detail label="Signing">
           {overview.supports_dnssec
             ? 'Available — named generates the keys and rolls them over itself'
@@ -213,6 +236,19 @@ function ServerCard({ overview }: { overview: DNSOverview }) {
       </CardBody>
     </Card>
   );
+}
+
+/**
+ * listenSummary says which addresses the name server answers on.
+ *
+ * "any" is dropped rather than printed. BIND has a separate setting for IPv4
+ * and IPv6, so a server listening on everything reports it twice and the page
+ * used to say "any, any" - which reads like a configuration error and is
+ * really the ordinary default.
+ */
+function listenSummary(addresses: string[] | null | undefined): string {
+  const named = (addresses ?? []).filter((address) => address !== 'any');
+  return named.length > 0 ? [...new Set(named)].join(', ') : 'every address';
 }
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
@@ -349,6 +385,8 @@ function CreateZoneDialog({
   const [masters, setMasters] = useState('');
 
   const defaultNS = overview?.settings.default_ns ?? [];
+  const { data: templates } = useDNSTemplates();
+  const seed = (templates?.templates ?? []).find((template) => template.is_default);
   const failure = create.error instanceof ApiError ? create.error.message : null;
 
   const submit = () => {
@@ -445,8 +483,14 @@ function CreateZoneDialog({
 
         {kind === 'forward' && defaultNS.length > 0 && (
           <p className="text-xs text-slate-500">
-            It will be delegated to {defaultNS.join(', ')}, and starts with address records for the
-            zone itself and www pointing at this host.
+            It will be delegated to {defaultNS.join(', ')}
+            {/* Named rather than described: what a new zone starts with is the
+                default template's business now, and saying "the zone itself and
+                www" here would go quietly out of date the first time somebody
+                edits it. */}
+            {seed
+              ? `, and starts from the ${seed.name} template's ${(seed.records ?? []).length} records.`
+              : ', and starts empty — no template is set as the default.'}
           </p>
         )}
       </div>

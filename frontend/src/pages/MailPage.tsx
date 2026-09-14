@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   AtSign,
@@ -48,7 +48,11 @@ import type {
  * next to what DNS actually publishes, and leads with the difference.
  */
 export function MailPage() {
-  const { data, isPending, isError, error } = useMailOverview();
+  // Poll while a component is being installed on the host. The install is a
+  // job now: it finishes minutes after the request that queued it, and without
+  // this the page goes on saying "not installed" until somebody reloads.
+  const [installing, setInstalling] = useState(false);
+  const { data, isPending, isError, error } = useMailOverview(installing);
 
   return (
     <div className="space-y-5">
@@ -73,7 +77,7 @@ export function MailPage() {
         </Card>
       ) : !data ? null : (
         <>
-          <Health overview={data} />
+          <Health overview={data} onInstalling={setInstalling} />
           <ServerSettings overview={data} />
           <Domains overview={data} />
         </>
@@ -89,7 +93,13 @@ export function MailPage() {
  * customer on the host off the internet at once — a relaying server is on a
  * blocklist within hours and off it in weeks.
  */
-function Health({ overview }: { overview: MailOverview }) {
+function Health({
+  overview,
+  onInstalling,
+}: {
+  overview: MailOverview;
+  onInstalling: (installing: boolean) => void;
+}) {
   const status = overview.status;
 
   if (!status.available) {
@@ -146,10 +156,20 @@ function Health({ overview }: { overview: MailOverview }) {
             <Daemon label="Transport" daemon={status.postfix} />
             <Daemon label="Mailboxes" daemon={status.dovecot} />
             <Daemon label="Filter" daemon={status.rspamd} />
-            <Daemon label="Virus scanner" daemon={status.antivirus} />
+            {/* "present" is the package; the daemon's own installed flag is
+                whether scanning is switched on and able to work. Without this
+                the tile reported a fully installed scanner as "not installed"
+                because nobody had turned it on. */}
+            <Daemon
+              label="Virus scanner"
+              daemon={status.antivirus}
+              present={status.antivirus_present}
+            />
           </dl>
 
           <Ports status={status} />
+
+          <AddComponents status={status} onInstalling={onInstalling} />
 
           {status.queue_length > 0 && (
             <p className="text-xs text-slate-500">
@@ -172,19 +192,125 @@ function Health({ overview }: { overview: MailOverview }) {
   );
 }
 
+/**
+ * AddComponents installs the filter or the scanner on a server that already
+ * has neither.
+ *
+ * They are optional at install time, and until now that was the only time they
+ * could be asked for: the card offering them is shown when the host has no
+ * mail server at all, so a server installed without virus scanning could never
+ * gain it. The status above said "not installed" and the setting below said
+ * "needs the scanner installed", and nothing anywhere installed it.
+ *
+ * Installing again is safe. The operation installs packages and fetches the
+ * signature database; it does not rewrite any mail configuration, so a host
+ * that is already delivering keeps its domains, mailboxes and settings.
+ */
+function AddComponents({
+  status,
+  onInstalling,
+}: {
+  status: MailStatus;
+  onInstalling: (installing: boolean) => void;
+}) {
+  const install = useInstallMail();
+  const missingFilter = !status.rspamd.installed;
+  // The package, not the setting. antivirus.installed is false whenever
+  // scanning is switched off, however complete the install — offering the
+  // download on that would show a several-hundred-megabyte install to somebody
+  // who only needs to turn a toggle on.
+  const missingScanner = !status.antivirus_present;
+
+  // Nothing left to install, so stop the page polling for it.
+  useEffect(() => {
+    if (!missingFilter && !missingScanner) {
+      onInstalling(false);
+    }
+  }, [missingFilter, missingScanner, onInstalling]);
+
+  if (!status.can_install || (!missingFilter && !missingScanner)) {
+    return null;
+  }
+
+  // Exactly the missing half, and only one at a time. Asking for both would
+  // make "Install the spam filter" download several hundred megabytes of virus
+  // signatures nobody pressed a button for; asking for neither would install
+  // nothing. Neither flag removes anything - the operation only adds packages -
+  // so a false here leaves what is already installed alone.
+  const request = { filtering: !missingScanner, antivirus: missingScanner };
+
+  return (
+    <div className="rounded-md border border-surface-border bg-surface-muted p-3">
+      <p className="text-sm text-slate-700">
+        {missingScanner && missingFilter
+          ? 'This server has no spam filter and no virus scanner.'
+          : missingScanner
+            ? 'This server has no virus scanner, so nothing checks mail for malware.'
+            : 'This server has no spam filter.'}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        {missingScanner
+          ? 'The signature database is several hundred megabytes and is downloaded during the install, so this takes a few minutes. Mail keeps being delivered throughout, and nothing already configured is changed.'
+          : 'Installing takes a few minutes. Nothing already configured is changed.'}
+      </p>
+
+      {install.isSuccess && (
+        <p className="mt-2 text-xs text-slate-600">
+          Installing. This page keeps checking; it is safe to leave.
+        </p>
+      )}
+
+      {install.error instanceof ApiError && (
+        <Alert tone="danger" title="It could not be installed" className="mt-2">
+          {install.error.message}
+        </Alert>
+      )}
+
+      <RequirePermission permission={Permission.MailManage}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="mt-2"
+          loading={install.isPending || install.isSuccess}
+          onClick={() =>
+            install.mutate(request, { onSuccess: () => onInstalling(true) })
+          }
+        >
+          {missingScanner ? 'Install virus scanning' : 'Install the spam filter'}
+        </Button>
+      </RequirePermission>
+    </div>
+  );
+}
+
 function Daemon({
   label,
   daemon,
+  present,
 }: {
   label: string;
   daemon: MailStatus['postfix'];
+  /**
+   * Whether the software is on the host, when that is a different question
+   * from `daemon.installed`. Only the virus scanner passes it: its installed
+   * flag means "scanning is on and working", so a scanner nobody has switched
+   * on reads as absent.
+   */
+  present?: boolean;
 }) {
-  const state = !daemon.installed ? 'not installed' : daemon.running ? 'running' : 'stopped';
+  const installed = present ?? daemon.installed;
+  const state = !installed
+    ? 'not installed'
+    : daemon.running
+      ? 'running'
+      : daemon.installed
+        ? 'stopped'
+        : 'off';
   const colour = daemon.running
     ? 'text-ok-700'
-    : daemon.installed
-      ? 'text-danger-700'
-      : 'text-slate-400';
+    : !installed || !daemon.installed
+      ? 'text-slate-400'
+      : 'text-danger-700';
   return (
     <div>
       <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
@@ -369,12 +495,21 @@ function ServerSettings({ overview }: { overview: MailOverview }) {
           onChange={setSpam}
         />
 
+        {/* The description used to say "needs the scanner installed"
+            unconditionally, on a host where it was installed and on one where
+            it was not. It now says which of those this host is, and the
+            toggle is disabled when there is nothing to switch on. */}
         <Toggle
           id="mail-virus"
           label="Scan for viruses"
-          description="Needs the scanner installed. Its signature database is several hundred megabytes."
+          description={
+            overview.status.antivirus_present
+              ? 'The scanner is installed on this host.'
+              : 'The scanner is not installed on this host yet. Install it from the mail server card above.'
+          }
           checked={virus}
           onChange={setVirus}
+          disabled={!overview.status.antivirus_present}
         />
 
         <RequirePermission permission={Permission.MailManage}>

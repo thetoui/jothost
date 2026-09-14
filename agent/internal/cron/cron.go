@@ -56,6 +56,16 @@ const (
 	DefaultLogDir = "/var/log/jothost/cron"
 )
 
+const (
+	// logDirMode lets every job's account reach its own log. The logs inside
+	// are private to their accounts; entering the directory reveals only job
+	// identifiers.
+	logDirMode os.FileMode = 0o755
+	// jobLogMode is written by the job's account and read by the panel as
+	// root, and by no other site.
+	jobLogMode os.FileMode = 0o640
+)
+
 // Errors returned by this package.
 var (
 	// ErrUnavailable means this host has no cron daemon to schedule with.
@@ -320,17 +330,35 @@ func (p *Provider) lookup(account string) (sites.Account, bool, error) {
 // ensureLog creates a job's log file, owned by the account that will append to
 // it.
 func (p *Provider) ensureLog(id string, owner sites.Account) error {
-	if err := os.MkdirAll(p.logDir, 0o755); err != nil {
+	if err := os.MkdirAll(p.logDir, logDirMode); err != nil {
 		return fmt.Errorf("create the cron log directory: %w", err)
+	}
+	// MkdirAll's mode is filtered by the umask, and the Agent runs with 0077,
+	// so this directory was being created 0700. A job runs as its site's
+	// account, and its crontab line appends to a file in here; an account that
+	// cannot enter the directory cannot open the file, and a shell whose
+	// redirection fails does not run the command at all. Every scheduled job
+	// on a fresh install was fired by cron on time and did nothing.
+	//
+	// Set on every call rather than only on creation, so a host whose
+	// directory already exists at 0700 is repaired by the next job it saves.
+	if err := os.Chmod(p.logDir, logDirMode); err != nil {
+		return fmt.Errorf("open the cron log directory to the jobs' accounts: %w", err)
 	}
 
 	path := p.LogPath(id)
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, jobLogMode)
 	if err != nil {
 		return fmt.Errorf("create the job log: %w", err)
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close the job log: %w", err)
+	}
+	// The same umask would leave this 0600 rather than the 0640 described
+	// below. Harmless today - root reads it - but the mode stated here should
+	// be the mode on disk.
+	if err := os.Chmod(path, jobLogMode); err != nil {
+		return fmt.Errorf("secure the job log: %w", err)
 	}
 
 	// 0640 and owned by the job's account: the account writes it, the panel

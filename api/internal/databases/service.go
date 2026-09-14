@@ -23,8 +23,14 @@ const (
 	ActionDatabaseUserDrop = "database.user.delete"
 	ActionPasswordChange   = "database.user.password"
 	ActionPasswordReveal   = "database.user.reveal"
-	ActionGrantChange      = "database.grant"
-	ActionDatabaseAssign   = "database.assign"
+	// Opening a console hands over the same secret a reveal does, and is
+	// recorded separately: "opened a console on the orders database" and "read
+	// the password for web_shop" answer different questions afterwards.
+	ActionConsoleSession = "database.console.session"
+	ActionDatabaseExport = "database.export"
+	ActionDatabaseImport = "database.import"
+	ActionGrantChange    = "database.grant"
+	ActionDatabaseAssign = "database.assign"
 
 	ResourceTypeDatabase = "database"
 )
@@ -64,6 +70,15 @@ type Agent interface {
 	DatabaseUserPassword(ctx context.Context, requestID string, req agentclient.DatabaseUserRequest) (agentclient.DatabaseUserResult, error)
 	DatabaseUserDelete(ctx context.Context, requestID, engine, username, host string) error
 	DatabaseGrant(ctx context.Context, requestID, engine, username, host, database, privilege string) error
+
+	// Moving a dump in or out. Addressed by token: the API never learns where
+	// the Agent keeps one, so it cannot ask for a file by path.
+	DatabaseExport(ctx context.Context, requestID, engine, name string) (agentclient.DatabaseTransfer, error)
+	DatabaseImport(ctx context.Context, requestID, engine, name, token string) error
+	DatabaseTransferBegin(ctx context.Context, requestID, name string) (agentclient.DatabaseTransfer, error)
+	DatabaseTransferRead(ctx context.Context, requestID, token string, offset int64, length int) (agentclient.TransferChunk, error)
+	DatabaseTransferWrite(ctx context.Context, requestID, token string, data []byte) (int64, error)
+	DatabaseTransferFinish(ctx context.Context, requestID, token string) error
 }
 
 // Service coordinates the panel's records with the host's database servers.
@@ -730,8 +745,17 @@ func Translate(err error) error {
 	case errors.Is(err, ErrDatabaseInUse), errors.Is(err, ErrUserExistsUnmanaged):
 		return httpx.Conflict(err.Error())
 	case errors.Is(err, ErrEngineUnavailable), errors.Is(err, ErrNoServer),
-		errors.Is(err, ErrConsoleUnavailable):
+		errors.Is(err, ErrConsoleUnavailable),
+		// phpMyAdmin not being served is a state of the host, not a bad
+		// request: the page offers to install it rather than reporting the
+		// caller did something wrong.
+		errors.Is(err, ErrConsoleNotServed):
 		return httpx.Unavailable(err.Error())
+	case errors.Is(err, ErrNoConsoleAccount):
+		// A database nothing can sign in to. The message names the database
+		// and the fix is to give an account a grant on it, so this is the
+		// caller's to act on.
+		return httpx.Conflict(err.Error())
 	case errors.Is(err, ErrHostNotSupported), errors.Is(err, ErrInvalidPrivilege),
 		errors.Is(err, validate.ErrInvalidDatabaseName),
 		errors.Is(err, validate.ErrInvalidDatabaseUser),

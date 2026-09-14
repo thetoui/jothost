@@ -28,6 +28,14 @@ type fakeAgent struct {
 	// failCreate makes the host refuse a CREATE DATABASE.
 	failCreate error
 	failGrant  error
+	failExport error
+	failImport error
+	failWrite  error
+	// dump is what an export hands back, and uploaded is what an import was
+	// given. Together they are how a round trip is checked without a database.
+	dump      []byte
+	uploaded  []byte
+	discarded int
 	// lastPassword is what the last user operation was asked to set.
 	lastPassword string
 	// issued is the password the fake reports back, standing in for one the
@@ -138,6 +146,59 @@ func (f *fakeAgent) DatabaseUserDelete(_ context.Context, _, _, username, _ stri
 func (f *fakeAgent) DatabaseGrant(_ context.Context, _, _, username, _, database, privilege string) error {
 	f.calls = append(f.calls, "grant:"+username+":"+database+":"+privilege)
 	return f.failGrant
+}
+
+// The transfer half of the Agent. These record what was asked for and hand
+// back a fixed dump, which is enough for the service's own logic: the bytes
+// themselves are the Agent's business and are covered by its own tests.
+
+func (f *fakeAgent) DatabaseExport(_ context.Context, _, engine, name string) (agentclient.DatabaseTransfer, error) {
+	f.calls = append(f.calls, "export:"+engine+":"+name)
+	if f.failExport != nil {
+		return agentclient.DatabaseTransfer{}, f.failExport
+	}
+	return agentclient.DatabaseTransfer{
+		Token: "0123456789abcdef0123456789abcdef",
+		Name:  name + ".sql",
+		Size:  int64(len(f.dump)),
+	}, nil
+}
+
+func (f *fakeAgent) DatabaseImport(_ context.Context, _, engine, name, token string) error {
+	f.calls = append(f.calls, "import:"+engine+":"+name+":"+token)
+	return f.failImport
+}
+
+func (f *fakeAgent) DatabaseTransferBegin(_ context.Context, _, name string) (agentclient.DatabaseTransfer, error) {
+	f.calls = append(f.calls, "begin:"+name)
+	return agentclient.DatabaseTransfer{Token: "fedcba9876543210fedcba9876543210", Name: name}, nil
+}
+
+func (f *fakeAgent) DatabaseTransferRead(_ context.Context, _, token string, offset int64, length int) (agentclient.TransferChunk, error) {
+	f.calls = append(f.calls, "read:"+token)
+	if offset >= int64(len(f.dump)) {
+		return agentclient.TransferChunk{EOF: true}, nil
+	}
+	end := offset + int64(length)
+	if end > int64(len(f.dump)) {
+		end = int64(len(f.dump))
+	}
+	return agentclient.TransferChunk{
+		Data: f.dump[offset:end],
+		EOF:  end >= int64(len(f.dump)),
+	}, nil
+}
+
+func (f *fakeAgent) DatabaseTransferWrite(_ context.Context, _, token string, data []byte) (int64, error) {
+	f.calls = append(f.calls, "write:"+token)
+	f.uploaded = append(f.uploaded, data...)
+	return int64(len(f.uploaded)), f.failWrite
+}
+
+func (f *fakeAgent) DatabaseTransferFinish(_ context.Context, _, token string) error {
+	f.calls = append(f.calls, "finish:"+token)
+	f.discarded++
+	return nil
 }
 
 // ------------------------------------------------------------------ fixture

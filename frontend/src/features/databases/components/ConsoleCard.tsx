@@ -5,10 +5,10 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, TintedIcon } from '@/components/ui/Card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { TextField } from '@/components/ui/Field';
 import { LinkButton } from '@/components/ui/Link';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
 import { Permission } from '@/features/auth/permissions';
+import { CONSOLE_MOUNT } from '@/features/databases/console';
 import {
   useDatabaseConsole,
   useInstallConsole,
@@ -24,7 +24,6 @@ import {
  * every operator an exposure they did not ask for.
  */
 export function ConsoleCard() {
-  const [serverName, setServerName] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [watching, setWatching] = useState(false);
 
@@ -52,7 +51,6 @@ export function ConsoleCard() {
 
   const served = data?.served ?? false;
   const installed = data?.installed ?? false;
-  const nameError = validateServerName(serverName);
 
   return (
     <Card>
@@ -65,8 +63,8 @@ export function ConsoleCard() {
             : 'Browse and edit table contents in a browser. Not installed.'
         }
         action={
-          served && data?.url ? (
-            <LinkButton href={data.url}>
+          served ? (
+            <LinkButton href={data?.url || CONSOLE_MOUNT}>
               Open
               <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
             </LinkButton>
@@ -78,7 +76,7 @@ export function ConsoleCard() {
         {served ? (
           <>
             <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-              <Fact label="Address" value={data?.server_name ?? ''} mono />
+              <Fact label="Address" value={CONSOLE_MOUNT} mono />
               <Fact label="Running on" value={data?.php_version ? `PHP ${data.php_version}` : '—'} />
             </dl>
 
@@ -108,11 +106,8 @@ export function ConsoleCard() {
               className="space-y-3"
               onSubmit={(event) => {
                 event.preventDefault();
-                if (nameError) {
-                  return;
-                }
                 setWatching(true);
-                install.mutate(serverName.trim().toLowerCase());
+                install.mutate('');
               }}
             >
               {install.isError && (
@@ -129,17 +124,17 @@ export function ConsoleCard() {
                 </Alert>
               )}
 
-              <TextField
-                id="console-server-name"
-                label="Address to serve it on"
-                value={serverName}
-                onChange={(event) => setServerName(event.target.value)}
-                placeholder="phpmyadmin.example.com"
-                autoComplete="off"
-                spellCheck={false}
-                error={serverName ? nameError : null}
-                hint="A name you control and point at this server. There is no default on purpose: a database console on an address nobody chose is one somebody else finds first."
-              />
+              {/* No address to choose. phpMyAdmin is served by the panel's
+                  own nginx on the loopback and reached only through the
+                  panel's /phpmyadmin/ location, so a name typed here reached
+                  nothing — it was displayed as an address and no request could
+                  ever arrive with it. */}
+              <p className="text-sm text-slate-600">
+                It will be served by this panel, at{' '}
+                <code className="font-mono text-xs text-slate-800">{CONSOLE_MOUNT}</code> on the
+                address you are reading this on. It is reachable only by people who can already
+                sign in here.
+              </p>
 
               <div className="flex items-center justify-between gap-3">
                 <p className="flex items-start gap-1.5 text-xs text-slate-500">
@@ -151,7 +146,6 @@ export function ConsoleCard() {
                   type="submit"
                   variant="primary"
                   loading={install.isPending || watching}
-                  disabled={Boolean(nameError)}
                 >
                   Install
                 </Button>
@@ -190,16 +184,3 @@ function Fact({ label, value, mono = false }: { label: string; value: string; mo
   );
 }
 
-/** The same rule the API applies, checked here so a typo costs no round trip. */
-const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
-
-function validateServerName(value: string): string | null {
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed) {
-    return 'An address is required.';
-  }
-  if (!DOMAIN_PATTERN.test(trimmed)) {
-    return 'Enter a full host name, such as phpmyadmin.example.com.';
-  }
-  return null;
-}

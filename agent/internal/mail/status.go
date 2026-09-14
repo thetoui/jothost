@@ -58,6 +58,11 @@ func (p *Provider) Status(ctx context.Context, canInstall bool) Status {
 	status.Ports = p.portStatus(ctx, current)
 	status.QueueLength, status.QueueOldest = p.queueDepth(ctx)
 	status.Antivirus = p.antivirusStatus(ctx, virusConfigured(p.paths))
+	// Whether the package is here at all, which is a different question from
+	// whether scanning is switched on. Without it the panel cannot tell "this
+	// host has no scanner" from "nobody has turned it on", and both read as
+	// "not installed".
+	status.AntivirusPresent = p.SupportsAntivirus()
 	status.Signing = p.signingKeysOnDisk()
 	status.OpenRelay = p.relayCheck(ctx)
 

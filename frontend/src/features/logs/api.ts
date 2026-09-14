@@ -1,5 +1,5 @@
 import { API_BASE_URL, request, requestBlob } from '@/services/apiClient';
-import type { LogSourceList, LogTail } from '@/types/api';
+import type { LogSource, LogSourceList, LogTail } from '@/types/api';
 
 /** What a tail request asks for. */
 export interface TailParams {
@@ -39,4 +39,29 @@ export const logsApi = {
 
   /** The URL a download came from, for the filename the browser saves under. */
   downloadUrl: (key: string) => `${API_BASE_URL}/logs/${encodeURIComponent(key)}/download`,
+};
+
+/**
+ * A website's own logs.
+ *
+ * Separate endpoints, and deliberately so: /logs needs server.view, which is
+ * the permission for reading the whole machine — every site's traffic, the
+ * mail queue, the authentication log. Somebody who looks after one website can
+ * read that website's logs without being handed all of that.
+ */
+export const websiteLogsApi = {
+  list: (websiteId: string, signal?: AbortSignal) =>
+    request<{ domain: string; logs: LogSource[] }>(
+      `/websites/${encodeURIComponent(websiteId)}/logs`,
+      signal ? { signal } : {},
+    ),
+
+  tail: (websiteId: string, kind: string, params: TailParams = {}, signal?: AbortSignal) =>
+    request<LogTail>(
+      `/websites/${encodeURIComponent(websiteId)}/logs/${encodeURIComponent(kind)}${query(params)}`,
+      signal ? { signal } : {},
+    ),
+
+  downloadUrl: (websiteId: string, kind: string) =>
+    `${API_BASE_URL}/websites/${encodeURIComponent(websiteId)}/logs/${encodeURIComponent(kind)}/download`,
 };

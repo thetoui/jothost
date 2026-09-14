@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -88,10 +89,11 @@ var (
 
 // Catalogue is the set of logs this panel reads on any host.
 //
-// Per-website logs are deliberately absent: a site's own access and error logs
-// belong on that site's page, next to the site they describe, and Phase 4
-// already serves them there. Adding them here as well would be two routes to
-// one file, each with its own idea of who may read it.
+// Per-website logs are not in here. They are a site's own, they belong on that
+// site's page next to the site they describe, and they are read through the
+// website routes so that somebody who may see one site is not thereby given
+// every log on the machine. SiteSources builds them; the Agent serves them
+// through the same tail and download machinery as everything else.
 func Catalogue() []Source {
 	return []Source{
 		{
@@ -301,6 +303,61 @@ func PHPSources(versions []string) []Source {
 		})
 	}
 	return sources
+}
+
+// SiteSources builds the log sources for one host's websites.
+//
+// A site's logs live beside the site rather than inside what it serves —
+// <root>/logs, never under the document root — because an access log under the
+// document root is a file anybody can fetch by guessing its name. The path is
+// composed from the domain for the same reason the Agent's layout is: deriving
+// it from the document root was right only while that was exactly one level
+// down, and an operator can now set it to "public/dist".
+func SiteSources(root string, domains []string) []Source {
+	if root == "" {
+		root = "/var/www"
+	}
+
+	sources := make([]Source, 0, len(domains)*2)
+	for _, domain := range domains {
+		normalized := validate.NormalizeDomain(domain)
+		if validate.ServerName(normalized) != nil {
+			// A directory under the site root that is not a domain is not a
+			// site. Skipped rather than refused: the panel does not own every
+			// directory down there.
+			continue
+		}
+
+		dir := path.Join(root, normalized, "logs")
+		sources = append(sources,
+			Source{
+				Key:     SiteSourceKey(normalized, "access"),
+				Label:   normalized + " access",
+				Summary: "Every request this site answered.",
+				Group:   GroupWeb,
+				Format:  FormatNginxAccess,
+				Paths:   []string{path.Join(dir, "access.log")},
+			},
+			Source{
+				Key:     SiteSourceKey(normalized, "error"),
+				Label:   normalized + " errors",
+				Summary: "What went wrong serving this site, including PHP failures.",
+				Group:   GroupWeb,
+				Format:  FormatNginxError,
+				Paths:   []string{path.Join(dir, "error.log")},
+			},
+		)
+	}
+	return sources
+}
+
+// SiteSourceKey names one of a site's logs.
+//
+// One function, so the API and the Agent cannot disagree about what to ask
+// for. The domain is in the key rather than an index, because an index shifts
+// when a site is removed and a bookmarked log would then be somebody else's.
+func SiteSourceKey(domain, kind string) string {
+	return "site." + validate.NormalizeDomain(domain) + "." + kind
 }
 
 // NodeLogRoot is where the Agent's supervisor writes application output.

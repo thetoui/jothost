@@ -41,6 +41,15 @@ func main() {
 }
 
 func run(args []string) error {
+	// Before the configuration is loaded, deliberately. An operator asking a
+	// binary they have just downloaded what it is has no configuration yet,
+	// and refusing to answer until they write one is refusing the one question
+	// worth asking before installing anything.
+	if len(args) > 0 && (args[0] == "version" || args[0] == "-version" || args[0] == "--version") {
+		printVersion("jothost-api")
+		return nil
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -68,6 +77,9 @@ func run(args []string) error {
 		return migrateCommand(cfg, log, args[1:])
 	case "create-admin":
 		return createAdmin(cfg, log)
+	case "version":
+		printVersion("jothost-api")
+		return nil
 	case "help", "-h", "--help":
 		usage()
 		return nil
@@ -75,6 +87,16 @@ func run(args []string) error {
 		usage()
 		return fmt.Errorf("unknown command %q", command)
 	}
+}
+
+// printVersion writes the build stamp in one line.
+//
+// The version first, so `jothost-api version | cut -d' ' -f2` is a stable way
+// to read it from a script, and the commit and build date after it, because
+// "0.1.0" alone does not identify a build when something has been rebuilt.
+func printVersion(name string) {
+	info := version.Current()
+	fmt.Printf("%s %s (commit %s, built %s)\n", name, info.Version, info.Commit, info.BuildDate)
 }
 
 func usage() {

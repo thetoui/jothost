@@ -36,6 +36,7 @@ import (
 	"github.com/jothost/panel/agent/internal/nginx"
 	"github.com/jothost/panel/agent/internal/nodejs"
 	"github.com/jothost/panel/agent/internal/operations"
+	"github.com/jothost/panel/agent/internal/panelweb"
 	"github.com/jothost/panel/agent/internal/php"
 	"github.com/jothost/panel/agent/internal/pma"
 	securitypkg "github.com/jothost/panel/agent/internal/security"
@@ -66,7 +67,23 @@ func main() {
 	// reports the rest, then exits without starting the Agent.
 	repairOwnership := flag.Bool("repair-site-ownership", false,
 		"reassign abandoned site directories to root, report ambiguous ones, and exit")
+	showVersion := flag.Bool("version", false, "print the build stamp and exit")
 	flag.Parse()
+
+	// Answered before the configuration is loaded, deliberately. An operator
+	// asking a binary they have just downloaded what it is has no
+	// configuration yet, and refusing until they write one is refusing the one
+	// question worth asking before installing anything.
+	//
+	// `version` without a dash is accepted too: the API binary takes
+	// subcommands and this one takes flags, and nobody should have to remember
+	// which is which to ask the same question.
+	if *showVersion || (flag.NArg() > 0 && flag.Arg(0) == "version") {
+		info := version.Current()
+		fmt.Printf("jothost-agent %s (commit %s, built %s)\n",
+			info.Version, info.Commit, info.BuildDate)
+		return
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -744,16 +761,32 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		Log:       log,
 	})
 
+	// The panel's own web stack: a private nginx on loopback and a PHP-FPM
+	// master of its own, both reading only the panel's directories. It is what
+	// stops a customer website taking the database console down with it, and
+	// what stops the website system ever seeing the panel's own configuration.
+	panelStack := panelweb.NewManager(panelweb.Options{
+		Runner:        runner,
+		PHP:           phpDetector,
+		WebGroup:      provisioner.WebGroup(),
+		ListenAddress: cfg.PanelWebListen,
+		Log:           log,
+	})
+
 	phpMyAdmin := pma.NewManager(pma.Options{
 		Installer: phpInstaller,
-		FPM:       phpInstaller,
+		Panel:     panelStack,
 		PHP:       phpDetector,
-		Pools:     phpPools,
-		Nginx:     nginxProvider,
 		Users:     sites.NewUserProvider(runner),
 		WebGroup:  provisioner.WebGroup(),
 		Log:       log,
 	})
+
+	// Brought back up if it was installed and is not running. The Agent starts
+	// at boot, so this is what makes the panel's own applications survive a
+	// restart: there is no init unit to enable, because this nginx and this
+	// PHP master are the Agent's own.
+	reconcilePanelStack(panelStack, phpMyAdmin, log)
 
 	// Reverse-proxied sites need one map defined in the http block. Written
 	// here rather than per site, because nginx refuses to start with a
@@ -1015,6 +1048,50 @@ func repairSiteOwnership(cfg config.Config) int {
 	log.Info("site directory ownership repaired",
 		"reassigned", len(repaired), "needing_review", len(findings)-len(repaired))
 	return 0
+}
+
+// reconcilePanelStack brings the panel's own web stack back up after a restart.
+//
+// The panel's nginx and PHP master are started by the Agent rather than by the
+// init system, so nothing else will do this. Before it existed, a restart left
+// phpMyAdmin installed, published, and answering 502 to every request — with
+// the package and the vhost both exactly where they should be, which is the
+// hardest kind of failure to look at and understand.
+//
+// Only if phpMyAdmin is installed. A host that never asked for it should not
+// get a second nginx running on it.
+func reconcilePanelStack(panel *panelweb.Manager, console *pma.Manager, log *slog.Logger) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	status := console.Status(ctx)
+	if !status.Installed {
+		return
+	}
+
+	if err := panel.EnsureLayout(); err != nil {
+		log.Warn("the panel's web stack could not be prepared",
+			logger.KeyError, err.Error())
+		return
+	}
+
+	if status.PHPVersion != "" && !panel.FPMRunning() {
+		if err := panel.StartFPM(ctx, status.PHPVersion); err != nil {
+			log.Warn("the panel's PHP master did not start: phpMyAdmin will answer 502",
+				"version", status.PHPVersion, logger.KeyError, err.Error())
+		} else {
+			log.Info("the panel's PHP master is running", "version", status.PHPVersion)
+		}
+	}
+
+	if !panel.NginxRunning() {
+		if err := panel.StartNginx(ctx); err != nil {
+			log.Warn("the panel's nginx did not start: its own applications are unreachable",
+				logger.KeyError, err.Error())
+		} else {
+			log.Info("the panel's nginx is running", "port", panel.Port())
+		}
+	}
 }
 
 // persistServiceBoot makes sure what is running now comes back after a reboot.

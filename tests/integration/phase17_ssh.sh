@@ -116,6 +116,13 @@ restore() {
     api DELETE "/api/v1/security/ssh/keys/$(printf '%s' "$TEST_FP" | sed 's|/|%2F|g; s|+|%2B|g')?account=root" \
       >/dev/null 2>&1 || true
   fi
+  # Section 3 empties these to reach the no-key refusal at all. Whatever was
+  # there before belongs to the host, not to these checks.
+  for backup in /root/.ssh/authorized_keys.p17bak /home/*/.ssh/authorized_keys.p17bak; do
+    [ -f "$backup" ] || continue
+    cp "$backup" "${backup%.p17bak}" 2>/dev/null || true
+    rm -f "$backup" 2>/dev/null || true
+  done
   rm -f "$DROP_IN" "$DROP_IN.backup" 2>/dev/null || true
   if command -v rc-service >/dev/null 2>&1; then
     rc-service sshd restart >/dev/null 2>&1 || true
@@ -178,6 +185,40 @@ not_contains 'website accounts are not offered SSH keys' "$status" '"name":"web_
 
 log ''
 log '3. What the panel refuses'
+
+# The refusal below only happens when no account has a key, and this script did
+# not put the host in that state - the backup checks authorise a key for their
+# SFTP destination and leave it there, so run after them these checks reported
+# a panel that had failed to refuse when it had correctly allowed.
+#
+# So the precondition is established rather than assumed, and put back
+# afterwards. A check that silently depends on the order its suite happens to
+# run in is a check that will one day accuse the wrong code.
+# Every login account, not just root. The first attempt at this cleared root
+# alone and the panel still allowed the change - correctly, because the
+# deployment checks leave a key on the gitorigin account. "No account has a
+# key" is a statement about the host, and clearing one account does not make
+# it true.
+for keyfile in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do
+  [ -s "$keyfile" ] || continue
+  cp "$keyfile" "$keyfile.p17bak" 2>/dev/null || true
+  : > "$keyfile"
+done
+
+remaining=0
+for keyfile in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do
+  [ -s "$keyfile" ] && remaining=$((remaining + 1))
+done
+if [ "$remaining" -ne 0 ]; then
+  # Not a FAIL of the panel: it is this script saying its own ground is not
+  # what the checks below assume, so their result would mean nothing.
+  printf '  CTRL  %s account(s) still have a key - the refusal below proves nothing
+'     "$remaining"
+  failures=$((failures + 1))
+else
+  printf '  ctrl  no account has a key, so the refusal below is the one meant
+'
+fi
 
 # The classic way to lose a host, and entirely predictable from here. This is a
 # refusal rather than a warning: a warning is something an operator clicks past

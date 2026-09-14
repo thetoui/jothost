@@ -7,6 +7,8 @@ import (
 	"log/slog"
 
 	"github.com/jothost/panel/api/internal/audit"
+	"github.com/jothost/panel/api/internal/dns"
+	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/api/internal/php"
 	"github.com/jothost/panel/api/internal/websites"
@@ -42,7 +44,19 @@ type Service struct {
 	php      *php.Repository
 	jobs     *jobs.Repository
 	audit    *audit.Recorder
+	dns      DNSAligner
 	log      *slog.Logger
+}
+
+// DNSAligner puts the zones this host serves in order before issuance.
+//
+// An interface, and allowed to be nil: a host with no name server installed
+// issues certificates perfectly well against DNS kept somewhere else, and
+// requiring the DNS package here would make that the exception rather than the
+// ordinary case it is.
+type DNSAligner interface {
+	AlignForCertificate(ctx context.Context, actor dns.Actor, requestID string,
+		names []string) (dns.Alignment, error)
 }
 
 // ServiceOptions configure a Service.
@@ -52,7 +66,9 @@ type ServiceOptions struct {
 	PHP        *php.Repository
 	Jobs       *jobs.Repository
 	Audit      *audit.Recorder
-	Log        *slog.Logger
+	// DNS is optional: without it, issuance simply does not touch any zone.
+	DNS DNSAligner
+	Log *slog.Logger
 }
 
 // NewService builds a Service.
@@ -67,6 +83,7 @@ func NewService(opts ServiceOptions) *Service {
 		php:      opts.PHP,
 		jobs:     opts.Jobs,
 		audit:    opts.Audit,
+		dns:      opts.DNS,
 		log:      log,
 	}
 }
@@ -90,11 +107,20 @@ type IssueRequest struct {
 	Actor           Actor
 }
 
+// IssueResult is the queued work, and what the panel did to DNS to make it
+// able to succeed.
+type IssueResult struct {
+	Job jobs.Job `json:"job"`
+	// DNS is nil where no name server is installed, or where the certificate
+	// is self-signed and no authority has to reach anything.
+	DNS *dns.Alignment `json:"dns,omitempty"`
+}
+
 // Issue queues issuance of a certificate for a website.
-func (s *Service) Issue(ctx context.Context, req IssueRequest) (jobs.Job, error) {
+func (s *Service) Issue(ctx context.Context, req IssueRequest) (IssueResult, error) {
 	site, err := s.readySite(ctx, req.WebsiteID)
 	if err != nil {
-		return jobs.Job{}, err
+		return IssueResult{}, err
 	}
 
 	provider := req.Provider
@@ -102,13 +128,17 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (jobs.Job, error)
 		provider = ProviderSelfSigned
 	}
 	if provider != ProviderSelfSigned && provider != ProviderLetsEncrypt {
-		return jobs.Job{}, fmt.Errorf("%w: %q", ErrInvalidProvider, provider)
+		return IssueResult{}, fmt.Errorf("%w: %q", ErrInvalidProvider, provider)
 	}
 
 	names, err := s.certificateNames(ctx, site)
 	if err != nil {
-		return jobs.Job{}, err
+		return IssueResult{}, err
 	}
+
+	// Before anything is asked of a certificate authority: it will resolve
+	// each of these names and fetch a file from whatever answers.
+	alignment := s.alignDNS(ctx, req, provider, names)
 
 	// The record is written before the job so the panel can show what the site
 	// is becoming while issuance runs.
@@ -119,12 +149,12 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (jobs.Job, error)
 		AutoRenew: req.AutoRenew,
 		Status:    StatusIssuing,
 	}); err != nil {
-		return jobs.Job{}, err
+		return IssueResult{}, err
 	}
 
 	payload, err := s.agentPayload(ctx, site, names)
 	if err != nil {
-		return jobs.Job{}, err
+		return IssueResult{}, err
 	}
 	payload["provider"] = provider
 	payload["email"] = req.Email
@@ -144,13 +174,57 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (jobs.Job, error)
 			s.log.Error("failed to reset certificate status after a queue failure",
 				"website_id", site.ID, logger.KeyError, statusErr.Error())
 		}
-		return jobs.Job{}, err
+		return IssueResult{}, err
 	}
 
-	s.record(ctx, req.Actor, ActionSSLIssue, site.ID, map[string]any{
+	metadata := map[string]any{
 		"domain": site.PrimaryDomain, "provider": provider, "job_id": job.ID,
-	})
-	return job, nil
+	}
+	if alignment != nil {
+		metadata["dns_records_added"] = alignment.Added
+		metadata["dns_names_blocked"] = alignment.Blocked
+	}
+	s.record(ctx, req.Actor, ActionSSLIssue, site.ID, metadata)
+
+	return IssueResult{Job: job, DNS: alignment}, nil
+}
+
+// alignDNS points the certificate's names at this host in the zones the panel
+// serves, before anything is asked of a certificate authority.
+//
+// A name that resolves nowhere fails the HTTP-01 challenge, and a failed
+// challenge spends one of the few validation attempts Let's Encrypt allows per
+// hour. Adding the record first is what an operator would otherwise do by hand
+// in another tab a minute before wondering why issuance failed.
+//
+// A failure here does not stop issuance. The panel's zones are one of several
+// places a name can be served from, and refusing to try because this one could
+// not be read would block every host whose DNS lives elsewhere.
+func (s *Service) alignDNS(ctx context.Context, req IssueRequest, provider string,
+	names []string,
+) *dns.Alignment {
+	// Nothing resolves anything for a self-signed certificate: it is written
+	// on this host, and no authority ever looks the name up.
+	if s.dns == nil || provider != ProviderLetsEncrypt {
+		return nil
+	}
+
+	// The request id is passed through because reloading the zone goes to the
+	// Agent, which refuses a request without one. An empty string there fails
+	// the publish, the whole report is discarded, and what is left is a record
+	// in the panel's database that the name server has never read — which
+	// looks, from outside, exactly like the panel having done nothing.
+	alignment, err := s.dns.AlignForCertificate(ctx, dns.Actor{
+		UserID:    req.Actor.UserID,
+		IPAddress: req.Actor.IPAddress,
+		UserAgent: req.Actor.UserAgent,
+	}, httpx.RequestIDFromContext(ctx), names)
+	if err != nil {
+		s.log.Warn("could not prepare DNS for a certificate; issuing anyway",
+			"website_id", req.WebsiteID, logger.KeyError, err.Error())
+		return nil
+	}
+	return &alignment
 }
 
 // Renew queues renewal of an existing certificate.

@@ -302,6 +302,7 @@ drill.
 
 - **No audit-log endpoint**, so the audit trail is not reviewable through the
   panel. Section 5.1; the clearest work left.
+  **Since fixed** (985c20f): `GET /api/v1/audit`, behind `audit.view`.
 - **The "sites keep serving without the Agent" half of drill 2 is not checked
   in development.** In production nginx is its own systemd service and stopping
   `jothost-agent` leaves it running; in the development stack the Agent's
@@ -318,6 +319,10 @@ drill.
   enumerated here and pinned; nothing checks it against an advisory database on
   a schedule. `govulncheck` in the test profile is a small piece of work and is
   not done.
+  **Since fixed in part** (2029513): CI runs `govulncheck` over all three
+  modules on every push and pull request. Its first run found 35
+  vulnerabilities, cleared by moving to Go 1.26. It still does not run on a
+  schedule.
 - **No penetration test by somebody else.** Everything here was written by the
   same hand that wrote what it attacks, which is the fundamental limit of a
   self-audit and no amount of care removes it.

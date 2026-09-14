@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"sync"
 
 	"github.com/jothost/panel/agent/internal/apache"
 	"github.com/jothost/panel/agent/internal/backup"
@@ -102,6 +103,10 @@ type Dependencies struct {
 	// management is not wired up, which handlers report as unsupported.
 	SSL *ssl.Manager
 
+	// DatabaseSpoolDir overrides where dumps in transit are kept. Empty means
+	// database.SpoolDir, which is where they belong; it is configurable so a
+	// test needs no privileged directory.
+	DatabaseSpoolDir string
 	// Databases manages the database servers on the host. Nil, or holding no
 	// reachable engine, means database management is reported as unsupported
 	// rather than failing one operation at a time.
@@ -190,6 +195,11 @@ type Registry struct {
 	deps     Dependencies
 	log      *slog.Logger
 	handlers map[protocol.OperationType]Handler
+
+	// The store for database dumps on their way in or out. Built on first use
+	// so a host that never exports one has no spool directory.
+	transferOnce  sync.Once
+	transferStore *database.TransferStore
 }
 
 // NewRegistry builds the registry with the Phase 2 operation set.
@@ -261,6 +271,12 @@ func NewRegistry(deps Dependencies) *Registry {
 	r.mustRegister(protocol.OperationDatabaseUserDelete, r.handleDatabaseUserDelete)
 	r.mustRegister(protocol.OperationDatabaseUserPassword, r.handleDatabaseUserPassword)
 	r.mustRegister(protocol.OperationDatabaseUserGrant, r.handleDatabaseUserGrant)
+	r.mustRegister(protocol.OperationDatabaseExport, r.handleDatabaseExport)
+	r.mustRegister(protocol.OperationDatabaseImport, r.handleDatabaseImport)
+	r.mustRegister(protocol.OperationDatabaseTransferBegin, r.handleDatabaseTransferBegin)
+	r.mustRegister(protocol.OperationDatabaseTransferRead, r.handleDatabaseTransferRead)
+	r.mustRegister(protocol.OperationDatabaseTransferWrite, r.handleDatabaseTransferWrite)
+	r.mustRegister(protocol.OperationDatabaseTransferFinish, r.handleDatabaseTransferFinish)
 
 	r.mustRegister(protocol.OperationPHPMyAdminStatus, r.handlePHPMyAdminStatus)
 	r.mustRegister(protocol.OperationPHPMyAdminInstall, r.handlePHPMyAdminInstall)

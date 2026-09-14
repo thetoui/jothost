@@ -7,6 +7,9 @@ import type {
   DNSRecordInput,
   DNSSettings,
   DNSSyncResult,
+  DNSTemplate,
+  DNSTemplateInput,
+  DNSTemplateList,
   DNSZone,
   DNSZoneChange,
   DNSZoneDetail,
@@ -34,6 +37,15 @@ export const dnsApi = {
   overview: (signal?: AbortSignal) => request<DNSOverview>('/dns', signal ? { signal } : {}),
 
   install: () => request<DNSOverview>('/dns/install', { method: 'POST' }),
+
+  /**
+   * Rewrites the host's DNS configuration from the panel's record.
+   *
+   * The same reconcile a zone change runs. It answers the warnings the
+   * overview raises — a named.conf not including the panel's zones, zones the
+   * server has not loaded — which until now had no control attached at all.
+   */
+  repair: () => request<DNSOverview>('/dns/repair', { method: 'POST' }),
 
   saveSettings: (settings: Partial<DNSSettings>) =>
     request<DNSSettings>('/dns/settings', { method: 'PUT', body: settings }),
@@ -83,5 +95,20 @@ export const dnsApi = {
     request<DNSSyncResult>(`/dns/zones/${encodeURIComponent(zoneId)}/sync`, {
       method: 'POST',
       body,
+    }),
+
+  templates: (signal?: AbortSignal) =>
+    request<DNSTemplateList>('/dns/templates', signal ? { signal } : {}),
+
+  createTemplate: (body: DNSTemplateInput) =>
+    request<DNSTemplate>('/dns/templates', { method: 'POST', body }),
+
+  /** Replaces a template whole, records included. */
+  updateTemplate: (id: string, body: DNSTemplateInput) =>
+    request<DNSTemplate>(`/dns/templates/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+
+  removeTemplate: (id: string) =>
+    request<{ deleted: boolean }>(`/dns/templates/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     }),
 };

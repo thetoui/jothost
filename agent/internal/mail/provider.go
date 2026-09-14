@@ -125,6 +125,34 @@ func (p *Provider) SupportsFiltering() bool {
 	return p != nil && p.runner != nil && p.runner.Available(CommandRspamadm)
 }
 
+// SupportsAntivirus reports whether ClamAV is on this host at all.
+//
+// The daemon binary, not the signature database and not whether scanning is
+// switched on: this answers "is the package here", which is what decides
+// whether the panel offers to download several hundred megabytes.
+func (p *Provider) SupportsAntivirus() bool {
+	if p == nil {
+		return false
+	}
+	for _, path := range clamdPaths {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+// clamdPaths are where the scanner's daemon lands, by distribution.
+//
+// A file probe rather than a service lookup: the question is whether the
+// package is on the host, and a host that has it but has never started it
+// answers "no" to every service manager.
+var clamdPaths = []string{
+	"/usr/sbin/clamd",
+	"/usr/bin/clamd",
+	"/usr/local/sbin/clamd",
+}
+
 // postfixVersion reads the version Postfix reports about itself.
 func (p *Provider) postfixVersion(ctx context.Context) string {
 	if !p.runner.Available(CommandPostconf) {

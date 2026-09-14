@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/jothost/panel/agent/internal/fsperm"
 	"github.com/jothost/panel/shared/validate"
 )
 
@@ -473,7 +474,11 @@ func (p *Provider) Validate(ctx context.Context, version string) error {
 // site. FPM does not create any of them.
 func (p *Provider) PrepareRuntime(siteRoot string, uid, gid int) error {
 	socketDir := filepath.Join(p.root, SocketDir)
-	if err := os.MkdirAll(socketDir, 0o755); err != nil {
+	// Stated, not requested: under the Agent's 0077 umask a plain MkdirAll
+	// makes this 0700, nginx cannot reach the sockets inside, and every PHP
+	// site answers 502. It is invisible until a reboot, because /run is
+	// emptied at boot and this is the code that recreates the directory.
+	if err := fsperm.MkdirAll(socketDir, 0o755); err != nil {
 		return fmt.Errorf("create socket directory: %w", err)
 	}
 

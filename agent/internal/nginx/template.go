@@ -33,8 +33,31 @@ type SSLConfig struct {
 type SiteConfig struct {
 	// PrimaryDomain is the canonical name. It becomes the first server_name.
 	PrimaryDomain string
-	// Aliases are additional names served by the same site.
+	// FastCGIParams is the file nginx reads the standard FastCGI variables
+	// from. Empty renders the bare name, which nginx resolves against its
+	// prefix — right for the host's nginx and wrong for the panel's own
+	// instance, whose prefix is the panel's tree and contains no such file.
+	FastCGIParams string
+	// Listen overrides the address the site is served on, e.g.
+	// "127.0.0.1:8791". Empty means port 80 on every address, which is what a
+	// customer website wants.
+	//
+	// The panel's own applications set it, because they are served by the
+	// panel's private nginx and reached through its public vhost. A panel
+	// application listening on every address would be a second way in that
+	// nothing authenticates the route to.
+	Listen string
+	// Aliases are additional names served by the same site, from the same
+	// directory. They become extra server_name entries on the site's own
+	// block.
 	Aliases []string
+	// AliasRoots are names on this site served from a directory of their own.
+	//
+	// Each becomes a server block of its own rather than another server_name,
+	// because nginx has one root per server block. See Render: those blocks
+	// are produced by running these same templates again with the name and the
+	// root swapped, so the PHP guards below cannot drift apart from the site's.
+	AliasRoots []AliasRoot
 	// DocumentRoot is the directory nginx serves from.
 	DocumentRoot string
 	// AccessLog and ErrorLog are absolute paths inside the site's log
@@ -59,6 +82,19 @@ type SiteConfig struct {
 	// block is omitted rather than pointing at a certificate that is not there
 	// — which nginx refuses to start with, taking every other site down too.
 	SSL *SSLConfig
+	// LegacyHTTP2 selects the older way of turning HTTP/2 on.
+	//
+	// nginx moved it in 1.25.1: before that it is a parameter on the listen
+	// directive, after it is a directive of its own, and each version rejects
+	// the other's spelling outright. A rejected file is not a site without
+	// HTTP/2 - it is a configuration nginx refuses to load, so a reload leaves
+	// every site on the host serving whatever it had before.
+	//
+	// Debian 12 ships 1.22 and Alpine 3.21 ships 1.26, so both spellings are
+	// live on platforms this panel supports. Provider.WriteSite fills this in
+	// from the installed version; a caller rendering directly has to set it.
+	LegacyHTTP2 bool
+
 	// Directives are additional configuration written into this site's server
 	// block, validated by shared/validate before it reaches here.
 	//
@@ -69,6 +105,14 @@ type SiteConfig struct {
 	// configuration overrides the defaults rather than being silently ignored
 	// underneath them.
 	Directives string
+}
+
+// AliasRoot is a name served from a directory of its own.
+type AliasRoot struct {
+	Domain string
+	// DocumentRoot is absolute, and inside the site's own directory - which
+	// the caller enforces, because this package cannot know where that is.
+	DocumentRoot string
 }
 
 // Redirect is a domain that redirects elsewhere rather than serving content.
@@ -96,8 +140,12 @@ type Redirect struct {
 // attack possible.
 var siteTemplate = template.Must(template.New("site").Parse(`# Managed by JotHost Panel. Manual edits are overwritten.
 server {
+{{- if .Listen }}
+    listen {{ .Listen }};
+{{- else }}
     listen 80;
     listen [::]:80;
+{{- end }}
 
     server_name {{ .PrimaryDomain }}{{ range .Aliases }} {{ . }}{{ end }};
 {{ if and .SSL .SSL.ChallengeRoot }}` + acmeChallengeBlock + `{{ end }}
@@ -155,7 +203,7 @@ server {
         # this line turns any uploaded file into executable code.
         try_files $uri =404;
 
-        include fastcgi_params;
+        include {{ .FastCGIParams }};
         fastcgi_pass unix:{{ .PHPSocket }};
         fastcgi_index index.php;
 
@@ -221,6 +269,13 @@ func Render(cfg SiteConfig) (string, error) {
 	// what makes catch-all routing possible. Everything else a wildcard could
 	// be — a bare asterisk answering for every name on the host, an asterisk
 	// inside a label — is still refused.
+	// The bare name is what the host's nginx wants: it resolves it against its
+	// own prefix, where the distribution put the file. Only a caller serving
+	// from a different prefix has to say where it is.
+	if cfg.FastCGIParams == "" {
+		cfg.FastCGIParams = "fastcgi_params"
+	}
+
 	if err := validate.ServerName(cfg.PrimaryDomain); err != nil {
 		return "", err
 	}
@@ -267,9 +322,44 @@ func Render(cfg SiteConfig) (string, error) {
 		return "", err
 	}
 
+	for _, alias := range cfg.AliasRoots {
+		if err := validate.ServerName(alias.Domain); err != nil {
+			return "", fmt.Errorf("alias %q: %w", alias.Domain, err)
+		}
+		if alias.Domain == cfg.PrimaryDomain {
+			return "", fmt.Errorf(
+				"%w: %q is the site's own name, so it cannot have a root of its own",
+				ErrInvalidConfig, alias.Domain)
+		}
+		if err := validatePath(alias.DocumentRoot); err != nil {
+			return "", fmt.Errorf("document root for %q: %w", alias.Domain, err)
+		}
+	}
+
 	var out bytes.Buffer
 	if err := siteTemplate.Execute(&out, cfg); err != nil {
 		return "", fmt.Errorf("render site config: %w", err)
+	}
+
+	// Each alias with a root of its own gets a server block of its own,
+	// produced by running the templates above again with the name and the root
+	// swapped. Writing a second template for it would mean two copies of the
+	// PHP location block - the one place in this file where a divergence turns
+	// an uploaded image into executable code - so there is deliberately only
+	// ever one, and this loop reuses it.
+	for _, alias := range cfg.AliasRoots {
+		own := cfg
+		own.PrimaryDomain = alias.Domain
+		own.DocumentRoot = alias.DocumentRoot
+		// Cleared, or the alias block would answer for the site's names too
+		// and whichever block nginx read first would win.
+		own.Aliases = nil
+		own.AliasRoots = nil
+
+		out.WriteString("\n")
+		if err := siteTemplate.Execute(&out, own); err != nil {
+			return "", fmt.Errorf("render config for %s: %w", alias.Domain, err)
+		}
 	}
 	return out.String(), nil
 }

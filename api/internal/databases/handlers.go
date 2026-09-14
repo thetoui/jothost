@@ -3,8 +3,12 @@ package databases
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jothost/panel/api/internal/auth"
@@ -66,6 +70,19 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("PATCH /api/v1/databases/{id}/users/{userId}", guarded(h.setGrant))
 
 	mux.Handle("GET /api/v1/databases/console", guarded(h.consoleStatus))
+	// A signed-in session for one database. POST rather than GET: it returns a
+	// credential, and a GET is the shape browsers cache, prefetch and put in
+	// history.
+	mux.Handle("POST /api/v1/databases/{id}/console-session", guarded(h.consoleSession))
+
+	// A dump of one database, as a file. GET because it is a download and
+	// nothing about the database changes; the dump itself is made server-side
+	// and discarded as soon as it has been sent.
+	mux.Handle("GET /api/v1/databases/{id}/export", guarded(h.export))
+	// And the other direction. The body is the .sql file itself rather than a
+	// multipart form: there is one file and no other fields, and a multipart
+	// wrapper would only mean buffering to find its boundaries.
+	mux.Handle("POST /api/v1/databases/{id}/import", guarded(h.importDump))
 	mux.Handle("POST /api/v1/databases/console", guarded(h.installConsole))
 	mux.Handle("DELETE /api/v1/databases/console", guarded(h.uninstallConsole))
 
@@ -572,4 +589,154 @@ func isUUID(value string) bool {
 		}
 	}
 	return true
+}
+
+// consoleSession returns what a browser needs to open phpMyAdmin on one
+// database, already signed in.
+//
+// Guarded by the same permission as revealing a password, because that is what
+// it does: it hands the caller a database credential they could already ask for
+// directly. It is recorded separately in the audit trail all the same.
+func (h *Handler) consoleSession(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+	defer cancel()
+
+	id := r.PathValue("id")
+	if !isUUID(id) {
+		httpx.Error(w, r, httpx.BadRequest("id must be a UUID"))
+		return
+	}
+
+	session, err := h.service.ConsoleSessionFor(ctx, id, actorFrom(r),
+		httpx.RequestIDFromContext(ctx))
+	if err != nil {
+		httpx.Error(w, r, Translate(err))
+		return
+	}
+
+	// No-store, and it is not decoration: this body carries a password, and a
+	// browser or proxy keeping a copy of it is the one way this endpoint
+	// becomes worse than the reveal it is built on.
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.OK(w, r, session)
+}
+
+// ------------------------------------------------------- export and import
+
+// exportTimeout bounds a dump and its download.
+//
+// Longer than an ordinary request: mysqldump on a database of any size takes
+// real time, and the client is waiting for a file rather than a page.
+const exportTimeout = 30 * time.Minute
+
+// maxImportBytes is what this endpoint will read from a client.
+//
+// It matches the Agent's own cap. Enforced here as well so an oversized upload
+// is refused before it has been streamed across the socket a megabyte at a
+// time.
+const maxImportBytes int64 = 2 << 30
+
+// export sends one database as a .sql file.
+func (h *Handler) export(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), exportTimeout)
+	defer cancel()
+	r = r.WithContext(ctx)
+
+	id := r.PathValue("id")
+	if !isUUID(id) {
+		httpx.Error(w, r, httpx.BadRequest("id must be a UUID"))
+		return
+	}
+
+	requestID := httpx.RequestIDFromContext(ctx)
+
+	// The dump is made first, so a failure is still something the client can
+	// be told about. Dumping while streaming would mean discovering half way
+	// through that it had failed, with the headers already sent.
+	info, err := h.service.BeginExport(ctx, id, actorFrom(r), requestID)
+	if err != nil {
+		httpx.Error(w, r, Translate(err))
+		return
+	}
+
+	// octet-stream and an attachment, always. A dump is somebody's data and
+	// there is no reason for a browser to try rendering any of it.
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition",
+		`attachment; filename="`+asciiFilename(info.Filename)+`"`)
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size, 10))
+	w.Header().Set("Cache-Control", "private, no-store")
+
+	written, err := h.service.StreamExport(ctx, info, requestID, w)
+	if err != nil {
+		// The headers are gone, so this cannot become a clean error response.
+		// A truncated body is what tells the client something went wrong, and
+		// the log is where the reason lives.
+		slog.Default().Error("a database export failed while sending",
+			"request_id", requestID, "database_id", id,
+			"written", written, "error", err.Error())
+	}
+}
+
+// importDump loads a .sql file into one database.
+func (h *Handler) importDump(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), exportTimeout)
+	defer cancel()
+	r = r.WithContext(ctx)
+
+	id := r.PathValue("id")
+	if !isUUID(id) {
+		httpx.Error(w, r, httpx.BadRequest("id must be a UUID"))
+		return
+	}
+
+	// The name is a label for the audit trail and nothing else. It is never
+	// used as a path, here or in the Agent.
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		filename = "upload.sql"
+	}
+
+	body := http.MaxBytesReader(w, r.Body, maxImportBytes)
+	defer func() { _ = body.Close() }()
+
+	written, err := h.service.Import(ctx, id, actorFrom(r),
+		httpx.RequestIDFromContext(ctx), filename, body)
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			httpx.Error(w, r, httpx.ValidationFailed(
+				"The file is larger than this panel accepts. Restore a backup instead."))
+			return
+		}
+		httpx.Error(w, r, Translate(err))
+		return
+	}
+
+	httpx.OK(w, r, map[string]any{"loaded": true, "bytes": written})
+}
+
+// asciiFilename reduces a name to what a Content-Disposition can carry
+// unquoted.
+//
+// The name is built by the Agent from a validated database name, so this is
+// belt and braces rather than the only defence — but a header is a header, and
+// a quote or a newline in one is a response-splitting bug waiting to happen.
+func asciiFilename(name string) string {
+	var out strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			out.WriteRune(r)
+		case r == '.' || r == '-' || r == '_':
+			out.WriteRune(r)
+		default:
+			out.WriteRune('_')
+		}
+	}
+	if out.Len() == 0 {
+		return "database.sql"
+	}
+	return out.String()
 }

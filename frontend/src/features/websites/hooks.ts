@@ -168,6 +168,26 @@ export function useRemoveDomain(websiteId: string) {
   });
 }
 
+/**
+ * useSetDomainRoot points one of a site's names at a directory of its own.
+ *
+ * The site's detail is invalidated as well as its domains: the vhost is being
+ * rewritten, so the site goes back through a job and its status changes.
+ */
+export function useSetDomainRoot(websiteId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ domainId, documentRoot }: { domainId: string; documentRoot: string }) =>
+      websitesApi.setDomainRoot(domainId, documentRoot),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(websiteId) });
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.domains(websiteId) });
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.list() });
+    },
+  });
+}
+
 /** useSubdomains lists the sites beneath a website. */
 export function useSubdomains(websiteId: string | undefined) {
   return useQuery({
@@ -223,6 +243,26 @@ export function useSetAllowOverride(websiteId: string) {
 
   return useMutation({
     mutationFn: (allow: boolean) => websitesApi.setAllowOverride(websiteId, allow),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(websiteId) });
+      void queryClient.invalidateQueries({ queryKey: websiteKeys.list() });
+    },
+  });
+}
+
+/**
+ * useSetDocumentRoot moves where a site is served from.
+ *
+ * Both the list and the detail are invalidated, and for a reason worth naming:
+ * moving the document root rewrites the vhost on the host, so what the panel
+ * shows until the refresh lands is the directory the site was served from a
+ * moment ago.
+ */
+export function useSetDocumentRoot(websiteId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (relative: string) => websitesApi.setDocumentRoot(websiteId, relative),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: websiteKeys.detail(websiteId) });
       void queryClient.invalidateQueries({ queryKey: websiteKeys.list() });

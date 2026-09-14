@@ -428,7 +428,37 @@ DELETE /domains/:id
 ```
 
 **As implemented in Phase 4.** `POST` and `DELETE` are implemented and each
-returns the job rewriting the vhost. `PATCH /domains/:id` is not implemented.
+returns the job rewriting the vhost.
+
+`PATCH /domains/:id` changes one name's own settings. It takes `document_root`,
+relative to the site's own directory exactly as the website's own is:
+
+```json
+{ "document_root": "shop" }
+```
+
+and returns **202** with the changed domain and the job rewriting the vhost.
+
+An empty string clears it, putting the name back on the website's document
+root. That is not the same as typing today's path out: a name with no root of
+its own follows the site when the site is moved, and one pinned to a path does
+not. The stored value is `null` for the first and a path for the second.
+
+Aliases only. The primary domain is the site — its path is changed by
+`PATCH /websites/:id`, and two routes writing one value is how they come to
+disagree — so it returns **400**, as does a `redirect`, which answers with a
+Location header and serves no files at all.
+
+nginx has one `root` per server block, so a name with a root of its own is
+given a server block of its own. Those blocks are rendered by running the site
+template again with the name and the root swapped, rather than by a second
+template: the PHP location block is the one place where a divergence turns an
+uploaded file into executable code, so there is deliberately only ever one copy
+of it. The Agent confines each path to the site's own directory on the resolved
+path, so a symlink cannot carry a document root out of a directory it appears
+to be under.
+
+The change is audited as `domain.update`.
 
 Type `alias` and `subdomain` are accepted. Type `redirect` returns **400** for
 now: the Agent can write a redirect vhost but cannot remove a stale one, so
@@ -873,6 +903,41 @@ that does not finish inside the request.
 `GET` reports `installed`, `served`, the address, the PHP version behind it,
 and — when it cannot be installed — why.
 
+```http
+POST   /databases/:id/console-session
+```
+
+Opens phpMyAdmin on one database, signed in as an account that can reach it.
+The response carries `url`, `database`, `username`, `password` and `host`, and
+is sent with `Cache-Control: no-store`.
+
+The password is in the body on purpose. phpMyAdmin authenticates with a
+database account; the panel stores these passwords because MySQL and PostgreSQL
+keep only a hash, and `GET /database-users/:id/password` already reveals them to
+this same permission. A shared administrative account is never used — it would
+give everyone who can open a console full access to every database on the host.
+Where several accounts can reach the database the one with the most access
+wins, and ties break on username so the same database always opens as the same
+account.
+
+`url` is the path the panel proxies phpMyAdmin at on its **own origin**, not the
+hostname the Agent published it under. Behind that path is the panel's own
+nginx and its own PHP-FPM master, separate from the pair that serve customer
+websites — see ARCHITECTURE.md — so a website cannot take the console down. That is forced rather than preferred:
+phpMyAdmin's login is a POST carrying a CSRF token bound to the session cookie
+set on the page the form came from, so a caller must read that page before it
+can sign anybody in, and only same-origin JavaScript may read it. Posting blind
+to phpMyAdmin's own hostname returns the login page every time.
+
+**POST**, never GET, and the credentials go in a form body. In a query string
+the password would land in phpMyAdmin's access log, in the `Referer` of every
+link on the page that follows, and in browser history.
+
+**409** when no account the panel holds a password for can reach the database,
+and **503** when phpMyAdmin is not served on this host. Each session is audited
+as `database.console.session`, recording who opened which database as which
+account — and not the password.
+
 ---
 
 # 15. Database Users
@@ -961,6 +1026,47 @@ rather than 404 — HTTP is a valid configuration, not a missing one.
 
 Issuing and revoking need `ssl.manage`; listing needs only `website.view`.
 
+## Issuance puts this host's own DNS in order first
+
+A Let's Encrypt certificate is obtained over the HTTP-01 challenge: the
+authority resolves every name on the certificate and fetches a file from
+whatever answers. A name resolving nowhere fails, and a failed challenge is
+spent — Let's Encrypt allows a small number per hour and then stops looking.
+
+So before the job is queued, each name that falls inside a primary zone this
+panel serves gets an address record pointing at this host, and the 202 carries
+a report of what happened:
+
+```json
+{
+  "job": { "id": "…", "type": "ssl.issue" },
+  "dns": {
+    "address": "203.0.113.10",
+    "added": 1,
+    "blocked": 0,
+    "names": [
+      { "name": "example.com", "zone": "example.com", "status": "added",
+        "detail": "A record added, pointing at 203.0.113.10" }
+    ]
+  }
+}
+```
+
+`status` is one of `ready` (already points here), `added` (the panel wrote the
+missing record), `elsewhere` (a record names a different machine), `aliased` (a
+CNAME, which may or may not lead here), `not_served` (no zone here covers the
+name) or `no_address` (this host's own address is not known). `blocked` counts
+the first and last of those, which are the two that fail validation.
+
+Only a missing record is ever written. A record naming a different machine is
+reported and left alone: repointing a live domain can take a working site off
+the internet, and nobody clicking Issue is asking for it. A failure to reach
+DNS does not stop issuance — the panel's zones are one of several places a name
+can be served from — and `dns` is then absent, as it is for `selfsigned`, which
+no authority ever resolves anything for.
+
+The change is audited as `dns.certificate.align`.
+
 ---
 
 # 17. DNS
@@ -968,6 +1074,7 @@ Issuing and revoking need `ssl.manage`; listing needs only `website.view`.
 ```http
 GET    /dns
 POST   /dns/install
+POST   /dns/repair
 PUT    /dns/settings
 
 GET    /dns/zones
@@ -1059,8 +1166,17 @@ pushes a zone there. Deleting records the panel does not have is opt-in
 (`prune`): a provider's zone usually holds records added in their dashboard, and
 removing what the panel does not recognise would break them with no warning.
 
+`POST /dns/repair` rewrites the host's DNS configuration from the panel's
+record and returns the refreshed overview. It is the same reconcile every zone
+change already runs, exposed as something an operator can ask for: `GET /dns`
+reports when a host needs it — a `named.conf` that does not include the panel's
+zones means every zone is written to disk and served by nobody — and until this
+existed the only way to reach the repair was to open the name server settings
+and save them unchanged. Idempotent, because it is the reconcile.
+
 `dns.zone.create`, `.update`, `.delete`, `dns.record.create`, `.update`,
-`.delete`, `dns.configure`, `dns.install`, `dns.provider.add`, `.remove` and
+`.delete`, `dns.configure`, `dns.install`, `dns.repair`, `dns.template.save`,
+`.delete`, `dns.certificate.align`, `dns.provider.add`, `.remove` and
 `dns.sync` are audited. A provider token never appears in an audit record.
 
 ---

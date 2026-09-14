@@ -2,6 +2,7 @@ import { request } from '@/services/apiClient';
 import type {
   DocumentRootMode,
   DomainCreated,
+  DomainUpdated,
   DomainList,
   DomainType,
   Job,
@@ -113,8 +114,35 @@ export const websitesApi = {
       body: { allow_override: allow },
     }),
 
+  /**
+   * Moves a site's document root.
+   *
+   * The path is relative to the site's own directory — "public/dist", not
+   * "/var/www/example.com/public/dist". The panel composes the absolute path
+   * from the site's own domain, so an operator cannot name another site's
+   * files, /etc, or anywhere reached with "../": they are not naming a
+   * directory at all, only a subpath of the one already theirs.
+   */
+  setDocumentRoot: (websiteId: string, relative: string) =>
+    request<Website>(`/websites/${encodeURIComponent(websiteId)}`, {
+      method: 'PATCH',
+      body: { document_root: relative },
+    }),
+
   removeDomain: (domainId: string) =>
     request<JobAccepted>(`/domains/${encodeURIComponent(domainId)}`, { method: 'DELETE' }),
+
+  /**
+   * Points one name at a directory of its own.
+   *
+   * The path is relative to the site's directory, as it is for the website
+   * itself; an empty string puts the name back on the website's root.
+   */
+  setDomainRoot: (domainId: string, documentRoot: string) =>
+    request<DomainUpdated>(`/domains/${encodeURIComponent(domainId)}`, {
+      method: 'PATCH',
+      body: { document_root: documentRoot },
+    }),
 };
 
 /** Job API calls. Jobs are how the UI follows work happening on the host. */

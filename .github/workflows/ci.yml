@@ -216,6 +216,9 @@ jobs:
       - name: Build the installable artefacts
         run: make dist
 
+      - name: Build the previous release, to upgrade from
+        run: make dist-previous
+
       - name: Install onto a clean Alpine host
         run: docker compose -f docker-compose.test.yml run --rm installer-test
 
@@ -232,6 +235,15 @@ jobs:
 
       # Two hosts: a panel backup taken on one, restored onto the other with
       # only the archive and the exported key carried across.
+      # The previous release, installed and used through its own API, then
+      # updated to this tree. Every other installer check updates a build to
+      # itself. Not Ubuntu 22.04: the previous release could not sign anybody
+      # in there, so there is no installation of it to upgrade.
+      - name: Upgrade the previous release with data on Debian 12
+        run: sh tests/installer/upgrade.sh upgrade-host-debian
+      - name: Upgrade the previous release with data on Ubuntu 24.04
+        run: sh tests/installer/upgrade.sh upgrade-host-ubuntu-2404
+
       - name: Rebuild a panel on a second host from a panel backup
         run: sh tests/recovery/panel_restore_drill.sh
 

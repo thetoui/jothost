@@ -31,3 +31,5 @@ Thumbs.db
 # Logs and runtime
 *.log
 run/
+dist-previous/
+.previous-release/

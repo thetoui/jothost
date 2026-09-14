@@ -331,6 +331,19 @@ make docker-test-editor       # Phase 7.5 code editor checks
 make verify                   # what CI runs
 ```
 
+The deployment checks install onto whole hosts running systemd, from the
+artefacts in `dist/`:
+
+```bash
+make docker-test-installer-ubuntu  # install onto Ubuntu 22.04 and 24.04
+make docker-test-upgrade           # install the previous release, use it, update to this tree
+make docker-test-panel-restore     # back up a panel on one host, restore it onto another
+```
+
+`docker-test-upgrade` builds the previous release from its tag into
+`dist-previous/` with that release's own Makefile. `PREVIOUS_RELEASE` names it,
+and moves forward when a release is published.
+
 `tests/integration/phase0_smoke.sh` asserts the response envelope, request IDs,
 readiness reporting, the reverse proxy, and that the Agent answers no HTTP
 port. `tests/integration/phase1_auth.sh` asserts the login contract, that

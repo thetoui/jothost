@@ -10,3 +10,5 @@ frontend/coverage
 *.log
 docs
 tests/e2e
+dist-previous
+.previous-release

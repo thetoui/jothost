@@ -66,6 +66,10 @@ var reservedDatabases = map[string]struct{}{
 var reservedDatabaseUsers = map[string]struct{}{
 	"root": {}, "mysql": {}, "mariadb": {}, "postgres": {}, "pgsql": {},
 	"admin": {}, "jothost": {}, "rdsadmin": {}, "healthcheck": {},
+	// The PostgreSQL role the installer creates for the Agent. A customer
+	// allowed to create or drop an account by this name could lock the Agent
+	// out of PostgreSQL, or take its place.
+	"jothost_agent": {},
 	// MariaDB 10.4+ ships these; dropping either breaks the server's own
 	// maintenance scripts.
 	"mariadb.sys": {}, "mysql.sys": {}, "mysql.session": {}, "mysql.infoschema": {},

@@ -84,6 +84,15 @@ PANEL_GROUP=jothost
 PG_DB=jothost
 PG_USER=jothost
 
+# The PostgreSQL role the Agent connects as. The Agent creates and drops
+# customers' databases and roles and dumps them for backups, and it cannot do
+# that as "postgres": that role authenticates by peer, and the Agent is root,
+# not postgres. It is a superuser because what it is asked to do needs one, and
+# that grants nothing new: the Agent is root, and root can already become
+# postgres. It connects over the loopback with a password that lives only in
+# the root-only agent.env.
+AGENT_PG_USER=jothost_agent
+
 # Where the panel's own vhost goes. The numeric prefix keeps it first, so a
 # request for a name no site claims lands on the panel rather than on whichever
 # customer site nginx happened to read first.
@@ -690,6 +699,33 @@ SQL
   fi
 }
 
+# setup_agent_database_role gives the Agent a PostgreSQL account it can use.
+#
+# Before this existed the Agent tried "postgres" over the Unix socket, peer
+# authentication refused root, and the Agent reported PostgreSQL unavailable on
+# every installed host: no customer PostgreSQL databases, and no panel backups.
+#
+# The password is generated once and carried in agent.env, like every other
+# secret here, and set on the role every run. That makes a second run a no-op
+# and lets repair fix a role whose password somebody changed by hand.
+setup_agent_database_role() {
+  AGENT_PG_PASSWORD=$(env_value "$AGENT_ENV" AGENT_POSTGRES_ADMIN_PASSWORD || true)
+  [ -n "$AGENT_PG_PASSWORD" ] || AGENT_PG_PASSWORD=$(generate_secret 24)
+
+  # On stdin, for the reason setup_postgres gives.
+  su postgres -c "psql -v ON_ERROR_STOP=1 -q" >/dev/null <<SQL || die "the Agent's database role could not be created"
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$AGENT_PG_USER') THEN
+    CREATE ROLE $AGENT_PG_USER;
+  END IF;
+END
+\$\$;
+ALTER ROLE $AGENT_PG_USER WITH LOGIN SUPERUSER PASSWORD '$AGENT_PG_PASSWORD';
+SQL
+  ok "role $AGENT_PG_USER for the Agent"
+}
+
 setup_redis() {
   step "Preparing Redis"
 
@@ -834,6 +870,12 @@ AGENT_WEB_GROUP="$(web_group)"
 # The panel's own database, which a panel backup dumps and seals. Named here,
 # never by a request, so that backup type cannot be pointed at another database.
 AGENT_PANEL_DATABASE="$PG_DB"
+# How the Agent reaches PostgreSQL: over the loopback, as its own role. See
+# setup_agent_database_role in the installer.
+AGENT_POSTGRES_HOST="127.0.0.1"
+AGENT_POSTGRES_PORT="5432"
+AGENT_POSTGRES_ADMIN_USER="$AGENT_PG_USER"
+AGENT_POSTGRES_ADMIN_PASSWORD="${AGENT_PG_PASSWORD:?}"
 EOF
   chown root:root "$AGENT_ENV"
   chmod 0600 "$AGENT_ENV"
@@ -1703,6 +1745,7 @@ do_install() {
   create_accounts
   install_artefacts
   setup_postgres
+  setup_agent_database_role
   setup_redis
   write_configuration
   configure_nginx
@@ -1741,6 +1784,7 @@ do_update() {
   # The configuration is rewritten so a new setting gains its default, and
   # every secret in it is carried across unchanged. See write_configuration.
   create_accounts
+  setup_agent_database_role
   write_configuration
   install_services
   as_api "$API_BIN migrate up" >/dev/null || die "the migrations could not be applied"
@@ -1766,6 +1810,7 @@ do_repair() {
 
   create_accounts
   setup_postgres
+  setup_agent_database_role
   setup_redis
   write_configuration
   configure_nginx
@@ -1833,6 +1878,7 @@ do_uninstall() {
     su postgres -c "psql -v ON_ERROR_STOP=1 -q" >/dev/null 2>&1 <<SQL || warn "the panel's database could not be dropped"
 DROP DATABASE IF EXISTS $PG_DB;
 DROP ROLE IF EXISTS $PG_USER;
+DROP ROLE IF EXISTS $AGENT_PG_USER;
 SQL
     rm -rf "$STATE_DIR" "$CONFIG_DIR"
     ok "database, state and configuration removed"

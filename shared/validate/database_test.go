@@ -58,7 +58,7 @@ func TestDatabaseNameRejectsServerOwnedSchemas(t *testing.T) {
 }
 
 func TestDatabaseUserRejectsPrivilegedAccounts(t *testing.T) {
-	for _, name := range []string{"root", "postgres", "admin", "jothost", "mysql"} {
+	for _, name := range []string{"root", "postgres", "admin", "jothost", "jothost_agent", "mysql"} {
 		if err := DatabaseUser(name); err == nil {
 			t.Errorf("DatabaseUser(%q) = nil, want a refusal", name)
 		}

@@ -147,8 +147,14 @@ services:
   #
   # It is on the dev stack's network because the Agent is what talks to it, and
   # the Agent runs there.
+  #
+  # From quay.io, not Docker Hub. MinIO no longer publishes to Docker Hub and
+  # the Docker Hub tags now refuse to pull, so a machine that had not already
+  # cached this image could not start the backup checks - CI, on its first
+  # run. The same release tags are published on quay.io, where MinIO ships
+  # its images.
   minio:
-    image: minio/minio:RELEASE.2024-09-22T00-33-43Z
+    image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jothost_backup_test}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jothost-backup-test-secret}
@@ -169,7 +175,8 @@ services:
   # on-disk layout is its own business, and a test that depended on it would
   # break on an upgrade for reasons that had nothing to do with this panel.
   minio-init:
-    image: minio/mc:RELEASE.2024-09-16T17-43-14Z
+    # quay.io for the same reason as minio above.
+    image: quay.io/minio/mc:RELEASE.2024-09-16T17-43-14Z
     depends_on:
       minio:
         condition: service_healthy

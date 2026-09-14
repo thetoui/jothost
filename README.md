@@ -302,3 +302,7 @@ sweeps every route registered in the source with an account holding no
 permissions, so a route that loses its guard fails a test rather than waiting to
 be noticed. The findings — including one gap left open on purpose — are in that
 document.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

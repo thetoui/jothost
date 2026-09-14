@@ -205,15 +205,31 @@ case "${1:-}" in
     fi
 
     # And with a panel backup recorded, rolling 0030 back is refused rather
-    # than discarding the only record of where the sealed archive went.
-    if as_api migrate down >/tmp/refused.log 2>&1; then
+    # than discarding the only record of where the sealed archive went. The
+    # migrations after 0030 are rolled back first, so this keeps asking about
+    # 0030 as later ones are added, and put back afterwards.
+    systemctl stop jothost-api
+    newest() { as_api migrate status | awk '$2=="applied"{m=$1} END{print m}'; }
+    steps=0
+    while [ "$(newest)" != 0030_panel_backups ] && [ "$steps" -lt 20 ]; do
+      as_api migrate down >/dev/null 2>&1 || break
+      steps=$((steps + 1))
+    done
+    if [ "$(newest)" != 0030_panel_backups ]; then
+      fail "could not roll back to 0030 to check its refusal (newest is $(newest))"
+    elif as_api migrate down >/tmp/refused.log 2>&1; then
       fail "migrate down removed the panel type while a panel backup is recorded"
-      as_api migrate up >/dev/null 2>&1
     elif grep -q 'panel backups or schedules are still recorded' /tmp/refused.log; then
       pass "migrate down is refused while a panel backup is recorded"
     else
       fail "migrate down failed for another reason: $(tail -n 3 /tmp/refused.log | tr '\n' ' ')"
     fi
+    as_api migrate up >/dev/null 2>&1 || fail "the migrations did not reapply after the refusal check"
+    systemctl start jothost-api
+    waited=0
+    until curl -fsS --max-time 5 http://127.0.0.1:8080/readyz >/dev/null 2>&1 || [ "$waited" -ge 60 ]; do
+      sleep 2; waited=$((waited + 2))
+    done
 
     curl -fsS --max-time 5 http://127.0.0.1:8080/readyz >/dev/null 2>&1 && pass "the panel is ready" ||
       fail "the panel is not ready at the end"

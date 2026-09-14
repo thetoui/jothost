@@ -117,6 +117,16 @@ func checkBalance(directives string) error {
 	depth := 0
 	inSingle, inDouble, inComment := false, false, false
 
+	// A quote and a comment are only special to nginx at the start of a token,
+	// never inside one: `add_header X a"b"` is the literal token `a"b"`, and
+	// `a#b` is a token, not a comment. Treating them as special mid-token is
+	// exactly how a block is smuggled past a brace count — `add_header X a";`
+	// hides the `}` that follows behind a quote the balancer opens but nginx
+	// never does. So `#`, `"` and `'` are honoured only at a token boundary,
+	// which is where nginx honours them: the start of the block, or after
+	// whitespace or one of ; { }.
+	boundary := true
+
 	for i := 0; i < len(directives); i++ {
 		c := directives[i]
 
@@ -124,35 +134,53 @@ func checkBalance(directives string) error {
 		case inComment:
 			if c == '\n' {
 				inComment = false
+				boundary = true
 			}
 		case inSingle:
 			if c == '\\' {
 				i++ // an escaped byte is content, whatever it is
 			} else if c == '\'' {
 				inSingle = false
+				boundary = false
 			}
 		case inDouble:
 			if c == '\\' {
 				i++
 			} else if c == '"' {
 				inDouble = false
+				boundary = false
 			}
 		default:
 			switch c {
 			case '#':
-				inComment = true
+				if boundary {
+					inComment = true
+				}
+				boundary = false
 			case '\'':
-				inSingle = true
+				if boundary {
+					inSingle = true
+				}
+				boundary = false
 			case '"':
-				inDouble = true
+				if boundary {
+					inDouble = true
+				}
+				boundary = false
 			case '{':
 				depth++
+				boundary = true
 			case '}':
 				depth--
+				boundary = true
 				if depth < 0 {
 					return fmt.Errorf("%w: a closing brace at offset %d would end the "+
 						"site's own server block", ErrDirectivesUnbalanced, i)
 				}
+			case ' ', '\t', '\n', '\r', ';':
+				boundary = true
+			default:
+				boundary = false
 			}
 		}
 	}
@@ -193,6 +221,11 @@ func splitStatements(directives string) []string {
 	var statements []string
 	var current strings.Builder
 	inSingle, inDouble, inComment := false, false, false
+	// See checkBalance: a quote or comment is nginx syntax only at the start of
+	// a token, so the same boundary rule applies here. Without it the two
+	// functions could disagree about where a string begins, and a directive
+	// name could hide inside what one of them thinks is a quoted value.
+	boundary := true
 
 	flush := func() {
 		if text := strings.TrimSpace(current.String()); text != "" {
@@ -208,6 +241,7 @@ func splitStatements(directives string) []string {
 		case inComment:
 			if c == '\n' {
 				inComment = false
+				boundary = true
 			}
 		case inSingle:
 			current.WriteByte(c)
@@ -216,6 +250,7 @@ func splitStatements(directives string) []string {
 				current.WriteByte(directives[i])
 			} else if c == '\'' {
 				inSingle = false
+				boundary = false
 			}
 		case inDouble:
 			current.WriteByte(c)
@@ -224,22 +259,39 @@ func splitStatements(directives string) []string {
 				current.WriteByte(directives[i])
 			} else if c == '"' {
 				inDouble = false
+				boundary = false
 			}
 		default:
 			switch c {
 			case '#':
-				inComment = true
-				flush()
+				if boundary {
+					inComment = true
+					flush()
+				} else {
+					current.WriteByte(c)
+				}
+				boundary = false
 			case '\'':
-				inSingle = true
+				if boundary {
+					inSingle = true
+				}
 				current.WriteByte(c)
+				boundary = false
 			case '"':
-				inDouble = true
+				if boundary {
+					inDouble = true
+				}
 				current.WriteByte(c)
+				boundary = false
 			case ';', '{', '}', '\n':
 				flush()
+				boundary = true
+			case ' ', '\t', '\r':
+				current.WriteByte(c)
+				boundary = true
 			default:
 				current.WriteByte(c)
+				boundary = false
 			}
 		}
 	}

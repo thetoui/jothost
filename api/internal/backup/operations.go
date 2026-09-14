@@ -52,6 +52,12 @@ func (s *Service) Restore(ctx context.Context, id string, req RestoreRequest, ac
 	if err != nil {
 		return jobs.Job{}, err
 	}
+	// Refused before the confirmation is even read, and to administrators
+	// too. A panel replacing its own database while it is running on it is
+	// the circularity docs/PANEL_BACKUP.md is designed around.
+	if item.Type == validate.BackupPanel {
+		return jobs.Job{}, ErrPanelRestoreOnHost
+	}
 	if strings.TrimSpace(req.Confirm) != item.ID {
 		return jobs.Job{}, fmt.Errorf(
 			"%w: send the backup's own id as the confirmation, because this overwrites live data",
@@ -213,6 +219,9 @@ func (s *Service) Verify(ctx context.Context, id string, requestID string, actor
 	if err != nil {
 		return agentclient.BackupVerifyResult{}, err
 	}
+	if err := requirePanelAuthority(actor, item.Type); err != nil {
+		return agentclient.BackupVerifyResult{}, err
+	}
 	if item.DestinationID == nil || item.Path == nil {
 		return agentclient.BackupVerifyResult{}, fmt.Errorf(
 			"%w: this backup never reached a destination", ErrNotRestorable)
@@ -227,8 +236,14 @@ func (s *Service) Verify(ctx context.Context, id string, requestID string, actor
 	if item.Size != nil {
 		size = *item.Size
 	}
+	// A sealed archive is verified by opening it, which is what proves the key
+	// it will be restored with still opens it - not only that its bytes arrived.
+	sealingKey := ""
+	if item.Type == validate.BackupPanel {
+		sealingKey = s.sealingKey()
+	}
 	result, err := s.agent.BackupVerify(ctx, requestID, *item.Path,
-		stringValue(item.Checksum), size, destination)
+		stringValue(item.Checksum), size, destination, sealingKey)
 	if err != nil {
 		return agentclient.BackupVerifyResult{}, err
 	}
@@ -257,6 +272,9 @@ func (s *Service) Verify(ctx context.Context, id string, requestID string, actor
 func (s *Service) Delete(ctx context.Context, id, requestID string, actor Actor) error {
 	item, err := s.repo.GetBackup(ctx, id)
 	if err != nil {
+		return err
+	}
+	if err := requirePanelAuthority(actor, item.Type); err != nil {
 		return err
 	}
 
@@ -580,6 +598,11 @@ func (s *Service) CreateSchedule(ctx context.Context, input ScheduleInput, actor
 	if err := validate.BackupType(input.Type); err != nil {
 		return Schedule{}, err
 	}
+	// The gate for every run this schedule will make: the scheduler acts for
+	// no one, so a panel schedule is refused here rather than at 3am.
+	if err := requirePanelAuthority(actor, input.Type); err != nil {
+		return Schedule{}, err
+	}
 	if err := validate.ScheduleTime(input.Hour, input.Minute); err != nil {
 		return Schedule{}, err
 	}
@@ -635,7 +658,13 @@ func (s *Service) CreateSchedule(ctx context.Context, input ScheduleInput, actor
 func (s *Service) UpdateSchedule(ctx context.Context, id string, input ScheduleInput,
 	actor Actor,
 ) (Schedule, error) {
-	if _, err := s.repo.GetSchedule(ctx, id); err != nil {
+	existing, err := s.repo.GetSchedule(ctx, id)
+	if err != nil {
+		return Schedule{}, err
+	}
+	// Changing a panel schedule - where it sends the archive, how long it
+	// keeps them - is as sensitive as creating one.
+	if err := requirePanelAuthority(actor, existing.Type); err != nil {
 		return Schedule{}, err
 	}
 
@@ -691,6 +720,9 @@ func (s *Service) DeleteSchedule(ctx context.Context, id string, actor Actor) er
 	if err != nil {
 		return err
 	}
+	if err := requirePanelAuthority(actor, schedule.Type); err != nil {
+		return err
+	}
 	if err := s.repo.DeleteSchedule(ctx, id); err != nil {
 		return err
 	}
@@ -705,13 +737,16 @@ func (s *Service) RunSchedule(ctx context.Context, id string, actor Actor) (Back
 	if err != nil {
 		return Backup{}, err
 	}
+	if err := requirePanelAuthority(actor, schedule.Type); err != nil {
+		return Backup{}, err
+	}
 	return s.runSchedule(ctx, schedule, actor)
 }
 
 // runSchedule queues a schedule's backup, whether asked for by hand or by the
 // scheduler.
 func (s *Service) runSchedule(ctx context.Context, schedule Schedule, actor Actor) (Backup, error) {
-	item, err := s.Create(ctx, CreateRequest{
+	item, err := s.create(ctx, CreateRequest{
 		Type:             schedule.Type,
 		WebsiteID:        stringValue(schedule.WebsiteID),
 		DatabaseID:       stringValue(schedule.DatabaseID),

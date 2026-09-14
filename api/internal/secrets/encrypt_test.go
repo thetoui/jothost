@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/jothost/panel/shared/seal"
 )
 
 const testKey = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
@@ -173,5 +175,38 @@ func TestGenerateKeyProducesUsableKeys(t *testing.T) {
 	}
 	if _, err := e.Decrypt(ciphertext, "ctx"); err != nil {
 		t.Fatalf("Decrypt: %v", err)
+	}
+}
+
+// The Encrypter hands out the backup key derived from ENCRYPTION_KEY, and it is
+// the same one the recovery command derives from the escrowed key - the
+// property a restore onto a new host depends on.
+func TestThePanelBackupKeyMatchesWhatRecoveryDerives(t *testing.T) {
+	hexKey := strings.Repeat("0f", KeyLength)
+	enc, err := NewEncrypter(hexKey)
+	if err != nil {
+		t.Fatalf("NewEncrypter: %v", err)
+	}
+
+	raw, err := seal.ParseHexKey(hexKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := seal.PanelBackupKey(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := enc.PanelBackupKey()
+	if !bytes.Equal(got, want) {
+		t.Fatal("the API's backup key differs from the one recovery derives; a sealed backup could never be restored")
+	}
+	if bytes.Equal(got, raw) {
+		t.Fatal("the backup key is ENCRYPTION_KEY itself")
+	}
+
+	// A copy: a caller that zeroes or reuses it cannot change the next one.
+	got[0] ^= 0xff
+	if !bytes.Equal(enc.PanelBackupKey(), want) {
+		t.Fatal("PanelBackupKey returned the Encrypter's own slice")
 	}
 }

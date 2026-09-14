@@ -528,7 +528,7 @@ func (p *Postgres) query(ctx context.Context, database, sql string) (string, err
 
 	opts := command.Options{Stdin: sql}
 	if p.passFile != "" {
-		opts.Env = map[string]string{"PGPASSFILE": p.passFile}
+		opts.Env = map[string]string{passFileEnv: p.passFile}
 	}
 
 	result, err := p.runner.RunWith(ctx, CommandPsql, opts, args...)

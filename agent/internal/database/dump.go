@@ -59,6 +59,12 @@ type Dumper interface {
 	Reload(ctx context.Context, database, source string) error
 }
 
+// PanelDumper is implemented by the engine that holds the panel's own
+// database. See Postgres.DumpPanel.
+type PanelDumper interface {
+	DumpPanel(ctx context.Context, database, destination string) error
+}
+
 // DumperFor returns the dumper for an engine.
 func (m *Manager) DumperFor(engine string) (Dumper, error) {
 	provider, err := m.Provider(engine)
@@ -212,6 +218,25 @@ func (p *Postgres) Dump(ctx context.Context, database, destination string) error
 	if err := validate.DatabaseName(database); err != nil {
 		return err
 	}
+	return p.dump(ctx, database, destination)
+}
+
+// DumpPanel writes the panel's own database to destination.
+//
+// Dump refuses it, and must: it is reached from a database download as well as
+// a backup, and the panel's database is reserved so that neither can be pointed
+// at it. A panel backup is the one caller that has to dump exactly that
+// database, and it names it from the Agent's configuration, never a request —
+// so the exemption is a separate method rather than a relaxed check on the
+// shared one.
+func (p *Postgres) DumpPanel(ctx context.Context, database, destination string) error {
+	if err := validate.DatabaseIdentifier(database); err != nil {
+		return err
+	}
+	return p.dump(ctx, database, destination)
+}
+
+func (p *Postgres) dump(ctx context.Context, database, destination string) error {
 	if err := checkDumpTarget(destination); err != nil {
 		return err
 	}
@@ -237,7 +262,7 @@ func (p *Postgres) Dump(ctx context.Context, database, destination string) error
 
 	opts := command.Options{}
 	if p.passFile != "" {
-		opts.Env = map[string]string{"PGPASSFILE": p.passFile}
+		opts.Env = map[string]string{passFileEnv: p.passFile}
 	}
 
 	result, err := p.runner.RunWith(ctx, CommandPgDump, opts, args...)
@@ -280,7 +305,7 @@ func (p *Postgres) Reload(ctx context.Context, database, source string) error {
 
 	opts := command.Options{}
 	if p.passFile != "" {
-		opts.Env = map[string]string{"PGPASSFILE": p.passFile}
+		opts.Env = map[string]string{passFileEnv: p.passFile}
 	}
 
 	result, err := p.runner.RunWith(ctx, CommandPsql, opts, args...)

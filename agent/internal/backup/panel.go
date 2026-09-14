@@ -1,11 +1,13 @@
 package backup
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/jothost/panel/agent/internal/database"
 	"github.com/jothost/panel/shared/seal"
 	"github.com/jothost/panel/shared/validate"
 )
@@ -159,4 +161,22 @@ func archiveIsSealed(path string) (bool, error) {
 		return false, fmt.Errorf("read the archive: %w", err)
 	}
 	return seal.HasMagic(prefix[:n]), nil
+}
+
+// dump writes one database for a backup.
+//
+// A panel backup goes through the engine's panel-only dump, which is the one
+// path that accepts the panel's reserved database name. Every other type goes
+// through the ordinary dump, which refuses it.
+func (p *Provider) dump(ctx context.Context, dumper database.Dumper, spec DatabaseSpec,
+	backupType, destination string,
+) error {
+	if backupType != validate.BackupPanel {
+		return dumper.Dump(ctx, spec.Name, destination)
+	}
+	panelDumper, ok := dumper.(database.PanelDumper)
+	if !ok {
+		return fmt.Errorf("the %s engine cannot dump the panel's database", spec.Engine)
+	}
+	return panelDumper.DumpPanel(ctx, spec.Name, destination)
 }

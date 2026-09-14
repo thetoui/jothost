@@ -386,10 +386,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 			Name: database.CommandMysqldump, Path: cfg.MysqldumpPath,
 			Timeout: 6 * time.Hour,
 		},
-		{
-			Name: database.CommandPgDump, Path: cfg.PgDumpPath,
-			Timeout: 6 * time.Hour,
-		},
+		database.PgDumpSpec(cfg.PgDumpPath),
 		{
 			Name: backuppkg.CommandSFTP, Path: cfg.SFTPPath,
 			Timeout: 6 * time.Hour,
@@ -423,13 +420,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		command.Spec{
 			Name: database.CommandMySQL, Path: cfg.MySQLPath, Timeout: 30 * time.Second,
 		},
-		command.Spec{
-			Name: database.CommandPsql, Path: cfg.PsqlPath, Timeout: 30 * time.Second,
-			// psql is the only program in the Agent permitted an environment
-			// variable from a caller, and only this one: it is how the admin
-			// password reaches libpq without passing through argv.
-			AllowedEnv: []string{"PGPASSFILE"},
-		},
+		database.PsqlSpec(cfg.PsqlPath),
 	)
 
 	runner, err := command.NewRunner(specs...)

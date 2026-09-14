@@ -88,6 +88,20 @@ jobs:
         working-directory: ${{ matrix.module }}
         run: go test -p 1 -race -count=1 ./...
 
+      # A short run of every fuzz target on each push. The seed corpus alone
+      # is exercised by `go test`; this drives the fuzzer itself for a bounded
+      # time so a regression in a validator's boundary shows up as a failing
+      # build rather than waiting for someone to run it by hand. The shared
+      # module is where the validators and their fuzz targets live.
+      - name: fuzz the validators
+        if: matrix.module == 'shared'
+        working-directory: shared
+        run: |
+          for target in $(grep -roh '^func Fuzz[A-Za-z0-9_]*' ./validate | sed 's/^func //'); do
+            echo "--- $target"
+            go test ./validate/ -run="^$target\$" -fuzz="^$target\$" -fuzztime=30s
+          done
+
       # The Agent runs as root and the API holds every credential the panel
       # has. A known advisory in a dependency is worth failing a build for.
       - name: govulncheck

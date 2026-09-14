@@ -87,6 +87,51 @@ server {`,
 	}
 }
 
+// TestDirectivesRefuseAMidTokenQuoteEscape is the bug the fuzzing found.
+//
+// nginx only treats a quote as a string delimiter at the start of a token:
+// `add_header X a"` is the literal token `a"`, not the opening of a string. The
+// balancer used to honour a quote anywhere, so this payload opened a string in
+// the panel's eyes — hiding the `}` that closes the site's own server block —
+// while nginx read that `}` for real and started a second server block.
+// Verified against nginx 1.26: the old input passed the validator and loaded
+// with two server blocks.
+func TestDirectivesRefuseAMidTokenQuoteEscape(t *testing.T) {
+	escapes := map[string]string{
+		"double quote glued to a token": `add_header X-A a";
+}
+server {
+    listen 8081;
+    server_name victim.example;
+    return 200 injected;
+    add_header X-B b";`,
+		"single quote glued to a token": `add_header X-A a';
+}
+server {
+    listen 8082;
+    server_name victim.example;
+    return 200 injected;
+    add_header X-B b';`,
+	}
+	for name, directives := range escapes {
+		t.Run(name, func(t *testing.T) {
+			if err := validate.NginxDirectives(directives); !errors.Is(err, validate.ErrDirectivesUnbalanced) {
+				t.Fatalf("a mid-token quote hiding a brace must be refused, got %v", err)
+			}
+		})
+	}
+}
+
+// TestDirectivesRefuseAMidTokenHashHidingABrace guards the same rule for
+// comments: `x#` is a token, not the start of a comment, so a `}` after a
+// mid-token `#` is real to nginx and must be counted.
+func TestDirectivesRefuseAMidTokenHashHidingABrace(t *testing.T) {
+	if err := validate.NginxDirectives(`add_header X a#};
+server { listen 8083; server_name victim.example; return 200 x;`); err == nil {
+		t.Fatal("a mid-token # must not hide the braces that follow it")
+	}
+}
+
 // TestDirectivesRefuseAnUnclosedBlock.
 //
 // The mistake rather than the attack, and just as damaging: an unclosed brace

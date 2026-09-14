@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jothost/panel/agent/internal/fsperm"
 	"github.com/jothost/panel/agent/internal/pathsec"
 )
 
@@ -134,7 +135,11 @@ func NewProvisioner(root, webGroup string) (*Provisioner, error) {
 
 	// The directory must exist before the validator resolves it, or a symlink
 	// check later has nothing to resolve against.
-	if err := os.MkdirAll(clean, 0o755); err != nil {
+	// fsperm, so a host without the directory gets one nginx can walk into.
+	// Under the Agent's umask a plain MkdirAll made it 0700, and every site
+	// beneath it would have been unreachable. An existing /var/www is left as
+	// the operator has it.
+	if err := fsperm.MkdirAll(clean, 0o755); err != nil {
 		return nil, fmt.Errorf("create site root %s: %w", clean, err)
 	}
 

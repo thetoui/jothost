@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/jothost/panel/agent/internal/fsperm"
 )
 
 // Chunk is one slice of a file's content.
@@ -132,6 +134,15 @@ func (m *Manager) Write(req WriteRequest) (Entry, error) {
 	handle, err := os.OpenFile(resolved, flags, newFileMode) //nolint:gosec // resolved and root-checked
 	if err != nil {
 		return Entry{}, translate(err)
+	}
+	// A new upload gets the mode stated; the umask would otherwise leave it
+	// 0600 and unservable. A file that already existed keeps the mode it had,
+	// which somebody may have chosen.
+	if !existed {
+		if err := fsperm.SetCreated(handle, newFileMode); err != nil {
+			_ = handle.Close()
+			return Entry{}, err
+		}
 	}
 
 	if _, err := handle.WriteAt(req.Data, req.Offset); err != nil {

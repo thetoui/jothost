@@ -587,10 +587,60 @@ contains "and the panel serves again" "$body" '<div id="root"'
 same "repair did not change the encryption key either" \
   "$(env_value /etc/jothost/api.env ENCRYPTION_KEY)" "$key_before"
 
-# ----------------------------------------------------------- 10. uninstall
+# ------------------------------------------------ 10. two-factor recovery
 
 log ""
-log "10. Uninstall removes the panel and nothing else"
+log "10. Two-factor, and the ways back in without the authenticator"
+
+# shellcheck disable=SC1091
+. /tests/lib/totp.sh
+
+api_json() {
+  method="$1"; path="$2"; body="$3"; bearer="${4:-}"
+  if [ -n "$bearer" ]; then
+    curl -sk --max-time 15 -X "$method" "https://$DOMAIN/api/v1$path" \
+      -H 'Content-Type: application/json' -H "Authorization: Bearer $bearer" -d "$body" 2>/dev/null || true
+  else
+    curl -sk --max-time 15 -X "$method" "https://$DOMAIN/api/v1$path" \
+      -H 'Content-Type: application/json' -d "$body" 2>/dev/null || true
+  fi
+}
+first_field() { printf '%s' "$1" | grep -o "\"$2\":\"[^\"]*\"" | head -n 1 | sed "s/^\"$2\":\"//; s/\"\$//"; }
+sign_in_admin() { api_json POST /auth/login "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASSWORD\"}"; }
+
+TOKEN=$(first_field "$(sign_in_admin)" access_token)
+setup=$(api_json POST /auth/2fa/setup '{}' "$TOKEN")
+secret=$(first_field "$setup" secret)
+code=$(totp "$secret" 2>/dev/null || true)
+enabled=$(api_json POST /auth/2fa/enable "{\"code\":\"$code\"}" "$TOKEN")
+contains "the administrator turns on two-factor with a real authenticator code" "$enabled" '"two_factor_enabled":true'
+
+recovery_codes=$(printf '%s' "$enabled" | grep -o '"recovery_codes":\[[^]]*\]' | sed 's/^"recovery_codes":\[//; s/\]$//' | tr ',' '\n' | tr -d '"')
+same "and is given ten recovery codes, once" "$(printf '%s\n' "$recovery_codes" | grep -c .)" 10
+first_code=$(printf '%s\n' "$recovery_codes" | head -n 1)
+
+challenge=$(first_field "$(sign_in_admin)" mfa_token)
+[ -n "$challenge" ] && pass "signing in now asks for the second factor" || fail "signing in did not ask for the second factor"
+recovered=$(api_json POST /auth/2fa/verify "{\"mfa_token\":\"$challenge\",\"recovery_code\":\"$first_code\"}")
+contains "a recovery code signs in without the authenticator" "$recovered" '"access_token"'
+
+challenge=$(first_field "$(sign_in_admin)" mfa_token)
+reused=$(api_json POST /auth/2fa/verify "{\"mfa_token\":\"$challenge\",\"recovery_code\":\"$first_code\"}")
+contains "the same recovery code does not work twice" "$reused" 'already used recovery code'
+
+# With neither, the host is the way back, as docs/RECOVERY.md tells an
+# operator to do it: as the API's account, with its configuration.
+if su -s /bin/sh jothost-api -c "set -a; . /etc/jothost/api.env; set +a; /opt/jothost/bin/jothost-api reset-two-factor $ADMIN_USER" > /tmp/reset-2fa.log 2>&1; then
+  pass "reset-two-factor runs on the host"
+else
+  fail "reset-two-factor failed: $(tail -n 3 /tmp/reset-2fa.log | tr '\n' ' ')"
+fi
+contains "and the administrator signs in with the password alone" "$(sign_in_admin)" '"access_token"'
+
+# ----------------------------------------------------------- 11. uninstall
+
+log ""
+log "11. Uninstall removes the panel and nothing else"
 
 # A customer's website, to prove what uninstall does not touch. This is the
 # single most destructive thing the script could do, and nobody typing
@@ -629,7 +679,7 @@ else
 fi
 
 log ""
-log "11. Purge removes the panel's own data, and still not the customers'"
+log "12. Purge removes the panel's own data, and still not the customers'"
 
 if "$DIST/install.sh" uninstall --purge --yes > /tmp/purge.log 2>&1; then
   pass "purge completed"

@@ -99,10 +99,49 @@ What a backup contains depends on what was asked for — a website's files, a
 database dump, or both. A database backup restores over the existing database;
 take a fresh one first if the current state matters.
 
-**A backup does not contain `/etc/jothost/api.env`.** Without that file's
-encryption key, database passwords and remote destination credentials in a
-restored control database are unreadable ciphertext. Back it up separately, and
-keep it somewhere the panel cannot reach.
+**A website or database backup does not contain the panel's own records.**
+Those are a **panel** backup, which only an administrator can take, and which is
+sealed with the panel's key.
+
+### Keep the panel's key off the host
+
+```bash
+sudo ./install.sh export-key --to /root/jothost-panel.key
+```
+
+This writes `ENCRYPTION_KEY` to a new file with mode `0600`. It never prints the
+key, and it never overwrites an existing file. Move the file somewhere that is
+not this host, then delete it here.
+
+**Without this key there is no restore, and no way to make one.** It is what
+panel backups are sealed with, and it is what decrypts two-factor secrets,
+database passwords and destination credentials in the restored database.
+
+### Rebuilding the panel on a new host
+
+1. Install the panel on the new host as usual.
+2. Copy the panel backup archive and the key file onto it.
+3. Restore:
+
+   ```bash
+   sudo ./install.sh restore-panel --from panel-backup.tar.gz --key-file jothost-panel.key
+   ```
+
+The restore changes nothing until the Agent has opened the archive with the key
+and checked every member against its manifest. It loads the backup into a new
+database while the panel keeps running, and only then stops the API and swaps
+the two databases. If the panel does not come back ready, the swap and the key
+are undone.
+
+Afterwards:
+
+- Sign in with an account **from the backup**. Accounts on the new host from
+  before the restore are gone.
+- The database it replaced is kept as `jothost_before_restore_<time>`, and the
+  previous configuration as `api.env.before-restore-<time>`. Remove them once
+  the restored panel is right.
+- A panel backup holds the panel's records, not the websites. Restore websites'
+  files and databases from their own backups.
 
 ## 6. Locked out
 

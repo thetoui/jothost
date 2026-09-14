@@ -303,6 +303,13 @@ services:
       - ./tests:/tests:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
 
+  # The two hosts of the panel restore drill (tests/recovery/panel_restore_drill.sh):
+  # a panel is backed up on one and restored onto the other.
+  restore-host-a:
+    <<: *installer-systemd-host
+  restore-host-b:
+    <<: *installer-systemd-host
+
   installer-host-ubuntu-2204:
     <<: *installer-systemd-host
     build:

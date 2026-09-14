@@ -47,6 +47,9 @@
 #   repair      re-run the reconciling steps against an existing install
 #   uninstall   remove the panel; --purge also removes its data
 #   status      report what is installed and what is running
+#   export-key  write the panel's key to a file, to keep off this host
+#   restore-panel
+#               replace the panel's database with a panel backup
 #
 # Run with --help for the options.
 
@@ -115,6 +118,8 @@ MINIMAL=0
 ASSUME_YES=0
 PURGE=0
 HEALTH_HOST=""
+KEY_FILE=""
+KEY_TO=""
 
 # ------------------------------------------------------------------ output
 
@@ -148,10 +153,20 @@ warn() {
 # An installer that fails silently, or that fails with a shell error from three
 # functions deep, leaves somebody with a half-built machine and no idea which
 # half. Every refusal in this file names what was wanted.
+# DIE_ADVICE is what die tells somebody to do next. Most commands leave a host
+# that repair can finish; restore-panel and export-key say what is true of
+# them instead, because "run repair" after a refused restore is wrong advice.
+DIE_ADVICE=repair
+
 die() {
   printf '\n%serror:%s %s\n' "$C_ERR" "$C_OFF" "$*" >&2
-  printf '\n%s\n' "Nothing further has been changed. After fixing the above, run:" >&2
-  printf '  %s repair\n\n' "$0" >&2
+  case "$DIE_ADVICE" in
+    repair)
+      printf '\n%s\n' "Nothing further has been changed. After fixing the above, run:" >&2
+      printf '  %s repair\n\n' "$0" >&2 ;;
+    *)
+      printf '\n%s\n\n' "$DIE_ADVICE" >&2 ;;
+  esac
   exit 1
 }
 
@@ -165,12 +180,17 @@ Usage:
   install.sh repair
   install.sh uninstall [--purge]
   install.sh status
+  install.sh export-key    --to FILE
+  install.sh restore-panel --from ARCHIVE --key-file FILE
 
 Options:
   --domain DOMAIN     the name the panel is served on          (required to install)
   --email ADDRESS     for the certificate authority's expiry notices
   --admin-user NAME   the first administrator's username       (default: admin)
   --from DIR          where the built artefacts are            (default: beside this script)
+                      for restore-panel: the panel backup archive to restore
+  --key-file FILE     for restore-panel: the key export-key wrote on the old host
+  --to FILE           for export-key: where to write the key (must not exist)
   --self-signed       do not ask a certificate authority; issue a local certificate
   --no-tls            serve plain HTTP only (for a host behind another terminator)
   --no-firewall       leave the firewall alone
@@ -181,6 +201,10 @@ Options:
 
 The administrator's password is generated and printed once, at the end. It is
 never written to disk, and there is no second chance to read it.
+
+Panel backups are sealed with the panel's key. Export it with export-key and
+keep it somewhere other than this host: without it, no panel backup can be
+restored, and there is no way to make one.
 USAGE
 }
 
@@ -191,7 +215,7 @@ parse_args() {
   [ $# -gt 0 ] && shift
 
   case "$COMMAND" in
-    install|update|repair|uninstall|status) ;;
+    install|update|repair|uninstall|status|export-key|restore-panel) ;;
     help|--help|-h|'') usage; exit 0 ;;
     *) usage >&2; die "unknown command \"$COMMAND\"" ;;
   esac
@@ -203,6 +227,8 @@ parse_args() {
       --admin-user)  ADMIN_USER="${2:-}"; shift 2 ;;
       --from)        ARTEFACT_DIR="${2:-}"; shift 2 ;;
       --health-host) HEALTH_HOST="${2:-}"; shift 2 ;;
+      --key-file)    KEY_FILE="${2:-}"; shift 2 ;;
+      --to)          KEY_TO="${2:-}"; shift 2 ;;
       --self-signed) SELF_SIGNED=1; shift ;;
       --no-tls)      SKIP_TLS=1; shift ;;
       --no-firewall) SKIP_FIREWALL=1; shift ;;
@@ -247,6 +273,16 @@ valid_username() {
     [a-z0-9]*)         [ "${#1}" -ge 3 ] && [ "${#1}" -le 32 ] ;;
     *)                 return 1 ;;
   esac
+}
+
+# valid_key accepts what ENCRYPTION_KEY is: 64 lowercase hexadecimal
+# characters. Checked before a key is written into api.env with sed, so the
+# value can never carry anything but itself.
+valid_key() {
+  case "$1" in
+    ''|*[!0-9a-f]*) return 1 ;;
+  esac
+  [ "${#1}" -eq 64 ]
 }
 
 confirm() {
@@ -1932,6 +1968,284 @@ do_status() {
   say ""
 }
 
+# do_export_key writes the panel's key to a file that is kept off this host.
+#
+# The key is ENCRYPTION_KEY. Panel backups are sealed with a key derived from
+# it, and it is also what decrypts every secret in the panel's database, so a
+# restored database is only readable with the key it was written under. Without
+# a copy, losing this host loses every panel backup with it.
+#
+# It is never printed. A key on a terminal ends up in scrollback, a screen
+# recording or a CI log; a key in a 0600 file ends up where it was put.
+do_export_key() {
+  DIE_ADVICE="Nothing has been written."
+  [ -n "$KEY_TO" ] || die "--to FILE is required: where to write the key"
+  [ -f "$API_ENV" ] || die "no installation found at $CONFIG_DIR; there is no key to export"
+
+  key=$(env_value "$API_ENV" ENCRYPTION_KEY || true)
+  valid_key "$key" || die "$API_ENV does not hold a usable ENCRYPTION_KEY"
+
+  # Never over an existing file: an export that replaced an older key file
+  # with a newer key could destroy the only copy that opens older backups.
+  if [ -e "$KEY_TO" ] || [ -L "$KEY_TO" ]; then
+    die "$KEY_TO already exists; an existing key file is never overwritten, so choose another name"
+  fi
+
+  # noclobber makes the create itself refuse a file that appeared since the
+  # check above, and the umask means it is never readable by anyone else, not
+  # even for the moment before a chmod.
+  if ! (
+    umask 077
+    set -C
+    {
+      printf '%s\n' "# JotHost Panel key (ENCRYPTION_KEY) for $(env_value "$INSTALL_ENV" PANEL_DOMAIN || echo 'this panel')"
+      printf '%s\n' "# Exported $(date -u +%Y-%m-%dT%H:%M:%SZ). Opens this panel's backups and its stored secrets."
+      printf '%s\n' "# Keep it off the host it came from. Restore with:"
+      printf '%s\n' "#   install.sh restore-panel --from ARCHIVE --key-file THIS_FILE"
+      printf '%s\n' "$key"
+    } > "$KEY_TO"
+  ) 2>/dev/null; then
+    die "$KEY_TO could not be written"
+  fi
+  chmod 0600 "$KEY_TO"
+
+  say ""
+  say "${C_OK}The panel's key is in $KEY_TO${C_OFF} (mode 0600)."
+  say ""
+  say "  Move it somewhere that is not this machine, then delete it here."
+  say "  Every panel backup from this panel needs it to be restored, and there"
+  say "  is no way to recover it or to open a backup without it."
+  say ""
+}
+
+# service_stop_api stops the API and waits until it has stopped answering.
+service_stop_api() {
+  if [ "$INIT_RUNNING" = 1 ]; then
+    case "$INIT_SYSTEM" in
+      systemd) systemctl stop jothost-api >/dev/null 2>&1 || true ;;
+      openrc)  rc-service jothost-api stop >/dev/null 2>&1 || true ;;
+    esac
+  fi
+  pkill -f "$API_BIN serve" >/dev/null 2>&1 || true
+
+  waited=0
+  while [ "$waited" -lt 30 ]; do
+    curl -fsS --max-time 2 http://127.0.0.1:8080/healthz >/dev/null 2>&1 || return 0
+    sleep 1; waited=$((waited + 1))
+  done
+  return 1
+}
+
+service_start_api() {
+  if [ "$INIT_RUNNING" = 1 ]; then
+    case "$INIT_SYSTEM" in
+      systemd) systemctl start jothost-api >/dev/null 2>&1; return $? ;;
+      openrc)  rc-service jothost-api start >/dev/null 2>&1; return $? ;;
+    esac
+  fi
+  start_directly
+}
+
+# wait_until_ready waits for the API to say it can reach what it needs.
+wait_until_ready() {
+  waited=0
+  while [ "$waited" -lt 90 ]; do
+    curl -fsS --max-time 5 http://127.0.0.1:8080/readyz >/dev/null 2>&1 && return 0
+    sleep 2; waited=$((waited + 2))
+  done
+  return 1
+}
+
+# as_postgres runs SQL from stdin as the postgres superuser.
+as_postgres() {
+  su postgres -c "psql --no-psqlrc -v ON_ERROR_STOP=1 -q $*"
+}
+
+# do_restore_panel replaces the panel's database with a panel backup.
+#
+# docs/PANEL_BACKUP.md, section 7. The order is what makes it safe to run on a
+# panel that still works, and to get wrong:
+#
+#   1. The archive is opened and checked by the Agent before anything else. A
+#      wrong key or a damaged archive stops here, having changed nothing.
+#   2. The dump is loaded into a new database while the panel keeps running.
+#      A dump that will not load stops here, having changed nothing.
+#   3. Only then is the panel stopped, and the two databases swapped by
+#      renaming. The database being replaced is kept, not dropped.
+#   4. The key is put in place, the migrations run, and the panel must come
+#      back ready. If it does not, the swap and the key are both undone.
+#
+# It needs an installed panel to restore into: installing is a separate,
+# already-proven step, and doing it here would make this command two things.
+do_restore_panel() {
+  DIE_ADVICE="The panel's database has not been changed."
+  archive="$ARTEFACT_DIR"
+  [ -n "$archive" ] || die "--from ARCHIVE is required: the panel backup to restore"
+  [ -n "$KEY_FILE" ] || die "--key-file FILE is required: the key export-key wrote on the host the backup came from"
+  [ -f "$archive" ] || die "$archive is not a file"
+  [ -f "$KEY_FILE" ] || die "$KEY_FILE is not a file"
+
+  detect_host >/dev/null
+  load_install_env || die "no installation found; install the panel first ($0 install --domain ...), then restore into it"
+  [ -x "$AGENT_BIN" ] && [ -x "$API_BIN" ] || die "no installation found at $PREFIX; install the panel first"
+
+  step "Opening the backup"
+  work=$(mktemp -d "$STATE_DIR/restore.XXXXXX") || die "could not create a working directory in $STATE_DIR"
+  chmod 0700 "$work"
+  # The dump holds every password hash the panel has. It is removed however
+  # this command ends.
+  trap 'rm -rf "$work"' EXIT INT TERM
+
+  if ! opened=$("$AGENT_BIN" -open-panel-backup "$archive" -key-file "$KEY_FILE" -dump-to "$work/panel.sql" 2>&1); then
+    printf '%s\n' "$opened" | sed 's/^/     /' >&2
+    die "the backup could not be opened"
+  fi
+  from_host=$(printf '%s\n' "$opened" | sed -n 's/^hostname=//p')
+  taken_at=$(printf '%s\n' "$opened" | sed -n 's/^created_at=//p')
+  ok "it opens with this key and matches its manifest"
+  info "a backup of $from_host, taken $taken_at"
+
+  new_key=$(grep -v '^[[:space:]]*#' "$KEY_FILE" | tr -d ' \t\r' | grep -v '^$' | head -n 1)
+  valid_key "$new_key" || die "$KEY_FILE does not hold a panel key"
+  current_key=$(env_value "$API_ENV" ENCRYPTION_KEY || true)
+
+  existing_url=$(env_value "$API_ENV" DATABASE_URL || true)
+  PG_PASSWORD=$(printf '%s' "$existing_url" | sed -n 's|^postgres://[^:]*:\([^@]*\)@.*|\1|p')
+  [ -n "$PG_PASSWORD" ] || die "the panel's database password is not in $API_ENV; run: $0 repair"
+
+  stamp=$(date -u +%Y%m%d%H%M%S)
+  staged="${PG_DB}_restore_$stamp"
+  aside="${PG_DB}_before_restore_$stamp"
+  this_host=$(cat /proc/sys/kernel/hostname 2>/dev/null || hostname)
+  case "$this_host" in
+    ''|*[!a-zA-Z0-9.-]*) die "this host's name \"$this_host\" is not one the panel can record" ;;
+  esac
+
+  say ""
+  say "  This replaces the panel's database on this host with the backup."
+  say "  Everything the panel records here now is replaced: accounts, websites,"
+  say "  schedules and settings. The current database is kept as $aside."
+  if [ "$new_key" != "$current_key" ]; then
+    say "  The panel's key is replaced with the one from the backup's host; the"
+    say "  current configuration is kept as $API_ENV.before-restore-$stamp."
+  fi
+  say "  Websites' files and their own databases are not part of a panel backup."
+  confirm "Replace the panel's database?" || { say "Nothing was changed."; exit 1; }
+
+  step "Loading the backup into a new database"
+  printf 'CREATE DATABASE %s OWNER %s;\n' "$staged" "$PG_USER" | as_postgres >/dev/null ||
+    die "a database to load the backup into could not be created"
+
+  # Loaded as the panel's own role, so everything in it belongs to the account
+  # the API connects as - which is what makes the migrations and every query
+  # afterwards work. The password reaches psql through the environment in
+  # as_api's script on stdin, never through argv.
+  chown "$API_USER" "$work" "$work/panel.sql"
+  if ! as_api "psql --no-psqlrc -v ON_ERROR_STOP=1 -q -h 127.0.0.1 -U $PG_USER -d $staged -f $work/panel.sql" \
+       "PGPASSWORD=$PG_PASSWORD" >"$work/load.log" 2>&1; then
+    tail -n 15 "$work/load.log" | sed 's/^/     /' >&2
+    printf 'DROP DATABASE IF EXISTS %s;\n' "$staged" | as_postgres >/dev/null 2>&1 || true
+    die "the backup did not load"
+  fi
+  ok "loaded into $staged"
+
+  step "Replacing the panel's database"
+  service_stop_api || {
+    printf 'DROP DATABASE IF EXISTS %s;\n' "$staged" | as_postgres >/dev/null 2>&1 || true
+    die "the API did not stop"
+  }
+  # One transaction: either both renames happen or neither does. Connections
+  # are ended first, because a database cannot be renamed while in use.
+  if ! as_postgres -1 >/dev/null <<SQL
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PG_DB' AND pid <> pg_backend_pid();
+ALTER DATABASE $PG_DB RENAME TO $aside;
+ALTER DATABASE $staged RENAME TO $PG_DB;
+SQL
+  then
+    printf 'DROP DATABASE IF EXISTS %s;\n' "$staged" | as_postgres >/dev/null 2>&1 || true
+    service_start_api || true
+    die "the databases could not be swapped"
+  fi
+  ok "the panel's database is the backup; the previous one is $aside"
+
+  # From here a failure has changed something, so it is undone rather than
+  # left for somebody to piece together.
+  DIE_ADVICE="The restore was undone: the panel is back on the database and key it had before."
+  undo_restore() {
+    service_stop_api || true
+    as_postgres -1 >/dev/null 2>&1 <<SQL || true
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PG_DB' AND pid <> pg_backend_pid();
+ALTER DATABASE $PG_DB RENAME TO ${PG_DB}_failed_restore_$stamp;
+ALTER DATABASE $aside RENAME TO $PG_DB;
+SQL
+    if [ -f "$API_ENV.before-restore-$stamp" ]; then
+      cp -p "$API_ENV.before-restore-$stamp" "$API_ENV"
+      chown root:"$PANEL_GROUP" "$API_ENV"
+      chmod 0640 "$API_ENV"
+    fi
+    service_start_api || true
+    info "the database that failed to start is kept as ${PG_DB}_failed_restore_$stamp"
+  }
+
+  # A panel rebuilt on a host with a different name would otherwise start with
+  # every website recorded against a server it does not recognise as itself,
+  # and register a second, empty one. Only done when there is exactly one
+  # server, which is every panel this installer makes.
+  if ! as_postgres "-d $PG_DB" >/dev/null <<SQL
+UPDATE servers SET hostname = '$this_host'
+ WHERE hostname <> '$this_host' AND (SELECT count(*) FROM servers) = 1;
+SQL
+  then
+    undo_restore
+    die "the restored panel's server could not be moved to this host"
+  fi
+
+  if [ "$new_key" != "$current_key" ]; then
+    cp -p "$API_ENV" "$API_ENV.before-restore-$stamp"
+    chown root:root "$API_ENV.before-restore-$stamp"
+    chmod 0600 "$API_ENV.before-restore-$stamp"
+    # valid_key has already confined the value to hex, so sed sees nothing but
+    # the key.
+    sed -i "s/^ENCRYPTION_KEY=.*/ENCRYPTION_KEY=\"$new_key\"/" "$API_ENV"
+    ok "the panel's key is the one the backup was taken under"
+  fi
+
+  step "Starting the panel on the restored database"
+  if ! as_api "$API_BIN migrate up" >"$work/migrate.log" 2>&1; then
+    tail -n 15 "$work/migrate.log" | sed 's/^/     /' >&2
+    undo_restore
+    die "the migrations could not be applied to the restored database"
+  fi
+  ok "schema up to date"
+
+  service_start_api || true
+  if ! wait_until_ready; then
+    show_service_logs
+    undo_restore
+    die "the panel did not become ready on the restored database"
+  fi
+  ok "the panel is ready"
+
+  trap - EXIT INT TERM
+  rm -rf "$work"
+
+  say ""
+  say "${C_OK}${C_BOLD}The panel is restored from $from_host ($taken_at).${C_OFF}"
+  say ""
+  say "  Sign in with an account from the backup; accounts from before the"
+  say "  restore no longer exist."
+  say ""
+  say "  Kept, in case this was the wrong backup:"
+  say "    database   $aside"
+  [ -f "$API_ENV.before-restore-$stamp" ] &&
+    say "    key        $API_ENV.before-restore-$stamp"
+  say "  Once the restored panel is right, remove them with:"
+  say "    su postgres -c \"dropdb $aside\""
+  say ""
+  say "  Websites' files and databases come back from their own backups."
+  say ""
+}
+
 load_install_env() {
   [ -f "$INSTALL_ENV" ] || return 1
   # shellcheck disable=SC1090
@@ -1964,6 +2278,11 @@ report_success() {
     say "  ${C_WARN}The certificate is self-signed, so browsers will warn.${C_OFF}"
     say "  Once $DOMAIN resolves to this machine, run:  $0 repair"
   fi
+  say ""
+  say "  ${C_BOLD}Keep the panel's key off this machine.${C_OFF} Panel backups are sealed with"
+  say "  it, and without it none of them can be restored. Export it with:"
+  say "    $0 export-key --to /root/jothost-panel.key"
+  say "  then move that file somewhere safe and delete it from this host."
   if [ "$WARNINGS" -gt 0 ]; then
     say ""
     say "  ${C_WARN}$WARNINGS warning(s) above are worth reading.${C_OFF}"
@@ -1981,6 +2300,8 @@ main() {
     repair)    do_repair ;;
     uninstall) do_uninstall ;;
     status)    do_status ;;
+    export-key)    do_export_key ;;
+    restore-panel) do_restore_panel ;;
   esac
 }
 

@@ -535,6 +535,10 @@ docker-test-installer-ubuntu: dist ## Run the installer checks on Ubuntu 22.04 a
 	sh tests/installer/systemd-host.sh installer-host-ubuntu-2204
 	sh tests/installer/systemd-host.sh installer-host-ubuntu-2404
 
+.PHONY: docker-test-panel-restore
+docker-test-panel-restore: dist ## Back up a panel on one host and restore it onto another
+	sh tests/recovery/panel_restore_drill.sh
+
 .PHONY: docker-test-suite
 docker-test-suite: create-integration-admin ## Run every integration suite against the dev stack
 	# Discovers the suites rather than listing them, so one added tomorrow runs

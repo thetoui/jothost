@@ -68,6 +68,13 @@ func main() {
 	repairOwnership := flag.Bool("repair-site-ownership", false,
 		"reassign abandoned site directories to root, report ambiguous ones, and exit")
 	showVersion := flag.Bool("version", false, "print the build stamp and exit")
+	// -open-panel-backup is the Agent's half of `install.sh restore-panel`: it
+	// unseals and checks a panel backup and writes its SQL dump, changing
+	// nothing else. Replaying the dump is the installer's, with the panel
+	// stopped.
+	openPanel := flag.String("open-panel-backup", "", "unseal and check a panel backup, write its SQL dump to -dump-to, and exit")
+	keyFile := flag.String("key-file", "", "the panel key file written by install.sh export-key, for -open-panel-backup")
+	dumpTo := flag.String("dump-to", "", "where -open-panel-backup writes the SQL dump; must not exist")
 	flag.Parse()
 
 	// Answered before the configuration is loaded, deliberately. An operator
@@ -83,6 +90,12 @@ func main() {
 		fmt.Printf("jothost-agent %s (commit %s, built %s)\n",
 			info.Version, info.Commit, info.BuildDate)
 		return
+	}
+
+	// Also before the configuration: it needs none, and it is run on a host
+	// being rebuilt, where the configuration is the thing in question.
+	if *openPanel != "" {
+		os.Exit(openPanelBackup(*openPanel, *keyFile, *dumpTo))
 	}
 
 	cfg, err := config.Load()

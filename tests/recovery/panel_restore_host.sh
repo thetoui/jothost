@@ -25,7 +25,9 @@ api() {
     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "$@"
 }
 
-field() { sed -n "s/.*\"$1\":\"\\([^\"]*\\)\".*/\\1/p" | head -n 1; }
+# field prints the first value of a string field in a JSON response. The first,
+# because a record's own id comes before the ids of anything nested in it.
+field() { grep -o "\"$1\":\"[^\"]*\"" | head -n 1 | sed "s/^\"$1\":\"//; s/\"\$//"; }
 
 sign_in() {
   TOKEN=$(curl -sk --max-time 30 --resolve "$DOMAIN:443:127.0.0.1" \

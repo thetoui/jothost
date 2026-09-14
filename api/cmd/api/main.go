@@ -77,6 +77,8 @@ func run(args []string) error {
 		return migrateCommand(cfg, log, args[1:])
 	case "create-admin":
 		return createAdmin(cfg, log)
+	case "reset-two-factor":
+		return resetTwoFactor(cfg, log, args[1:])
 	case "version":
 		printVersion("jothost-api")
 		return nil
@@ -108,6 +110,9 @@ Usage:
   jothost-api migrate down       roll back the most recent migration
   jothost-api migrate status     show migration state
   jothost-api create-admin       create the first administrator
+  jothost-api reset-two-factor USERNAME
+                                 remove two-factor authentication from an account
+                                 that has lost its authenticator and recovery codes
 
 create-admin reads credentials from the environment so they never appear in
 the process list or shell history:

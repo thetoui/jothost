@@ -149,6 +149,7 @@ Returns the caller's profile, including their effective roles and permissions:
   "roles": ["admin"],
   "permissions": ["server.view", "..."],
   "two_factor_enabled": false,
+  "recovery_codes_remaining": 0,
   "last_login_at": "2026-08-25T05:30:00Z",
   "created_at": "2026-08-25T05:00:00Z"
 }
@@ -163,6 +164,7 @@ POST /auth/2fa/setup     (authenticated)  start enrolment, returns the secret
 POST /auth/2fa/enable    (authenticated)  confirm a code and activate
 POST /auth/2fa/verify    (anonymous)      complete a login that requires 2FA
 POST /auth/2fa/disable   (authenticated)  requires the current password
+POST /auth/2fa/recovery-codes (authenticated)  replace the recovery codes; requires the current password
 ```
 
 `setup` and `verify` were split into three endpoints during Phase 1 because
@@ -187,6 +189,16 @@ Returns the shared secret once. It is never retrievable again.
 { "code": "123456" }
 ```
 
+Responds with the account's first recovery codes. They are returned here and
+never again; only their hashes are stored.
+
+```json
+{
+  "two_factor_enabled": true,
+  "recovery_codes": ["7kq2-mx9d-...", "..."]
+}
+```
+
 ### Verify
 
 Completes a login. The `mfa_token` comes from the login response.
@@ -194,6 +206,18 @@ Completes a login. The `mfa_token` comes from the login response.
 ```json
 { "mfa_token": "...", "code": "123456" }
 ```
+
+Somebody without their authenticator sends one of their recovery codes instead.
+Exactly one of `code` and `recovery_code` is accepted. Case, spaces and dashes
+in a recovery code are ignored.
+
+```json
+{ "mfa_token": "...", "recovery_code": "7kq2-mx9d-pw4h-c8nt" }
+```
+
+A recovery code works once. It is rate limited with the TOTP step, and using one
+is recorded in the audit log as `user.2fa_recovery_code_used` with the number of
+codes left.
 
 Responds with the standard token pair.
 
@@ -205,6 +229,25 @@ enough to remove a second factor.
 ```json
 { "password": "..." }
 ```
+
+Disabling deletes the recovery codes with the enrolment.
+
+### Recovery codes
+
+Replaces the account's recovery codes with ten new ones. Every code from the
+previous set stops working, used or not. The password is required for the same
+reason as `disable`.
+
+```json
+{ "password": "..." }
+```
+
+```json
+{ "recovery_codes": ["...", "..."] }
+```
+
+An account that has lost both its authenticator and its codes is recovered on
+the host with `jothost-api reset-two-factor USERNAME` (`docs/RECOVERY.md`).
 
 ---
 

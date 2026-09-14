@@ -135,6 +135,22 @@ created_at TIMESTAMPTZ NOT NULL
 updated_at TIMESTAMPTZ NOT NULL
 ```
 
+## two_factor_recovery_codes
+
+One-time codes that stand in for a TOTP code. Only a SHA-256 hash of each is
+kept, bound to its user; the codes carry about 79 bits, so the hash cannot be
+reversed by trying every code. The foreign key is to the enrolment, so disabling
+two-factor deletes them.
+
+```sql
+id UUID PRIMARY KEY
+user_id UUID REFERENCES two_factor_auth(user_id) ON DELETE CASCADE
+code_hash TEXT NOT NULL
+used_at TIMESTAMPTZ
+created_at TIMESTAMPTZ NOT NULL
+UNIQUE (user_id, code_hash)
+```
+
 ---
 
 # 8. servers

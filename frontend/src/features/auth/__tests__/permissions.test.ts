@@ -12,6 +12,7 @@ function profile(permissions: string[]): UserProfile {
     roles: [],
     permissions,
     two_factor_enabled: false,
+    recovery_codes_remaining: 0,
     last_login_at: null,
     created_at: '2026-01-01T00:00:00Z',
   };

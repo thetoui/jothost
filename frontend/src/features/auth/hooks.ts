@@ -81,18 +81,23 @@ export function useLogin() {
   });
 }
 
-/** useVerifyTwoFactor completes a login that required TOTP. */
+/**
+ * useVerifyTwoFactor completes a login that required a second factor, with
+ * either an authenticator code or a recovery code.
+ */
 export function useVerifyTwoFactor() {
   const setSession = useAuthStore((state) => state.setSession);
   const mfaToken = useAuthStore((state) => state.mfaToken);
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (code: string) => {
+    mutationFn: (factor: { code: string } | { recoveryCode: string }) => {
       if (!mfaToken) {
         throw new Error('The verification session expired. Sign in again.');
       }
-      return authApi.verifyTwoFactor(mfaToken, code);
+      return 'recoveryCode' in factor
+        ? authApi.verifyRecoveryCode(mfaToken, factor.recoveryCode)
+        : authApi.verifyTwoFactor(mfaToken, factor.code);
     },
     onSuccess: async (tokens) => {
       setSession(tokens);
@@ -130,6 +135,16 @@ export function useEnableTwoFactor() {
 
   return useMutation({
     mutationFn: (code: string) => authApi.enableTwoFactor(code),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: authKeys.me() }),
+  });
+}
+
+/** useRegenerateRecoveryCodes replaces the signed-in user's recovery codes. */
+export function useRegenerateRecoveryCodes() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (password: string) => authApi.regenerateRecoveryCodes(password),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: authKeys.me() }),
   });
 }

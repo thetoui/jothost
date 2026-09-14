@@ -1,15 +1,20 @@
 import { useState, type FormEvent } from 'react';
-import { ShieldCheck, ShieldOff } from 'lucide-react';
+import { KeyRound, ShieldCheck, ShieldOff } from 'lucide-react';
 
 import { StatusPill } from '@/components/StatusPill';
 import { Button } from '@/components/ui/Button';
+import { RecoveryCodes } from '@/features/auth/components/RecoveryCodes';
 import {
   errorMessage,
   useDisableTwoFactor,
   useEnableTwoFactor,
   useProfile,
+  useRegenerateRecoveryCodes,
   useSetupTwoFactor,
 } from '@/features/auth/hooks';
+
+/** Fewer than this many unused codes is worth a warning. */
+const LOW_RECOVERY_CODES = 3;
 
 /**
  * Account security page: two-factor enrolment and removal for the signed-in
@@ -17,6 +22,10 @@ import {
  */
 export function SecurityPage() {
   const { data: profile, isPending } = useProfile();
+  // Codes just issued, by enabling or replacing them. Held here rather than in
+  // the form that asked for them: enabling flips the profile, which swaps that
+  // form out, and the codes must still be on screen when it does.
+  const [issuedCodes, setIssuedCodes] = useState<string[] | null>(null);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -45,21 +54,33 @@ export function SecurityPage() {
         </div>
 
         <div className="mt-4">
-          {profile?.two_factor_enabled ? <DisableTwoFactor /> : <EnableTwoFactor />}
+          {issuedCodes ? (
+            <RecoveryCodes codes={issuedCodes} onDone={() => setIssuedCodes(null)} />
+          ) : profile?.two_factor_enabled ? (
+            <div className="space-y-6">
+              <RecoveryCodesSection
+                remaining={profile.recovery_codes_remaining}
+                onIssued={setIssuedCodes}
+              />
+              <DisableTwoFactor />
+            </div>
+          ) : (
+            <EnableTwoFactor onEnabled={setIssuedCodes} />
+          )}
         </div>
       </section>
     </div>
   );
 }
 
-function EnableTwoFactor() {
+function EnableTwoFactor({ onEnabled }: { onEnabled: (codes: string[]) => void }) {
   const setup = useSetupTwoFactor();
   const enable = useEnableTwoFactor();
   const [code, setCode] = useState('');
 
   function handleEnable(event: FormEvent) {
     event.preventDefault();
-    enable.mutate(code);
+    enable.mutate(code, { onSuccess: (result) => onEnabled(result.recovery_codes) });
   }
 
   if (!setup.data) {
@@ -130,6 +151,73 @@ function EnableTwoFactor() {
         disabled={code.length !== 6}
       >
         Enable
+      </Button>
+    </form>
+  );
+}
+
+function RecoveryCodesSection({
+  remaining,
+  onIssued,
+}: {
+  remaining: number;
+  onIssued: (codes: string[]) => void;
+}) {
+  const regenerate = useRegenerateRecoveryCodes();
+  const [password, setPassword] = useState('');
+
+  function handleRegenerate(event: FormEvent) {
+    event.preventDefault();
+    regenerate.mutate(password, {
+      onSuccess: (result) => {
+        setPassword('');
+        onIssued(result.recovery_codes);
+      },
+    });
+  }
+
+  const low = remaining < LOW_RECOVERY_CODES;
+
+  return (
+    <form onSubmit={handleRegenerate} className="space-y-4">
+      <div>
+        <h3 className="text-sm font-medium text-slate-900">Recovery codes</h3>
+        <p className={`mt-1 text-sm ${low ? 'text-danger-700' : 'text-slate-600'}`}>
+          {remaining === 1 ? '1 unused code left.' : `${remaining} unused codes left.`}{' '}
+          {low
+            ? 'Replace them before you run out, or a lost authenticator will lock you out.'
+            : 'Each signs you in once without your authenticator.'}
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <label htmlFor="recovery-password" className="block text-xs font-medium text-slate-700">
+          Password to replace them
+        </label>
+        <input
+          id="recovery-password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          className="w-full max-w-xs rounded-md border border-surface-border px-3 py-2 text-sm outline-none focus:border-brand-500"
+        />
+      </div>
+
+      {regenerate.isError && (
+        <p role="alert" className="text-sm text-danger-700">
+          {errorMessage(regenerate.error, 'Could not replace the recovery codes.')}
+        </p>
+      )}
+
+      <Button
+        type="submit"
+        loading={regenerate.isPending}
+        disabled={password === ''}
+        icon={<KeyRound aria-hidden="true" className="h-4 w-4" />}
+      >
+        Replace recovery codes
       </Button>
     </form>
   );

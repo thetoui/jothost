@@ -68,6 +68,7 @@ function mockProfile(permissions: string[]) {
     email: null,
     status: 'active',
     two_factor_enabled: false,
+    recovery_codes_remaining: 0,
     roles: ['admin'],
     permissions,
     created_at: '2026-01-01T00:00:00Z',

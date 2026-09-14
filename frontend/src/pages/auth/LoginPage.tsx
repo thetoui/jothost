@@ -103,12 +103,23 @@ function PasswordStep() {
 
 function TwoFactorStep() {
   const [code, setCode] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [useRecovery, setUseRecovery] = useState(false);
   const verify = useVerifyTwoFactor();
   const setMfaToken = useAuthStore((state) => state.setMfaToken);
 
+  // A recovery code is sixteen characters however it was copied; the server
+  // ignores the dashes and spaces, so the button does too.
+  const recoveryReady = recoveryCode.replace(/[\s-]/g, '').length === 16;
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    verify.mutate(code);
+    verify.mutate(useRecovery ? { recoveryCode } : { code });
+  }
+
+  function switchMethod() {
+    verify.reset();
+    setUseRecovery((current) => !current);
   }
 
   return (
@@ -118,30 +129,55 @@ function TwoFactorStep() {
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Two-factor verification</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Enter the 6-digit code from your authenticator app.
+            {useRecovery
+              ? 'Enter one of the recovery codes you saved when you turned on two-factor. Each works once.'
+              : 'Enter the 6-digit code from your authenticator app.'}
           </p>
         </div>
       </div>
 
-      <div className="space-y-1">
-        <label htmlFor="code" className="block text-xs font-medium text-slate-700">
-          Verification code
-        </label>
-        <input
-          id="code"
-          name="code"
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9]{6}"
-          maxLength={6}
-          autoFocus
-          required
-          value={code}
-          onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))}
-          className="w-full rounded-md border border-surface-border px-3 py-2 text-center font-mono text-lg tracking-[0.4em] outline-none focus:border-brand-500"
-        />
-      </div>
+      {useRecovery ? (
+        <div className="space-y-1">
+          <label htmlFor="recovery-code" className="block text-xs font-medium text-slate-700">
+            Recovery code
+          </label>
+          <input
+            id="recovery-code"
+            name="recovery-code"
+            type="text"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            maxLength={24}
+            autoFocus
+            required
+            placeholder="xxxx-xxxx-xxxx-xxxx"
+            value={recoveryCode}
+            onChange={(event) => setRecoveryCode(event.target.value)}
+            className="w-full rounded-md border border-surface-border px-3 py-2 text-center font-mono tracking-wider outline-none focus:border-brand-500"
+          />
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <label htmlFor="code" className="block text-xs font-medium text-slate-700">
+            Verification code
+          </label>
+          <input
+            id="code"
+            name="code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            autoFocus
+            required
+            value={code}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, ''))}
+            className="w-full rounded-md border border-surface-border px-3 py-2 text-center font-mono text-lg tracking-[0.4em] outline-none focus:border-brand-500"
+          />
+        </div>
+      )}
 
       {verify.isError && (
         <Alert tone="danger">{errorMessage(verify.error, 'Verification failed.')}</Alert>
@@ -151,10 +187,14 @@ function TwoFactorStep() {
         type="submit"
         variant="primary"
         loading={verify.isPending}
-        disabled={code.length !== 6}
+        disabled={useRecovery ? !recoveryReady : code.length !== 6}
         className="w-full"
       >
         {verify.isPending ? 'Verifying…' : 'Verify'}
+      </Button>
+
+      <Button variant="ghost" onClick={switchMethod} className="w-full">
+        {useRecovery ? 'Use your authenticator app' : 'Use a recovery code'}
       </Button>
 
       <Button variant="ghost" onClick={() => setMfaToken(null)} className="w-full">

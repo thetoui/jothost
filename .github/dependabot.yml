@@ -1,0 +1,42 @@
+# Dependency updates.
+#
+# Only the ecosystems the repository actually has are listed. The shared and
+# agent Go modules have no third-party dependencies, so gomod points only at
+# the api module, which does. The base images in docker/ are pinned by tag and
+# are covered by the nightly Trivy scan in security-scan.yml rather than here,
+# because Dependabot does not rewrite a `FROM golang:1.26-alpine` that has no
+# digest to bump.
+version: 2
+updates:
+  # The API's Go dependencies: pgx, go-redis, x/crypto and their transitive
+  # set. This is the only Go module with a go.sum.
+  - package-ecosystem: gomod
+    directory: /api
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+
+  # The frontend, from its lockfile. Grouped so a routine bump is one pull
+  # request to review rather than a dozen.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      frontend:
+        patterns:
+          - "*"
+
+  # The actions used by the workflows. A compromised or abandoned action runs
+  # with the workflow's token, so these are worth keeping current too.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"

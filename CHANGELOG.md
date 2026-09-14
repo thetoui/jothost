@@ -10,6 +10,16 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Added
 
+- **An upgrade test from the previous release.** CI builds `v0.1.0-rc.1` from
+  its tag, installs it on Debian 12 and Ubuntu 24.04, gives it a website, a
+  cron job, a backup and a stored secret through its own API, and updates it to
+  the candidate. The website still serves the same page, the cron job is still
+  in the crontab, the backup still verifies, the secret still decrypts, the
+  newest migration rolls back and forward on that data, and the Agent's new
+  PostgreSQL role is added to the existing install. Ubuntu 22.04 is left out:
+  `rc.1` could not sign anybody in there, so no installation of it exists to
+  upgrade.
+
 - **Backups of the panel itself, and a way to rebuild it on another host.** A
   `panel` backup dumps the panel's own database, seals it with a key derived
   from `ENCRYPTION_KEY`, and sends it to a destination like any other backup.

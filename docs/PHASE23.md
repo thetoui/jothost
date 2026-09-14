@@ -273,6 +273,11 @@ Proved rather than asserted:
   and refuses to execute `.php` before a version is chosen
 - an update and a repair leave the encryption key, the Agent token and the
   database password exactly as they were
+- **an update from the previous release**, installed and used through its own
+  API, keeps its website serving, its cron job in the crontab, its backup
+  verifiable and its stored secret decryptable, and applies the new
+  migrations to that data (`tests/installer/upgrade.sh`, Debian 12 and Ubuntu
+  24.04)
 - `repair` puts back a vhost somebody deleted
 - `uninstall` leaves a customer's website alone, and so does `--purge`
 

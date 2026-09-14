@@ -1409,7 +1409,7 @@ Additionally required by the above:
 - [x] A finding recorded rather than fixed: **`audit.view` is a permission with
   no endpoint behind it**, so the audit trail cannot be read through the API.
   A feature, and so out of scope under section 21 — but the clearest work left.
-  **Since fixed** (d8ab0d7): `GET /api/v1/audit` now stands behind it
+  **Since fixed** (985c20f): `GET /api/v1/audit` now stands behind it
 - [x] A fix to the development stack: `docker compose stop agent && start
   agent` left OpenRC's state and nginx's pidfile in `/run` pointing at dead
   processes, so every website operation failed at its last step on a stack that

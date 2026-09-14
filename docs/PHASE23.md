@@ -289,14 +289,14 @@ Proved rather than asserted:
   `postgresql-setup` path are right by inspection; the checks run on Alpine,
   and Debian is covered only by the same reading. Both deserve a run of the
   suite on their own image.
-  **Since fixed for Debian** (4345b2a): the suite runs in CI on a clean Debian
+  **Since fixed for Debian** (2029513): the suite runs in CI on a clean Debian
   12 host. Its first run found HTTPS broken there - nginx 1.22 rejects the
   `http2 on;` directive the panel emitted. RHEL and Ubuntu remain unexercised.
 - **systemd is written for and not exercised either.** The container the checks
   run in has no systemd, so the units are pinned by reading rather than by
   being started. What *is* exercised end to end is OpenRC, and the "enabled but
   nothing is supervising" path.
-  **Since fixed** (4345b2a): the Debian host runs systemd as PID 1, so the units
+  **Since fixed** (2029513): the Debian host runs systemd as PID 1, so the units
   are installed, enabled and started for real.
 - **A reboot is not tested.** The services are enabled; that they come back is
   inferred from the enablement rather than observed.

@@ -27,6 +27,11 @@ type Request struct {
 	Databases []DatabaseSpec `json:"databases"`
 
 	Destination Destination `json:"destination"`
+
+	// SealingKey is the hex-encoded key a panel backup is sealed with, and is
+	// empty for every other type. It is a secret: it arrives for one operation
+	// and is never logged, persisted or returned.
+	SealingKey string `json:"sealing_key,omitempty"`
 }
 
 // Report is the progress callback the job runner supplies.
@@ -58,6 +63,15 @@ func (p *Provider) Create(ctx context.Context, req Request, report Report) (Resu
 		return Result{}, err
 	}
 
+	var key []byte
+	if req.Type == validate.BackupPanel {
+		effective, sealWith, err := p.panelRequest(req)
+		if err != nil {
+			return Result{}, err
+		}
+		req, key = effective, sealWith
+	}
+
 	store, err := p.storeFor(req.Destination)
 	if err != nil {
 		return Result{}, err
@@ -80,13 +94,35 @@ func (p *Provider) Create(ctx context.Context, req Request, report Report) (Resu
 		return Result{}, err
 	}
 
+	upload := staging
+	if key != nil {
+		report.at(65, "Sealing the archive")
+		sealed, err := p.staging("sealed")
+		if err != nil {
+			return Result{}, err
+		}
+		// Removed on every path, like the plain copy: both are the panel's
+		// database, and the plain one especially must not outlive the backup.
+		defer func() { _ = os.Remove(sealed) }()
+		if err := sealFile(staging, sealed, key); err != nil {
+			return Result{}, err
+		}
+		// What is stored, digested, read back and later verified is the
+		// sealed file. The plain archive never leaves this host.
+		checksum, size, err = digestFile(sealed)
+		if err != nil {
+			return Result{}, err
+		}
+		upload = sealed
+	}
+
 	report.at(70, fmt.Sprintf("Sending %s to %s", humanBytes(size), store.Kind()))
-	if err := store.Put(ctx, req.Key, staging); err != nil {
+	if err := store.Put(ctx, req.Key, upload); err != nil {
 		return Result{}, err
 	}
 
 	report.at(85, "Reading the backup back to check it")
-	verified, detail := p.readBack(ctx, store, req.Key, size, checksum)
+	verified, detail := p.readBack(ctx, store, req.Key, size, checksum, key)
 
 	result := Result{
 		Key:          req.Key,
@@ -110,8 +146,11 @@ func (p *Provider) Create(ctx context.Context, req Request, report Report) (Resu
 }
 
 // readBack downloads the archive from where it was stored and checks it.
+//
+// sealingKey is set for a sealed archive. Then the copy read back is also
+// opened, which is what proves the key it will be restored with opens it.
 func (p *Provider) readBack(ctx context.Context, store Store, key string,
-	size int64, checksum string,
+	size int64, checksum string, sealingKey []byte,
 ) (bool, string) {
 	remoteSize, err := store.Stat(ctx, key)
 	if err != nil {
@@ -148,7 +187,19 @@ func (p *Provider) readBack(ctx context.Context, store Store, key string,
 	// is intact — which a digest over the whole file already implies, but this
 	// is also what catches an archive that is byte-identical to something that
 	// was never a valid archive.
-	if _, err := readManifest(downloaded); err != nil {
+	readable := downloaded
+	if sealingKey != nil {
+		opened, err := p.staging("opened")
+		if err != nil {
+			return false, err.Error()
+		}
+		defer func() { _ = os.Remove(opened) }()
+		if err := unsealFile(downloaded, opened, sealingKey); err != nil {
+			return false, "the sealed copy read back could not be opened: " + err.Error()
+		}
+		readable = opened
+	}
+	if _, err := readManifest(readable); err != nil {
 		return false, err.Error()
 	}
 	return true, ""
@@ -214,7 +265,7 @@ func (p *Provider) writeArchive(ctx context.Context, req Request, staging string
 		report.at(50+index*15/max(1, len(req.Databases)),
 			fmt.Sprintf("Dumping %s", spec.Name))
 
-		member, skipped, err := p.addDatabase(ctx, archive, dumpDir, spec)
+		member, skipped, err := p.addDatabase(ctx, archive, dumpDir, spec, req.Type)
 		if err != nil {
 			archive.abandon()
 			return Manifest{}, 0, "", err
@@ -304,12 +355,12 @@ func (p *Provider) addSite(archive *writer, site SiteSpec) (SiteEntry, []Member,
 // A database that exists and cannot be read is a different matter and does
 // fail: that is a dump the host should have been able to take.
 func (p *Provider) addDatabase(ctx context.Context, archive *writer, dumpDir string,
-	spec DatabaseSpec,
+	spec DatabaseSpec, backupType string,
 ) (DatabaseMember, string, error) {
 	if err := validate.DatabaseEngine(spec.Engine); err != nil {
 		return DatabaseMember{}, "", fmt.Errorf("%w: %s", ErrNothingToBackUp, err)
 	}
-	if err := validate.DatabaseName(spec.Name); err != nil {
+	if err := p.checkDatabaseName(spec, backupType); err != nil {
 		return DatabaseMember{}, "", fmt.Errorf("%w: %s", ErrNothingToBackUp, err)
 	}
 	if p.databases == nil {

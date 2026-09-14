@@ -187,7 +187,8 @@ func backupError(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, backup.ErrUnavailable),
-		errors.Is(err, backup.ErrUnsupportedDestination):
+		errors.Is(err, backup.ErrUnsupportedDestination),
+		errors.Is(err, backup.ErrPanelUnavailable):
 		return Fail(protocol.CodeUnsupported, err.Error(), err)
 	case errors.Is(err, backup.ErrNotFound):
 		return Fail(protocol.CodeNotFound, err.Error(), err)
@@ -196,9 +197,12 @@ func backupError(err error) error {
 		errors.Is(err, backup.ErrCorrupt),
 		errors.Is(err, backup.ErrArchiveMalformed),
 		errors.Is(err, backup.ErrRestoreFailed),
-		errors.Is(err, backup.ErrTooLarge):
+		errors.Is(err, backup.ErrTooLarge),
+		errors.Is(err, backup.ErrPanelRestoreOnHost):
 		return Fail(protocol.CodeInvalidRequest, err.Error(), err)
-	case errors.Is(err, validate.ErrInvalidBackupKey),
+	case errors.Is(err, backup.ErrPanelRequest),
+		errors.Is(err, backup.ErrSealingKey),
+		errors.Is(err, validate.ErrInvalidBackupKey),
 		errors.Is(err, validate.ErrInvalidBackupType),
 		errors.Is(err, validate.ErrInvalidDestination),
 		errors.Is(err, validate.ErrInvalidChecksum):

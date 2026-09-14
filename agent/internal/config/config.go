@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jothost/panel/shared/validate"
 )
 
 // Config is the validated Agent configuration.
@@ -244,6 +246,13 @@ type Config struct {
 	BackupWorkDir    string
 	BackupLocalRoots []string
 	SFTPPath         string
+
+	// PanelDatabase names the panel's own database on this host's
+	// PostgreSQL, which a panel backup dumps (docs/PANEL_BACKUP.md). The
+	// installer sets it. It is configuration and never a request field, so a
+	// panel backup cannot be pointed at another database. Empty means panel
+	// backups are unavailable here, as on the development stack.
+	PanelDatabase string
 }
 
 // Load reads and validates Agent configuration.
@@ -374,7 +383,8 @@ func Load() (Config, error) {
 		// Adding another is a deliberate configuration change.
 		BackupLocalRoots: getList("AGENT_BACKUP_LOCAL_ROOTS",
 			[]string{"/var/lib/jothost/backups", "/backup", "/backups"}),
-		SFTPPath: getString("AGENT_SFTP_PATH", "/usr/bin/sftp"),
+		SFTPPath:      getString("AGENT_SFTP_PATH", "/usr/bin/sftp"),
+		PanelDatabase: getString("AGENT_PANEL_DATABASE", ""),
 	}
 
 	var problems []string
@@ -409,6 +419,14 @@ func Load() (Config, error) {
 	problems = append(problems, validateAbsolute("AGENT_MYSQLDUMP_PATH", cfg.MysqldumpPath)...)
 	problems = append(problems, validateAbsolute("AGENT_PG_DUMP_PATH", cfg.PgDumpPath)...)
 	problems = append(problems, validateAbsolute("AGENT_SFTP_PATH", cfg.SFTPPath)...)
+	if cfg.PanelDatabase != "" {
+		// DatabaseIdentifier, not DatabaseName: the panel's database name is
+		// reserved on purpose, and DatabaseName would refuse the value every
+		// installation writes here - so the Agent would not start.
+		if err := validate.DatabaseIdentifier(cfg.PanelDatabase); err != nil {
+			problems = append(problems, "AGENT_PANEL_DATABASE "+err.Error())
+		}
+	}
 	problems = append(problems, validateAbsolute("AGENT_BACKUP_WORK_DIR", cfg.BackupWorkDir)...)
 	for _, root := range cfg.BackupLocalRoots {
 		problems = append(problems, validateAbsolute("AGENT_BACKUP_LOCAL_ROOTS", root)...)

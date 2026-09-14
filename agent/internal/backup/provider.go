@@ -48,15 +48,16 @@ func NewProvider(opts Options) *Provider {
 	}
 
 	provider := &Provider{
-		runner:     opts.Runner,
-		databases:  opts.Databases,
-		log:        log,
-		workDir:    opts.WorkDir,
-		siteRoot:   opts.SiteRoot,
-		localRoots: append([]string(nil), opts.LocalRoots...),
-		http:       client,
-		hostname:   hostname,
-		now:        now,
+		runner:        opts.Runner,
+		databases:     opts.Databases,
+		log:           log,
+		workDir:       opts.WorkDir,
+		siteRoot:      opts.SiteRoot,
+		localRoots:    append([]string(nil), opts.LocalRoots...),
+		panelDatabase: opts.PanelDatabase,
+		http:          client,
+		hostname:      hostname,
+		now:           now,
 	}
 
 	if provider.workDir != "" {
@@ -101,6 +102,10 @@ type Capabilities struct {
 	PostgresDump bool     `json:"postgres_dump"`
 	Engines      []string `json:"engines"`
 	WorkDir      string   `json:"work_dir,omitempty"`
+	// Panel says whether this host can back up the panel's own database, and
+	// PanelReason why not when it cannot.
+	Panel       bool   `json:"panel"`
+	PanelReason string `json:"panel_reason,omitempty"`
 }
 
 // Capabilities reports what this host can do.
@@ -130,6 +135,15 @@ func (p *Provider) Capabilities() Capabilities {
 				caps.MySQLDump = true
 			}
 		}
+	}
+
+	switch {
+	case p.panelDatabase == "":
+		caps.PanelReason = ErrPanelUnavailable.Error()
+	case !caps.PostgresDump:
+		caps.PanelReason = "pg_dump is not available on this host, so the panel's database cannot be dumped"
+	default:
+		caps.Panel = true
 	}
 	return caps
 }

@@ -848,6 +848,9 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*operations.Registry, *
 		WorkDir:    cfg.BackupWorkDir,
 		SiteRoot:   cfg.SiteRoot,
 		LocalRoots: cfg.BackupLocalRoots,
+		// Named by configuration so a request can never choose which
+		// database a panel backup dumps.
+		PanelDatabase: cfg.PanelDatabase,
 	})
 	if capabilities := backupProvider.Capabilities(); !capabilities.Available {
 		log.Warn("backups are unavailable on this host", "detail", capabilities.Reason)

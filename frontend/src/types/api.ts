@@ -69,8 +69,22 @@ export interface UserProfile {
   roles: string[];
   permissions: string[];
   two_factor_enabled: boolean;
+  /** Unused recovery codes; 0 while two-factor is off. */
+  recovery_codes_remaining: number;
   last_login_at: string | null;
   created_at: string;
+}
+
+/**
+ * Recovery codes, as issued. They are returned once, when two-factor is turned
+ * on or the set is replaced, and never again. Never persist or log these.
+ */
+export interface RecoveryCodesResponse {
+  recovery_codes: string[];
+}
+
+export interface TwoFactorEnableResponse extends RecoveryCodesResponse {
+  two_factor_enabled: boolean;
 }
 
 export interface TwoFactorSetupResponse {

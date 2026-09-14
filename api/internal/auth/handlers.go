@@ -42,6 +42,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/auth/2fa/setup", authed(http.HandlerFunc(h.setupTwoFactor)))
 	mux.Handle("POST /api/v1/auth/2fa/enable", authed(http.HandlerFunc(h.enableTwoFactor)))
 	mux.Handle("POST /api/v1/auth/2fa/disable", authed(http.HandlerFunc(h.disableTwoFactor)))
+	mux.Handle("POST /api/v1/auth/2fa/recovery-codes", authed(http.HandlerFunc(h.regenerateRecoveryCodes)))
 }
 
 // decodeJSON reads a bounded, strict JSON body.
@@ -163,6 +164,9 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 type verifyTwoFactorRequest struct {
 	MFAToken string `json:"mfa_token"`
 	Code     string `json:"code"`
+	// RecoveryCode is sent instead of Code by somebody without their
+	// authenticator. Exactly one of the two is accepted.
+	RecoveryCode string `json:"recovery_code"`
 }
 
 func (h *Handler) verifyTwoFactor(w http.ResponseWriter, r *http.Request) {
@@ -171,12 +175,20 @@ func (h *Handler) verifyTwoFactor(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	if req.MFAToken == "" || req.Code == "" {
-		httpx.Error(w, r, httpx.ValidationFailed("mfa_token and code are required"))
+	if req.MFAToken == "" || (req.Code == "") == (req.RecoveryCode == "") {
+		httpx.Error(w, r, httpx.ValidationFailed("mfa_token and exactly one of code or recovery_code are required"))
 		return
 	}
 
-	pair, err := h.service.VerifyTwoFactor(r.Context(), req.MFAToken, req.Code, requestContext(r))
+	var (
+		pair *TokenPair
+		err  error
+	)
+	if req.RecoveryCode != "" {
+		pair, err = h.service.VerifyRecoveryCode(r.Context(), req.MFAToken, req.RecoveryCode, requestContext(r))
+	} else {
+		pair, err = h.service.VerifyTwoFactor(r.Context(), req.MFAToken, req.Code, requestContext(r))
+	}
 	if err != nil {
 		httpx.Error(w, r, authError(err))
 		return
@@ -253,11 +265,41 @@ func (h *Handler) enableTwoFactor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.EnableTwoFactor(r.Context(), claims.UserID, req.Code, requestContext(r)); err != nil {
+	codes, err := h.service.EnableTwoFactor(r.Context(), claims.UserID, req.Code, requestContext(r))
+	if err != nil {
 		httpx.Error(w, r, authError(err))
 		return
 	}
-	httpx.OK(w, r, map[string]bool{"two_factor_enabled": true})
+	httpx.OK(w, r, map[string]any{"two_factor_enabled": true, "recovery_codes": codes})
+}
+
+type recoveryCodesRequest struct {
+	Password string `json:"password"`
+}
+
+func (h *Handler) regenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) {
+	claims, ok := ClaimsFromContext(r.Context())
+	if !ok {
+		httpx.Error(w, r, httpx.Unauthorized("Authentication required"))
+		return
+	}
+
+	var req recoveryCodesRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if req.Password == "" {
+		httpx.Error(w, r, httpx.ValidationFailed("password is required"))
+		return
+	}
+
+	codes, err := h.service.RegenerateRecoveryCodes(r.Context(), claims.UserID, req.Password, requestContext(r))
+	if err != nil {
+		httpx.Error(w, r, authError(err))
+		return
+	}
+	httpx.OK(w, r, map[string]any{"recovery_codes": codes})
 }
 
 type disableTwoFactorRequest struct {
@@ -305,6 +347,10 @@ func authError(err error) error {
 		return httpx.Unauthorized("Invalid or expired token")
 	case errors.Is(err, ErrInvalidTOTP):
 		return httpx.Unauthorized("Invalid verification code")
+	case errors.Is(err, ErrInvalidRecoveryCode):
+		return httpx.Unauthorized("Invalid or already used recovery code")
+	case errors.Is(err, twofactor.ErrNotEnabled):
+		return httpx.BadRequest("Two-factor authentication is not enabled")
 	case errors.Is(err, ErrTwoFactorEnabled):
 		return httpx.Conflict("Two-factor authentication is already enabled")
 	case errors.Is(err, twofactor.ErrNotEnrolled):

@@ -143,22 +143,9 @@ func (r *Repository) VerifyCode(ctx context.Context, userID, code string, now ti
 	return secrets.VerifyTOTP(string(secret), code, now)
 }
 
-// Enable marks a verified enrolment as active.
-func (r *Repository) Enable(ctx context.Context, userID string) error {
-	tag, err := r.pool.Exec(ctx, `
-		UPDATE two_factor_auth SET enabled = TRUE, updated_at = now()
-		WHERE user_id = $1::uuid`, userID)
-	if err != nil {
-		return fmt.Errorf("enable two-factor: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotEnrolled
-	}
-	return nil
-}
-
 // Disable removes a user's enrolment entirely, so re-enabling starts from a
-// fresh secret rather than reusing one that may have been exposed.
+// fresh secret rather than reusing one that may have been exposed. Its
+// recovery codes go with it, by the foreign key's cascade.
 func (r *Repository) Disable(ctx context.Context, userID string) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM two_factor_auth WHERE user_id = $1::uuid`, userID)
 	if err != nil {

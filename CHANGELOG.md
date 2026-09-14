@@ -10,6 +10,16 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Added
 
+- **Recovery codes for two-factor authentication.** Turning two-factor on now
+  shows ten one-time codes, and the sign-in page accepts one in place of an
+  authenticator code. They can be replaced from Account security with the
+  password; only their hashes are stored, and every use is audited. For an
+  account with neither its authenticator nor a code, `jothost-api
+  reset-two-factor USERNAME` removes two-factor from the host. Before this, an
+  administrator who lost their authenticator on a panel with one administrator
+  could not get back in: `RECOVERY.md` said another administrator could disable
+  it, and no endpoint did.
+
 - **An upgrade test from the previous release.** CI builds `v0.1.0-rc.1` from
   its tag, installs it on Debian 12 and Ubuntu 24.04, gives it a website, a
   cron job, a backup and a stored secret through its own API, and updates it to

@@ -454,6 +454,10 @@ func TestTwoFactorVerifyValidatesInput(t *testing.T) {
 		{"missing code", verifyTwoFactorRequest{MFAToken: "x"}, http.StatusUnprocessableEntity},
 		{"missing token", verifyTwoFactorRequest{Code: "123456"}, http.StatusUnprocessableEntity},
 		{"unknown token", verifyTwoFactorRequest{MFAToken: "nope", Code: "123456"}, http.StatusUnauthorized},
+		// A code and a recovery code together is ambiguous about which was
+		// meant to be checked, so it is refused rather than guessed at.
+		{"both kinds of code", verifyTwoFactorRequest{MFAToken: "x", Code: "123456", RecoveryCode: "abcd-efgh-jkmn-pqrs"}, http.StatusUnprocessableEntity},
+		{"unknown token with a recovery code", verifyTwoFactorRequest{MFAToken: "nope", RecoveryCode: "abcd-efgh-jkmn-pqrs"}, http.StatusUnauthorized},
 	}
 
 	for _, tc := range cases {
@@ -478,6 +482,88 @@ func TestTwoFactorDisableRequiresPassword(t *testing.T) {
 		disableTwoFactorRequest{Password: "wrong-password-entirely"}, tokens.AccessToken)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 with a wrong password, got %d", rec.Code)
+	}
+}
+
+func TestRecoveryCodeEndpoints(t *testing.T) {
+	f := newFixture(t)
+	tokens := f.login(t)
+
+	rec := f.call(t, http.MethodPost, "/api/v1/auth/2fa/setup", nil, tokens.AccessToken)
+	var setup TwoFactorSetup
+	decodeData(t, rec, &setup)
+	code, err := secrets.TOTPCode(setup.Secret, f.svc.now())
+	if err != nil {
+		t.Fatalf("TOTPCode: %v", err)
+	}
+
+	// Enabling answers with the codes, once.
+	rec = f.call(t, http.MethodPost, "/api/v1/auth/2fa/enable",
+		twoFactorCodeRequest{Code: code}, tokens.AccessToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var enabled struct {
+		RecoveryCodes []string `json:"recovery_codes"`
+	}
+	decodeData(t, rec, &enabled)
+	if len(enabled.RecoveryCodes) != 10 {
+		t.Fatalf("enable returned %d recovery codes, want 10", len(enabled.RecoveryCodes))
+	}
+
+	// Regenerating needs the password.
+	rec = f.call(t, http.MethodPost, "/api/v1/auth/2fa/recovery-codes",
+		recoveryCodesRequest{}, tokens.AccessToken)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("regenerate without a password: expected 422, got %d", rec.Code)
+	}
+	rec = f.call(t, http.MethodPost, "/api/v1/auth/2fa/recovery-codes",
+		recoveryCodesRequest{Password: "wrong-password-entirely"}, tokens.AccessToken)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("regenerate with a wrong password: expected 401, got %d", rec.Code)
+	}
+	rec = f.call(t, http.MethodPost, "/api/v1/auth/2fa/recovery-codes",
+		recoveryCodesRequest{Password: testPassword}, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("regenerate without signing in: expected 401, got %d", rec.Code)
+	}
+	rec = f.call(t, http.MethodPost, "/api/v1/auth/2fa/recovery-codes",
+		recoveryCodesRequest{Password: testPassword}, tokens.AccessToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("regenerate: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var regenerated struct {
+		RecoveryCodes []string `json:"recovery_codes"`
+	}
+	decodeData(t, rec, &regenerated)
+
+	// A recovery code completes a login in place of the authenticator.
+	rec = f.call(t, http.MethodPost, "/api/v1/auth/login",
+		loginRequest{Username: testUsername, Password: testPassword}, "")
+	var challenge loginResponse
+	decodeData(t, rec, &challenge)
+
+	rec = f.call(t, http.MethodPost, "/api/v1/auth/2fa/verify",
+		verifyTwoFactorRequest{MFAToken: challenge.MFAToken, RecoveryCode: enabled.RecoveryCodes[0]}, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("a code from the retired set: expected 401, got %d", rec.Code)
+	}
+	rec = f.call(t, http.MethodPost, "/api/v1/auth/2fa/verify",
+		verifyTwoFactorRequest{MFAToken: challenge.MFAToken, RecoveryCode: regenerated.RecoveryCodes[0]}, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("verify with a recovery code: expected 200, got %d (%s)", rec.Code, rec.Body.String())
+	}
+	var pair TokenPair
+	decodeData(t, rec, &pair)
+	if pair.AccessToken == "" {
+		t.Fatal("a recovery code must issue an access token")
+	}
+
+	rec = f.call(t, http.MethodGet, "/api/v1/auth/me", nil, pair.AccessToken)
+	var profile Profile
+	decodeData(t, rec, &profile)
+	if profile.RecoveryCodesRemaining != 9 {
+		t.Fatalf("the profile reports %d recovery codes remaining, want 9", profile.RecoveryCodesRemaining)
 	}
 }
 

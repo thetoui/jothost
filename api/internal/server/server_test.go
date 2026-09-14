@@ -189,6 +189,7 @@ func TestProtectedRoutesRejectAnonymousCallers(t *testing.T) {
 		{http.MethodPost, "/api/v1/auth/2fa/setup"},
 		{http.MethodPost, "/api/v1/auth/2fa/enable"},
 		{http.MethodPost, "/api/v1/auth/2fa/disable"},
+		{http.MethodPost, "/api/v1/auth/2fa/recovery-codes"},
 	}
 
 	for _, route := range protected {

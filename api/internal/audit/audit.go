@@ -31,7 +31,14 @@ const (
 	ActionTwoFactorEnable = "user.2fa_enabled"
 	ActionTwoFactorFailed = "user.2fa_failed"
 	ActionTwoFactorDisabl = "user.2fa_disabled"
-	ActionUserCreated     = "user.create"
+	// A recovery code was spent in place of an authenticator code.
+	ActionTwoFactorRecoveryUsed = "user.2fa_recovery_code_used"
+	// A user replaced their recovery codes.
+	ActionTwoFactorRecoveryRegenerated = "user.2fa_recovery_codes_regenerated"
+	// Two-factor was removed from an account from the host, with jothost-api
+	// reset-two-factor.
+	ActionTwoFactorReset = "user.2fa_reset"
+	ActionUserCreated    = "user.create"
 )
 
 // Outcome values.

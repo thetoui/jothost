@@ -27,7 +27,10 @@ var (
 	ErrRateLimited        = errors.New("too many attempts")
 	ErrInvalidToken       = errors.New("invalid or expired token")
 	ErrInvalidTOTP        = errors.New("invalid verification code")
-	ErrTwoFactorEnabled   = errors.New("two-factor authentication is already enabled")
+	// ErrInvalidRecoveryCode is a recovery code that is not one of the
+	// user's unused codes. It says nothing about which of those it was.
+	ErrInvalidRecoveryCode = errors.New("invalid recovery code")
+	ErrTwoFactorEnabled    = errors.New("two-factor authentication is already enabled")
 )
 
 // dummyHash is verified against when the username does not exist, so a
@@ -199,6 +202,73 @@ func (s *Service) Login(ctx context.Context, username, password string, rc Reque
 
 // VerifyTwoFactor completes a login that required TOTP.
 func (s *Service) VerifyTwoFactor(ctx context.Context, mfaToken, code string, rc RequestContext) (*TokenPair, error) {
+	return s.completeChallenge(ctx, mfaToken, rc, func(challenge MFAChallenge) error {
+		valid, err := s.twoFactor.VerifyCode(ctx, challenge.UserID, code, s.now())
+		if err != nil {
+			if errors.Is(err, twofactor.ErrNotEnrolled) {
+				return ErrInvalidToken
+			}
+			return err
+		}
+		if !valid {
+			s.audit.RecordAsync(ctx, audit.Event{
+				UserID:    challenge.UserID,
+				Action:    audit.ActionTwoFactorFailed,
+				IPAddress: rc.IPAddress,
+				UserAgent: rc.UserAgent,
+				Status:    audit.StatusFailure,
+			})
+			return ErrInvalidTOTP
+		}
+		return nil
+	})
+}
+
+// VerifyRecoveryCode completes a login that required two-factor with one of
+// the user's recovery codes instead of an authenticator code.
+//
+// It is the same step as VerifyTwoFactor, behind the same challenge and the
+// same rate limits, so a recovery code is no easier to guess than a TOTP code
+// is. The code is spent whether or not anything after it succeeds: a code
+// that has been typed into a sign-in form once is not one to keep.
+func (s *Service) VerifyRecoveryCode(ctx context.Context, mfaToken, recoveryCode string, rc RequestContext) (*TokenPair, error) {
+	return s.completeChallenge(ctx, mfaToken, rc, func(challenge MFAChallenge) error {
+		valid, remaining, err := s.twoFactor.UseRecoveryCode(ctx, challenge.UserID, recoveryCode)
+		if err != nil {
+			return err
+		}
+		if !valid {
+			s.audit.RecordAsync(ctx, audit.Event{
+				UserID:    challenge.UserID,
+				Action:    audit.ActionTwoFactorFailed,
+				IPAddress: rc.IPAddress,
+				UserAgent: rc.UserAgent,
+				Status:    audit.StatusFailure,
+				Metadata:  map[string]any{"method": "recovery_code"},
+			})
+			return ErrInvalidRecoveryCode
+		}
+		// Recorded as a success of its own, not folded into the login: a
+		// recovery code in use means an authenticator is lost or somebody else
+		// has the codes, and either way it is the line an administrator reading
+		// the audit trail needs to find.
+		s.audit.RecordAsync(ctx, audit.Event{
+			UserID:    challenge.UserID,
+			Action:    audit.ActionTwoFactorRecoveryUsed,
+			IPAddress: rc.IPAddress,
+			UserAgent: rc.UserAgent,
+			Status:    audit.StatusSuccess,
+			Metadata:  map[string]any{"remaining": remaining},
+		})
+		return nil
+	})
+}
+
+// completeChallenge runs one second-factor check against a pending login and,
+// if it passes, signs the user in.
+func (s *Service) completeChallenge(ctx context.Context, mfaToken string, rc RequestContext,
+	check func(MFAChallenge) error,
+) (*TokenPair, error) {
 	challenge, err := s.tokens.PeekMFAChallenge(ctx, mfaToken)
 	if err != nil {
 		if errors.Is(err, ErrTokenNotFound) {
@@ -213,22 +283,8 @@ func (s *Service) VerifyTwoFactor(ctx context.Context, mfaToken, code string, rc
 		return nil, err
 	}
 
-	valid, err := s.twoFactor.VerifyCode(ctx, challenge.UserID, code, s.now())
-	if err != nil {
-		if errors.Is(err, twofactor.ErrNotEnrolled) {
-			return nil, ErrInvalidToken
-		}
+	if err := check(challenge); err != nil {
 		return nil, err
-	}
-	if !valid {
-		s.audit.RecordAsync(ctx, audit.Event{
-			UserID:    challenge.UserID,
-			Action:    audit.ActionTwoFactorFailed,
-			IPAddress: rc.IPAddress,
-			UserAgent: rc.UserAgent,
-			Status:    audit.StatusFailure,
-		})
-		return nil, ErrInvalidTOTP
 	}
 
 	// Consume the challenge only on success, so a mistyped code does not send
@@ -478,15 +534,18 @@ func (s *Service) revokeSession(ctx context.Context, sessionID string) error {
 
 // Profile is the response body of GET /auth/me.
 type Profile struct {
-	ID          string     `json:"id"`
-	Username    string     `json:"username"`
-	Email       *string    `json:"email"`
-	Status      string     `json:"status"`
-	Roles       []string   `json:"roles"`
-	Permissions []string   `json:"permissions"`
-	TwoFactor   bool       `json:"two_factor_enabled"`
-	LastLoginAt *time.Time `json:"last_login_at"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID          string   `json:"id"`
+	Username    string   `json:"username"`
+	Email       *string  `json:"email"`
+	Status      string   `json:"status"`
+	Roles       []string `json:"roles"`
+	Permissions []string `json:"permissions"`
+	TwoFactor   bool     `json:"two_factor_enabled"`
+	// RecoveryCodesRemaining is how many unused recovery codes the user has,
+	// so the page can say so before the last one is gone.
+	RecoveryCodesRemaining int        `json:"recovery_codes_remaining"`
+	LastLoginAt            *time.Time `json:"last_login_at"`
+	CreatedAt              time.Time  `json:"created_at"`
 }
 
 // Me returns the authenticated user's profile.
@@ -511,17 +570,24 @@ func (s *Service) Me(ctx context.Context, userID string) (Profile, error) {
 	if err != nil {
 		return Profile{}, err
 	}
+	remaining := 0
+	if twoFactorEnabled {
+		if remaining, err = s.twoFactor.RecoveryCodesRemaining(ctx, user.ID); err != nil {
+			return Profile{}, err
+		}
+	}
 
 	return Profile{
-		ID:          user.ID,
-		Username:    user.Username,
-		Email:       user.Email,
-		Status:      user.Status,
-		Roles:       roles,
-		Permissions: permissions,
-		TwoFactor:   twoFactorEnabled,
-		LastLoginAt: user.LastLoginAt,
-		CreatedAt:   user.CreatedAt,
+		ID:                     user.ID,
+		Username:               user.Username,
+		Email:                  user.Email,
+		Status:                 user.Status,
+		Roles:                  roles,
+		Permissions:            permissions,
+		TwoFactor:              twoFactorEnabled,
+		RecoveryCodesRemaining: remaining,
+		LastLoginAt:            user.LastLoginAt,
+		CreatedAt:              user.CreatedAt,
 	}, nil
 }
 
@@ -568,14 +634,15 @@ func (s *Service) SetupTwoFactor(ctx context.Context, userID string, rc RequestC
 }
 
 // EnableTwoFactor activates a pending enrolment once the user proves they can
-// generate a valid code.
-func (s *Service) EnableTwoFactor(ctx context.Context, userID, code string, rc RequestContext) error {
+// generate a valid code, and returns the account's first recovery codes. They
+// are returned this once and never again.
+func (s *Service) EnableTwoFactor(ctx context.Context, userID, code string, rc RequestContext) ([]string, error) {
 	valid, err := s.twoFactor.VerifyCode(ctx, userID, code, s.now())
 	if err != nil {
 		if errors.Is(err, twofactor.ErrNotEnrolled) {
-			return twofactor.ErrNotEnrolled
+			return nil, twofactor.ErrNotEnrolled
 		}
-		return err
+		return nil, err
 	}
 	if !valid {
 		s.audit.RecordAsync(ctx, audit.Event{
@@ -585,11 +652,12 @@ func (s *Service) EnableTwoFactor(ctx context.Context, userID, code string, rc R
 			UserAgent: rc.UserAgent,
 			Status:    audit.StatusFailure,
 		})
-		return ErrInvalidTOTP
+		return nil, ErrInvalidTOTP
 	}
 
-	if err := s.twoFactor.Enable(ctx, userID); err != nil {
-		return err
+	codes, err := s.twoFactor.EnableWithRecoveryCodes(ctx, userID)
+	if err != nil {
+		return nil, err
 	}
 
 	s.audit.RecordAsync(ctx, audit.Event{
@@ -599,7 +667,47 @@ func (s *Service) EnableTwoFactor(ctx context.Context, userID, code string, rc R
 		UserAgent: rc.UserAgent,
 		Status:    audit.StatusSuccess,
 	})
-	return nil
+	return codes, nil
+}
+
+// RegenerateRecoveryCodes replaces the user's recovery codes with a new set.
+//
+// The password is required for the reason DisableTwoFactor requires it: an
+// unlocked browser left open must not be enough to mint a way past the second
+// factor.
+func (s *Service) RegenerateRecoveryCodes(ctx context.Context, userID, password string, rc RequestContext) ([]string, error) {
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	matched, err := secrets.VerifyPassword(password, user.PasswordHash)
+	if err != nil {
+		return nil, fmt.Errorf("verify password: %w", err)
+	}
+	if !matched {
+		s.audit.RecordAsync(ctx, audit.Event{
+			UserID:    userID,
+			Action:    audit.ActionTwoFactorRecoveryRegenerated,
+			IPAddress: rc.IPAddress,
+			UserAgent: rc.UserAgent,
+			Status:    audit.StatusFailure,
+		})
+		return nil, ErrInvalidCredentials
+	}
+
+	codes, err := s.twoFactor.RegenerateRecoveryCodes(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.audit.RecordAsync(ctx, audit.Event{
+		UserID:    userID,
+		Action:    audit.ActionTwoFactorRecoveryRegenerated,
+		IPAddress: rc.IPAddress,
+		UserAgent: rc.UserAgent,
+		Status:    audit.StatusSuccess,
+	})
+	return codes, nil
 }
 
 // DisableTwoFactor removes a user's second factor.

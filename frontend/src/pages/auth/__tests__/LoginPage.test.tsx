@@ -185,6 +185,58 @@ describe('LoginPage', () => {
       expect(screen.getByRole('button', { name: 'Verify' })).toBeDisabled();
     });
 
+    it('signs in with a recovery code instead of the authenticator', async () => {
+      const user = userEvent.setup();
+      useAuthStore.setState({ status: 'anonymous', mfaToken: 'mfa-1' });
+      const bodies: unknown[] = [];
+      vi.mocked(globalThis.fetch).mockImplementation(async (_input, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return envelopeResponse(tokenPair);
+      });
+
+      renderWithProviders(<LoginPage />);
+
+      await user.click(screen.getByRole('button', { name: 'Use a recovery code' }));
+      const input = screen.getByLabelText('Recovery code');
+      const verify = screen.getByRole('button', { name: 'Verify' });
+
+      // Not until it is a whole code, however it is spaced.
+      await user.type(input, 'ABCD EFGH JKMN');
+      expect(verify).toBeDisabled();
+      await user.type(input, ' PQRS');
+      expect(verify).toBeEnabled();
+
+      await user.click(verify);
+
+      await waitFor(() => {
+        expect(useAuthStore.getState().status).toBe('authenticated');
+      });
+      // Sent as a recovery code, and only as one.
+      expect(bodies).toEqual([{ mfa_token: 'mfa-1', recovery_code: 'ABCD EFGH JKMN PQRS' }]);
+    });
+
+    it('reports a used recovery code and can go back to the authenticator', async () => {
+      const user = userEvent.setup();
+      useAuthStore.setState({ status: 'anonymous', mfaToken: 'mfa-1' });
+      vi.mocked(globalThis.fetch).mockResolvedValue(
+        errorResponse('UNAUTHORIZED', 'Invalid or already used recovery code', 401),
+      );
+
+      renderWithProviders(<LoginPage />);
+
+      await user.click(screen.getByRole('button', { name: 'Use a recovery code' }));
+      await user.type(screen.getByLabelText('Recovery code'), 'abcd-efgh-jkmn-pqrs');
+      await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('already used recovery code');
+      expect(useAuthStore.getState().mfaToken).toBe('mfa-1');
+
+      await user.click(screen.getByRole('button', { name: 'Use your authenticator app' }));
+      expect(screen.getByLabelText('Verification code')).toBeInTheDocument();
+      // The recovery code's error does not follow the user to the other form.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('can return to the password step', async () => {
       const user = userEvent.setup();
       useAuthStore.setState({ status: 'anonymous', mfaToken: 'mfa-1' });

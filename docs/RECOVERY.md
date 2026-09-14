@@ -168,9 +168,19 @@ JOTHOST_ADMIN_PASSWORD='a-long-password' \
   jothost-api create-admin
 ```
 
-**Two-factor.** There are no recovery codes. An administrator disables it for
-the affected user; if the affected user is the only administrator, create
-another with `create-admin` above.
+**Two-factor.** On the verification step, choose **Use a recovery code** and
+enter one of the codes shown when two-factor was turned on. Each works once.
+Sign in, then replace them under **Account security**.
+
+With neither the authenticator nor a recovery code, remove two-factor from the
+account on the host. Run it as the API's account, with its configuration:
+
+```bash
+su -s /bin/sh jothost-api -c 'set -a; . /etc/jothost/api.env; set +a; /opt/jothost/bin/jothost-api reset-two-factor admin'
+```
+
+The account then signs in with its password alone. Turn two-factor back on
+straight away. The reset is recorded in the audit log as `user.2fa_reset`.
 
 ## 7. Migrations
 

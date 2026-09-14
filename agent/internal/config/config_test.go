@@ -75,3 +75,28 @@ func TestDurationOverrides(t *testing.T) {
 		t.Fatalf("bare seconds must be accepted, got %v", cfg.ShutdownTimeout)
 	}
 }
+
+func TestThePanelDatabaseNameEveryInstallWritesIsAccepted(t *testing.T) {
+	// The panel's database is named "jothost", which is a reserved name so
+	// that no customer can create or back it up. Validating this setting as a
+	// customer's database name refused exactly what the installer writes, and
+	// the Agent would not have started on a single installation.
+	t.Setenv("AGENT_PANEL_DATABASE", "jothost")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load refused the panel's own database name: %v", err)
+	}
+	if cfg.PanelDatabase != "jothost" {
+		t.Fatalf("PanelDatabase = %q", cfg.PanelDatabase)
+	}
+}
+
+func TestAMalformedPanelDatabaseNameIsRefused(t *testing.T) {
+	// Relaxed only for the reservation, not for the shape of the name.
+	for _, bad := range []string{"jot host", "jothost;drop", "JOTHOST", "pg_catalog"} {
+		t.Setenv("AGENT_PANEL_DATABASE", bad)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load accepted AGENT_PANEL_DATABASE=%q", bad)
+		}
+	}
+}

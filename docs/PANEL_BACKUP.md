@@ -82,9 +82,14 @@ header   "JHSEAL1\n"         8 bytes, the format and its version
 body     chunk 0 … chunk n   AES-256-GCM, each ciphertext + 16-byte tag
 ```
 
-- **Key:** HKDF-SHA256 over the 32-byte `ENCRYPTION_KEY`, with the archive's
-  salt and the label `jothost panel backup v1`. Every archive has its own key,
-  and none of them is the key that protects the database's own secrets.
+- **Key, in two steps.** First `seal.PanelBackupKey`: HKDF-SHA256 over the
+  32-byte `ENCRYPTION_KEY` with the label `jothost panel backup master v1`.
+  That derived key is what the API hands the Agent - never `ENCRYPTION_KEY`
+  itself, which decrypts every credential in the database the Agent is backing
+  up and has no need to read. Then, per archive, HKDF-SHA256 over the derived
+  key with the archive's own salt and the label `jothost panel backup v1`.
+  Every archive has its own key. The recovery command runs the same two steps
+  from the escrowed `ENCRYPTION_KEY`.
 - **Nonce:** an 8-byte chunk counter, three zero bytes, and a final-chunk flag.
   A fresh key per archive means the nonces never repeat under one key.
 - **Associated data:** the whole header, on every chunk. Changing the version,

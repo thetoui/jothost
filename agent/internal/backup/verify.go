@@ -20,6 +20,9 @@ type VerifyRequest struct {
 	Checksum    string      `json:"checksum"`
 	Size        int64       `json:"size"`
 	Destination Destination `json:"destination"`
+	// SealingKey opens a sealed archive, which is verified by opening it. It
+	// is a secret, sent only for a panel backup.
+	SealingKey string `json:"sealing_key,omitempty"`
 }
 
 // Verify reads a backup from its destination and checks it.
@@ -99,7 +102,33 @@ func (p *Provider) Verify(ctx context.Context, req VerifyRequest) (VerifyResult,
 		return result, nil
 	}
 
-	manifest, members, detail, err := verifyMembers(downloaded)
+	readable := downloaded
+	sealed, err := archiveIsSealed(downloaded)
+	if err != nil {
+		return result, err
+	}
+	if sealed {
+		// Reported as a failed verification rather than an error: "the key no
+		// longer opens this" is precisely the finding a verify exists to
+		// surface, and it has to reach the record, not be lost as a 500.
+		key, keyErr := sealingKey(req.SealingKey)
+		if keyErr != nil {
+			result.Detail = "the archive is sealed and no key was given to open it"
+			return result, nil
+		}
+		opened, err := p.staging("opened")
+		if err != nil {
+			return result, err
+		}
+		defer func() { _ = os.Remove(opened) }()
+		if err := unsealFile(downloaded, opened, key); err != nil {
+			result.Detail = "the sealed archive could not be opened with this panel's key: " + err.Error()
+			return result, nil
+		}
+		readable = opened
+	}
+
+	manifest, members, detail, err := verifyMembers(readable)
 	if err != nil {
 		return result, err
 	}

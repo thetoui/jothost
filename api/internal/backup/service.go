@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,13 +69,40 @@ var (
 	// ErrDestinationUnchecked means a destination has never been reached.
 	ErrDestinationUnchecked = errors.New(
 		"this destination has never been reached; check it before relying on it")
+	// ErrPanelNeedsServerManage means a panel backup was asked for by somebody
+	// without server.manage.
+	ErrPanelNeedsServerManage = errors.New(
+		"a backup of the panel itself needs server.manage as well as backup.manage")
+	// ErrPanelRestoreOnHost means somebody asked the panel to restore its own
+	// database.
+	ErrPanelRestoreOnHost = errors.New(
+		"a panel backup is restored from the host, with the panel stopped: " +
+			"run install.sh restore-panel (see docs/RECOVERY.md)")
 )
+
+// requirePanelAuthority refuses a panel backup to anybody without
+// server.manage.
+//
+// backup.manage alone is granted to operators, and that role is deliberately
+// withheld user management and server configuration. A panel backup holds
+// every account's password hash and every stored credential; letting an
+// operator take, verify, delete or schedule one would hand them everything
+// their role withholds. Other backup types are unaffected.
+func requirePanelAuthority(actor Actor, backupType string) error {
+	if backupType == validate.BackupPanel && !actor.CanManageServer {
+		return ErrPanelNeedsServerManage
+	}
+	return nil
+}
 
 // Actor is who asked, for the audit trail.
 type Actor struct {
 	UserID    string
 	IPAddress string
 	UserAgent string
+	// CanManageServer says whether the actor holds server.manage, which a
+	// panel backup needs on top of backup.manage (requirePanelAuthority).
+	CanManageServer bool
 }
 
 // Sites is what this package needs to know about websites.
@@ -249,6 +277,21 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, actor Actor) (B
 	if err := validate.BackupType(req.Type); err != nil {
 		return Backup{}, err
 	}
+	if err := requirePanelAuthority(actor, req.Type); err != nil {
+		return Backup{}, err
+	}
+	return s.create(ctx, req, actor)
+}
+
+// create queues a backup without checking who asked.
+//
+// The scheduler comes through here: it acts for no one in particular, and a
+// panel schedule was already refused to anybody without server.manage when it
+// was created, changed or run by hand.
+func (s *Service) create(ctx context.Context, req CreateRequest, actor Actor) (Backup, error) {
+	if err := validate.BackupType(req.Type); err != nil {
+		return Backup{}, err
+	}
 	destination, err := s.repo.GetDestination(ctx, req.DestinationID)
 	if err != nil {
 		return Backup{}, err
@@ -367,6 +410,12 @@ func (s *Service) plan(ctx context.Context, req CreateRequest) (plan, error) {
 		}
 		return built, nil
 
+	case validate.BackupPanel:
+		// No sites and no databases: what a panel backup dumps is fixed by the
+		// Agent's own configuration, never by the request, so the type cannot
+		// be used to dump an arbitrary database under an administrator's name.
+		return plan{Subject: "panel"}, nil
+
 	default:
 		return plan{}, validate.BackupType(req.Type)
 	}
@@ -436,14 +485,26 @@ func (s *Service) createPayload(ctx context.Context, job jobs.Job) (map[string]a
 		return nil, err
 	}
 
-	return map[string]any{
+	payload := map[string]any{
 		"type":        item.Type,
 		"key":         *item.Path,
 		"subject":     item.Subject,
 		"sites":       built.Sites,
 		"databases":   built.Databases,
 		"destination": destination,
-	}, nil
+	}
+	if item.Type == validate.BackupPanel {
+		// Added here, at dispatch, for the same reason the destination's
+		// credentials are: the job row never holds it, and it exists in
+		// plaintext only for the length of the call to the Agent.
+		payload["sealing_key"] = s.sealingKey()
+	}
+	return payload, nil
+}
+
+// sealingKey is the key a panel backup is sealed with, as the Agent takes it.
+func (s *Service) sealingKey() string {
+	return hex.EncodeToString(s.crypto.PanelBackupKey())
 }
 
 // agentDestination decrypts a destination for one call to the Agent.

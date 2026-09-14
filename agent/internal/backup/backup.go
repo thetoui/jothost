@@ -306,6 +306,11 @@ type Options struct {
 	// /etc/nginx" would be a way to write an arbitrary file as root.
 	LocalRoots []string
 
+	// PanelDatabase names the panel's own database, which a panel backup
+	// dumps. It comes from AGENT_PANEL_DATABASE and never from a request.
+	// Empty means this host cannot take panel backups.
+	PanelDatabase string
+
 	// HTTPClient talks to S3. Nil builds one with a sane timeout.
 	HTTPClient *http.Client
 	// Hostname is recorded in manifests. Empty asks the OS.
@@ -320,9 +325,10 @@ type Provider struct {
 	databases *database.Manager
 	log       *slog.Logger
 
-	workDir    string
-	siteRoot   string
-	localRoots []string
+	workDir       string
+	siteRoot      string
+	localRoots    []string
+	panelDatabase string
 
 	http     *http.Client
 	hostname string

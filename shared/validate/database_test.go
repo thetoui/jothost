@@ -125,3 +125,20 @@ func TestDatabaseNameForIsDistinctPerSite(t *testing.T) {
 		t.Fatalf("two sites produced the same database name: %q", first)
 	}
 }
+
+func TestTheIdentifierCheckAllowsReservedNamesAndNothingMalformed(t *testing.T) {
+	// The panel's own database is reserved against customers and still has
+	// to be nameable by the Agent's configuration.
+	if err := DatabaseName("jothost"); err == nil {
+		t.Fatal("DatabaseName accepted the panel's reserved database")
+	}
+	if err := DatabaseIdentifier("jothost"); err != nil {
+		t.Fatalf("DatabaseIdentifier refused a well-formed reserved name: %v", err)
+	}
+	// It relaxes the reservation only, not the shape.
+	for _, bad := range []string{"", "Jothost", "1db", "db-name", "db;drop", "pg_catalog", strings.Repeat("a", MaxDatabaseNameLength+1)} {
+		if err := DatabaseIdentifier(bad); err == nil {
+			t.Fatalf("DatabaseIdentifier accepted %q", bad)
+		}
+	}
+}

@@ -328,3 +328,29 @@ func TestTheFormatHasNotChanged(t *testing.T) {
 		t.Fatalf("the known-answer vector did not open to its plaintext: %v", err)
 	}
 }
+
+// The backup key is derived, stable, and never the key it came from.
+func TestThePanelBackupKeyIsDerivedAndStable(t *testing.T) {
+	master := testKey()
+	derived, err := PanelBackupKey(master)
+	if err != nil {
+		t.Fatalf("PanelBackupKey: %v", err)
+	}
+	if len(derived) != KeySize {
+		t.Fatalf("derived key is %d bytes", len(derived))
+	}
+	if bytes.Equal(derived, master) {
+		t.Fatal("the backup key is ENCRYPTION_KEY itself; the Agent would hold the key to every credential")
+	}
+	// Pinned for the same reason as the stream format: the API that seals a
+	// backup and the recovery command that opens it, possibly years and
+	// versions apart, must derive exactly this.
+	const want = "b18785dd7451dcda2f85fc1b1ada9a88ad64fc405f8eb6d81a06b1558fbcaa08"
+	if got := hex.EncodeToString(derived); got != want {
+		t.Fatalf("the panel backup key derivation changed.\ngot:  %s\nwant: %s", got, want)
+	}
+
+	if _, err := PanelBackupKey(make([]byte, 16)); !errors.Is(err, ErrKey) {
+		t.Fatalf("a 16-byte ENCRYPTION_KEY was accepted: %v", err)
+	}
+}

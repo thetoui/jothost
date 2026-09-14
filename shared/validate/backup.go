@@ -27,7 +27,7 @@ var (
 
 // What a backup can be of.
 //
-// Three, and deliberately no "files under an arbitrary path". A backup names a
+// Four, and deliberately no "files under an arbitrary path". A backup names a
 // thing the panel manages, so restoring it has somewhere unambiguous to go; a
 // backup of a path somebody typed is a restore with nowhere to put it back.
 const (
@@ -40,15 +40,20 @@ const (
 	BackupDatabase = "database"
 	// BackupFull is every website and every database on the host.
 	BackupFull = "full"
+	// BackupPanel is the panel's own database: its users, websites, schedules,
+	// credentials and audit trail. Its archive is sealed, it needs
+	// server.manage as well as backup.manage, and it is restored from the host
+	// rather than from the panel (docs/PANEL_BACKUP.md).
+	BackupPanel = "panel"
 )
 
 // BackupTypes is the supported set, in the order a UI should offer them.
-var BackupTypes = []string{BackupWebsite, BackupDatabase, BackupFull}
+var BackupTypes = []string{BackupWebsite, BackupDatabase, BackupFull, BackupPanel}
 
 // BackupType checks what is being backed up.
 func BackupType(kind string) error {
 	switch kind {
-	case BackupWebsite, BackupDatabase, BackupFull:
+	case BackupWebsite, BackupDatabase, BackupFull, BackupPanel:
 		return nil
 	default:
 		return fmt.Errorf("%w: %q is not one of %s",

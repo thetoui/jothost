@@ -831,6 +831,9 @@ AGENT_AUDIT_LOG="$LOG_DIR/agent-audit.log"
 AGENT_NGINX_SITES_DIR="$(nginx_sites_dir)"
 AGENT_CRON_SPOOL_DIR="$(cron_spool_dir)"
 AGENT_WEB_GROUP="$(web_group)"
+# The panel's own database, which a panel backup dumps and seals. Named here,
+# never by a request, so that backup type cannot be pointed at another database.
+AGENT_PANEL_DATABASE="$PG_DB"
 EOF
   chown root:root "$AGENT_ENV"
   chmod 0600 "$AGENT_ENV"

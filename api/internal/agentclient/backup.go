@@ -67,6 +67,11 @@ type BackupCapabilities struct {
 	PostgresDump bool     `json:"postgres_dump"`
 	Engines      []string `json:"engines"`
 	WorkDir      string   `json:"work_dir,omitempty"`
+	// Panel says whether this host can back up the panel's own database: the
+	// Agent knows which database that is and can dump it. PanelReason says why
+	// not, so the page can explain rather than hide the option.
+	Panel       bool   `json:"panel"`
+	PanelReason string `json:"panel_reason,omitempty"`
 }
 
 // BackupMember is one file inside an archive.
@@ -167,16 +172,22 @@ func (c *Client) BackupCapabilities(ctx context.Context, requestID string) (
 }
 
 // BackupVerify reads a stored backup back and checks it.
+// sealingKey is empty for every archive except a panel backup's, which the
+// Agent has to open to verify. It is a secret and is sent only when needed.
 func (c *Client) BackupVerify(ctx context.Context, requestID, key, checksum string,
-	size int64, destination BackupDestination,
+	size int64, destination BackupDestination, sealingKey string,
 ) (BackupVerifyResult, error) {
 	var result BackupVerifyResult
-	err := c.call(ctx, requestID, protocol.OperationBackupVerify, map[string]any{
+	payload := map[string]any{
 		"key":         key,
 		"checksum":    checksum,
 		"size":        size,
 		"destination": destination,
-	}, &result)
+	}
+	if sealingKey != "" {
+		payload["sealing_key"] = sealingKey
+	}
+	err := c.call(ctx, requestID, protocol.OperationBackupVerify, payload, &result)
 	return result, err
 }
 

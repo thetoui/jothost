@@ -88,6 +88,17 @@ func (p *Provider) Restore(ctx context.Context, req RestoreRequest, report Repor
 
 	report.at(20, "Checking the backup before changing anything")
 
+	// A sealed archive is the panel's own database, and it is not restored
+	// through the panel: the panel would be replacing the database it is
+	// running on. The host's recovery command does it, with the panel stopped.
+	sealed, err := archiveIsSealed(downloaded)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	if sealed {
+		return RestoreResult{}, ErrPanelRestoreOnHost
+	}
+
 	actual, _, err := digestFile(downloaded)
 	if err != nil {
 		return RestoreResult{}, err

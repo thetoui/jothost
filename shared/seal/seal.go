@@ -76,6 +76,39 @@ var (
 	ErrClosed    = errors.New("seal: write after close")
 )
 
+// MagicSize is how many leading bytes HasMagic needs.
+const MagicSize = len(magic)
+
+// HasMagic reports whether prefix begins a sealed stream. It says only what
+// the file claims to be; opening it is what proves anything.
+func HasMagic(prefix []byte) bool {
+	return len(prefix) >= MagicSize && string(prefix[:MagicSize]) == magic
+}
+
+// panelBackupLabel separates the backup key from every other use of
+// ENCRYPTION_KEY.
+const panelBackupLabel = "jothost panel backup master v1"
+
+// PanelBackupKey derives the master key panel-database backups are sealed
+// with from the panel's ENCRYPTION_KEY.
+//
+// It is what the API hands the Agent, instead of ENCRYPTION_KEY itself. That
+// key decrypts every credential stored in the panel's database; the Agent
+// needs to seal a backup, not to read those credentials, and a key derived
+// for this one purpose lets it do the first without being able to do the
+// second. The recovery command derives the same key from the escrowed
+// ENCRYPTION_KEY, which is why this lives here rather than in either binary.
+func PanelBackupKey(encryptionKey []byte) ([]byte, error) {
+	if len(encryptionKey) != KeySize {
+		return nil, ErrKey
+	}
+	key, err := hkdf.Key(sha256.New, encryptionKey, nil, panelBackupLabel, KeySize)
+	if err != nil {
+		return nil, fmt.Errorf("seal: derive the panel backup key: %w", err)
+	}
+	return key, nil
+}
+
 // ParseHexKey decodes a master key written as 64 hexadecimal characters, the
 // form ENCRYPTION_KEY takes.
 func ParseHexKey(s string) ([]byte, error) {

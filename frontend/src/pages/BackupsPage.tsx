@@ -19,7 +19,13 @@ import { SelectField, TextField, Toggle } from '@/components/ui/Field';
 import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
+import { useProfile } from '@/features/auth/hooks';
 import { Permission } from '@/features/auth/permissions';
+import {
+  isPanelBackup,
+  PANEL_RESTORE_HINT,
+  panelBackupOption,
+} from '@/features/backups/panel';
 import {
   useBackupOverview,
   useCheckDestination,
@@ -38,11 +44,13 @@ import { useWebsites } from '@/features/websites/hooks';
 import { ApiError } from '@/services/apiClient';
 import type {
   Backup,
+  BackupCapabilities,
   BackupDestination,
   BackupDestinationInput,
   BackupOverview,
   BackupSchedule,
   BackupScheduleInput,
+  BackupType,
   DestinationKind,
 } from '@/types/api';
 
@@ -549,7 +557,11 @@ function Schedules({ overview }: { overview: BackupOverview }) {
                     : 'Has not run yet'}
                 </p>
               </div>
-              <RequirePermission permission={Permission.BackupManage}>
+              <RequirePermission
+                permission={
+                  isPanelBackup(schedule) ? Permission.ServerManage : Permission.BackupManage
+                }
+              >
                 <div className="flex shrink-0 gap-2">
                   <Button
                     variant="secondary"
@@ -573,7 +585,11 @@ function Schedules({ overview }: { overview: BackupOverview }) {
       )}
 
       {adding && (
-        <ScheduleForm destinations={destinations} onClose={() => setAdding(false)} />
+        <ScheduleForm
+          destinations={destinations}
+          capabilities={overview.capabilities}
+          onClose={() => setAdding(false)}
+        />
       )}
 
       <ConfirmDialog
@@ -606,23 +622,29 @@ function describeSchedule(schedule: BackupSchedule): string {
     '0',
   )} UTC`;
   const subject =
-    schedule.type === 'full'
-      ? 'everything on this host'
-      : schedule.type === 'website'
-        ? 'one website'
-        : 'one database';
+    schedule.type === 'panel'
+      ? "the panel's own database, sealed"
+      : schedule.type === 'full'
+        ? 'everything on this host'
+        : schedule.type === 'website'
+          ? 'one website'
+          : 'one database';
   return `${when} at ${time} — ${subject}, to ${schedule.destination_name}, kept ${schedule.retention_days} days (always keeping the last ${schedule.keep_last})`;
 }
 
 /** ScheduleForm collects a new schedule. */
 function ScheduleForm({
   destinations,
+  capabilities,
   onClose,
 }: {
   destinations: BackupDestination[];
+  capabilities: BackupCapabilities;
   onClose: () => void;
 }) {
   const create = useCreateSchedule();
+  const { data: profile } = useProfile();
+  const panel = panelBackupOption(capabilities, profile);
   const websites = useWebsites();
   const databases = useDatabases();
 
@@ -687,6 +709,13 @@ function ScheduleForm({
           <option value="full">Everything on this host</option>
           <option value="website">One website</option>
           <option value="database">One database</option>
+          {panel.offered && (
+            <option value="panel" disabled={!panel.usable}>
+              {panel.usable
+                ? "The panel's own database (sealed)"
+                : `The panel's own database — ${panel.reason ?? 'unavailable'}`}
+            </option>
+          )}
         </SelectField>
 
         {form.type === 'website' && (
@@ -850,8 +879,15 @@ function Backups({ overview }: { overview: BackupOverview }) {
                   {backup.size_bytes !== null ? ` — ${formatBytes(backup.size_bytes)}` : ''}
                 </p>
                 <p className="mt-1 text-xs">{describeBackup(backup)}</p>
+                {isPanelBackup(backup) && (
+                  <p className="mt-1 text-xs text-slate-500">{PANEL_RESTORE_HINT}</p>
+                )}
               </div>
-              <RequirePermission permission={Permission.BackupManage}>
+              <RequirePermission
+                permission={
+                  isPanelBackup(backup) ? Permission.ServerManage : Permission.BackupManage
+                }
+              >
                 <div className="flex shrink-0 gap-2">
                   {backup.status === 'completed' && (
                     <Button
@@ -863,7 +899,7 @@ function Backups({ overview }: { overview: BackupOverview }) {
                       Verify
                     </Button>
                   )}
-                  {backup.verified_at !== null && (
+                  {backup.verified_at !== null && !isPanelBackup(backup) && (
                     <Button
                       variant="secondary"
                       onClick={() => setRestoring(backup)}
@@ -894,7 +930,13 @@ function Backups({ overview }: { overview: BackupOverview }) {
         </p>
       </CardBody>
 
-      {taking && <TakeBackupForm destinations={destinations} onClose={() => setTaking(false)} />}
+      {taking && (
+        <TakeBackupForm
+          destinations={destinations}
+          capabilities={overview.capabilities}
+          onClose={() => setTaking(false)}
+        />
+      )}
 
       <ConfirmDialog
         open={restoring !== null}
@@ -964,16 +1006,20 @@ function describeBackup(backup: Backup): JSX.Element {
 /** TakeBackupForm asks what to back up and where. */
 function TakeBackupForm({
   destinations,
+  capabilities,
   onClose,
 }: {
   destinations: BackupDestination[];
+  capabilities: BackupCapabilities;
   onClose: () => void;
 }) {
   const create = useCreateBackup();
+  const { data: profile } = useProfile();
+  const panel = panelBackupOption(capabilities, profile);
   const websites = useWebsites();
   const databases = useDatabases();
 
-  const [type, setType] = useState<'website' | 'database' | 'full'>('full');
+  const [type, setType] = useState<BackupType>('full');
   const [websiteID, setWebsiteID] = useState('');
   const [databaseID, setDatabaseID] = useState('');
   const [destinationID, setDestinationID] = useState(destinations[0]?.id ?? '');
@@ -1012,7 +1058,22 @@ function TakeBackupForm({
           <option value="full">Everything on this host</option>
           <option value="website">One website</option>
           <option value="database">One database</option>
+          {panel.offered && (
+            <option value="panel" disabled={!panel.usable}>
+              {panel.usable
+                ? "The panel's own database (sealed)"
+                : `The panel's own database — ${panel.reason ?? 'unavailable'}`}
+            </option>
+          )}
         </SelectField>
+
+        {type === 'panel' && (
+          <AlertBanner tone="info" title="Keep the encryption key somewhere else">
+            This archive is sealed with a key derived from this panel&apos;s ENCRYPTION_KEY. It
+            can only be restored with that key, so export it with install.sh export-key and store
+            it off this host. It is restored from the host, not from this page.
+          </AlertBanner>
+        )}
 
         {type === 'website' && (
           <>

@@ -396,9 +396,10 @@ func decode(r *http.Request, into any) error {
 func actorFrom(r *http.Request) Actor {
 	claims, _ := auth.ClaimsFromContext(r.Context())
 	return Actor{
-		UserID:    claims.UserID,
-		IPAddress: clientIP(r),
-		UserAgent: r.UserAgent(),
+		UserID:          claims.UserID,
+		IPAddress:       clientIP(r),
+		UserAgent:       r.UserAgent(),
+		CanManageServer: rbac.Has(claims.Permissions, rbac.PermServerManage),
 	}
 }
 
@@ -435,6 +436,10 @@ func translate(err error) error {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return httpx.NotFound(err.Error())
+	case errors.Is(err, ErrPanelNeedsServerManage):
+		return httpx.Forbidden(err.Error())
+	case errors.Is(err, ErrPanelRestoreOnHost):
+		return httpx.ValidationFailed(err.Error())
 	case errors.Is(err, ErrNameTaken), errors.Is(err, ErrDestinationInUse):
 		return httpx.Conflict(err.Error())
 	case errors.Is(err, ErrUnavailable), agentclient.IsUnsupported(err):

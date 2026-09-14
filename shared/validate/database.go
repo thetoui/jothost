@@ -81,8 +81,29 @@ func DatabaseEngine(engine string) error {
 	}
 }
 
-// DatabaseName checks a database name.
+// DatabaseName checks a database name a customer may use.
+//
+// It is DatabaseIdentifier plus the reserved names - the server's own
+// databases and the panel's - which no website may create, drop or back up.
 func DatabaseName(name string) error {
+	if err := DatabaseIdentifier(name); err != nil {
+		return err
+	}
+	if _, reserved := reservedDatabases[name]; reserved {
+		return fmt.Errorf("%w: %q is reserved by the database server", ErrInvalidDatabaseName, name)
+	}
+	return nil
+}
+
+// DatabaseIdentifier checks only that name is a well-formed database name,
+// without refusing the reserved ones.
+//
+// It exists for the one database whose name is reserved on purpose: the
+// panel's own. The Agent's configuration names it, and a panel backup dumps
+// it, and both would be refused by DatabaseName - which is exactly right for
+// every request a customer can make, and wrong for those two. Anything that
+// takes a name from a request uses DatabaseName.
+func DatabaseIdentifier(name string) error {
 	if name == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalidDatabaseName)
 	}
@@ -93,9 +114,6 @@ func DatabaseName(name string) error {
 	if !databaseIdentifierPattern.MatchString(name) {
 		return fmt.Errorf("%w: %q must start with a letter and contain only "+
 			"lowercase letters, digits, and underscores", ErrInvalidDatabaseName, name)
-	}
-	if _, reserved := reservedDatabases[name]; reserved {
-		return fmt.Errorf("%w: %q is reserved by the database server", ErrInvalidDatabaseName, name)
 	}
 	// "pg_" is reserved by PostgreSQL for system use and rejected by CREATE
 	// DATABASE there; refusing it on every engine keeps one rule.

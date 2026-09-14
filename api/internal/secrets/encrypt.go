@@ -1,6 +1,7 @@
 package secrets
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -8,6 +9,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+
+	"github.com/jothost/panel/shared/seal"
 )
 
 // KeyLength is the required ENCRYPTION_KEY size in bytes (AES-256).
@@ -26,6 +29,9 @@ var (
 // and database passwords in later phases.
 type Encrypter struct {
 	aead cipher.AEAD
+	// panelBackupKey is derived once, at construction, so the raw key does not
+	// have to be kept around to produce it later.
+	panelBackupKey []byte
 }
 
 // NewEncrypter builds an AES-256-GCM encrypter from a hex-encoded key.
@@ -43,7 +49,21 @@ func NewEncrypter(hexKey string) (*Encrypter, error) {
 	if err != nil {
 		return nil, ErrInvalidKey
 	}
-	return &Encrypter{aead: aead}, nil
+	backupKey, err := seal.PanelBackupKey(key)
+	if err != nil {
+		return nil, ErrInvalidKey
+	}
+	return &Encrypter{aead: aead, panelBackupKey: backupKey}, nil
+}
+
+// PanelBackupKey returns the key panel-database backups are sealed with.
+//
+// It is derived from ENCRYPTION_KEY for that one purpose (seal.PanelBackupKey)
+// and is what the Agent is given, so the Agent can seal a backup of the
+// database without holding the key that decrypts the credentials inside it.
+// A copy is returned; callers must not log it or persist it.
+func (e *Encrypter) PanelBackupKey() []byte {
+	return bytes.Clone(e.panelBackupKey)
 }
 
 // GenerateKey returns a new hex-encoded encryption key, for operators running

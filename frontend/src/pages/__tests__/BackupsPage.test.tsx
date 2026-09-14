@@ -88,6 +88,7 @@ function overview(overrides: Partial<BackupOverview> = {}): BackupOverview {
       postgres_dump: true,
       engines: ['mariadb', 'postgres'],
       work_dir: '/var/lib/jothost/backups',
+      panel: true,
     },
     backups: [],
     destinations: [destination()],
@@ -134,11 +135,12 @@ describe('BackupsPage', () => {
     overview?: BackupOverview;
     onWrite?: (url: string, init?: RequestInit) => void;
     refuse?: string;
+    permissions?: string[];
   }) {
     vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.includes('/auth/me')) {
-        return mockProfile(['server.view', 'backup.manage']);
+        return mockProfile(options.permissions ?? ['server.view', 'backup.manage']);
       }
       if (init?.method && init.method !== 'GET') {
         options.onWrite?.(url, init);
@@ -178,6 +180,7 @@ describe('BackupsPage', () => {
           mysql_dump: false,
           postgres_dump: false,
           engines: null,
+          panel: false,
         },
       }),
     });
@@ -424,5 +427,87 @@ describe('BackupsPage', () => {
     expect(
       await screen.findByText(/the copy read back does not match the archive checksum/),
     ).toBeInTheDocument();
+  });
+
+  describe('backups of the panel itself', () => {
+    // A panel backup holds every account's password hash. backup.manage alone
+    // is an operator's permission, and operators are deliberately withheld
+    // that; the API refuses them, and the page must not offer what the API
+    // will refuse.
+    const operator = ['server.view', 'backup.manage'];
+    const admin = ['server.view', 'server.manage', 'backup.manage'];
+
+    it('is not offered to an operator', async () => {
+      mockApi({ permissions: operator });
+      renderWithProviders(<BackupsPage />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take a backup' }));
+      expect(await screen.findByRole('option', { name: 'Everything on this host' })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /panel's own database/ })).not.toBeInTheDocument();
+    });
+
+    it('is offered to an administrator, with the key warning when chosen', async () => {
+      mockApi({ permissions: admin });
+      renderWithProviders(<BackupsPage />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take a backup' }));
+      const option = await screen.findByRole('option', { name: "The panel's own database (sealed)" });
+      expect(option).not.toBeDisabled();
+
+      await userEvent.selectOptions(screen.getByLabelText('Back up'), 'panel');
+      expect(await screen.findByText('Keep the encryption key somewhere else')).toBeInTheDocument();
+    });
+
+    it('says why when the host cannot take one, instead of hiding it', async () => {
+      const unable = overview();
+      unable.capabilities = {
+        ...unable.capabilities,
+        panel: false,
+        panel_reason: 'AGENT_PANEL_DATABASE is not set',
+      };
+      mockApi({ permissions: admin, overview: unable });
+      renderWithProviders(<BackupsPage />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take a backup' }));
+      const option = await screen.findByRole('option', { name: /AGENT_PANEL_DATABASE is not set/ });
+      expect(option).toBeDisabled();
+    });
+
+    it('is never restored from this page', async () => {
+      const both = overview({
+        backups: [
+          backup({ id: 'panel-1', type: 'panel', subject: 'panel', website_id: null }),
+          backup({ id: 'site-1', type: 'website', subject: 'example.com' }),
+        ],
+      });
+
+      mockApi({ permissions: admin, overview: both });
+      const first = renderWithProviders(<BackupsPage />);
+      expect(await screen.findByText(/install.sh restore-panel/)).toBeInTheDocument();
+      // The actions render once the profile has loaded, which is after the
+      // hint, so they are waited for rather than read straight away. Both
+      // backups are verified; only the website backup offers Restore.
+      expect(await screen.findAllByRole('button', { name: 'Verify' })).toHaveLength(2);
+      expect(screen.getAllByRole('button', { name: 'Restore' })).toHaveLength(1);
+      first.unmount();
+    });
+
+    it('hides verify and delete on a panel backup from an operator', async () => {
+      const both = overview({
+        backups: [
+          backup({ id: 'panel-1', type: 'panel', subject: 'panel', website_id: null }),
+          backup({ id: 'site-1', type: 'website', subject: 'example.com' }),
+        ],
+      });
+      mockApi({ permissions: operator, overview: both });
+      renderWithProviders(<BackupsPage />);
+
+      await screen.findByText(/install.sh restore-panel/);
+      await waitFor(() => {
+        expect(screen.getAllByRole('button', { name: 'Verify' })).toHaveLength(1);
+      });
+      expect(screen.queryByRole('button', { name: 'Delete the backup of panel' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete the backup of example.com' })).toBeInTheDocument();
+    });
   });
 });

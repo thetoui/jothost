@@ -1765,7 +1765,7 @@ export interface AlertRuleInput {
 // ---------------------------------------------------------------- backups
 
 /** What a backup is of. */
-export type BackupType = 'website' | 'database' | 'full';
+export type BackupType = 'website' | 'database' | 'full' | 'panel';
 
 /** Where a backup is written. */
 export type DestinationKind = 'local' | 's3' | 'sftp';
@@ -1781,6 +1781,10 @@ export interface BackupCapabilities {
   postgres_dump: boolean;
   engines: string[] | null;
   work_dir?: string;
+  /** Whether this host can back up the panel's own database. */
+  panel: boolean;
+  /** Why it cannot, when it cannot. */
+  panel_reason?: string;
 }
 
 /** Where backups go. It never carries the credential, only whether one is set. */

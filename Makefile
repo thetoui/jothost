@@ -539,6 +539,7 @@ docker-test-installer-ubuntu: dist ## Run the installer checks on Ubuntu 22.04 a
 # one before this tree. Move it forward when a release is published.
 PREVIOUS_RELEASE ?= v0.1.0-rc.1
 PREVIOUS_WORKTREE = .previous-release
+PREVIOUS_CLEAN = docker run --rm -v "$(CURDIR):/src" -w /src alpine:3.21 rm -rf $(PREVIOUS_WORKTREE) && git worktree prune
 
 .PHONY: dist-previous
 dist-previous: ## Build the previous release's artefacts into dist-previous/
@@ -546,12 +547,18 @@ dist-previous: ## Build the previous release's artefacts into dist-previous/
 	# release actually shipped rather than today's build recipe applied to old
 	# source.
 	git rev-parse -q --verify "refs/tags/$(PREVIOUS_RELEASE)" >/dev/null || 		git fetch --depth=1 origin tag "$(PREVIOUS_RELEASE)"
-	rm -rf $(PREVIOUS_WORKTREE) dist-previous
-	git worktree prune
+	#
+	# The worktree is removed from inside a container. That release's build
+	# runs as root in containers too, and on a Linux host it leaves root-owned
+	# files in the worktree that the user running make cannot delete - the
+	# same ownership that broke dist-binaries' chmod, and just as invisible on
+	# Docker Desktop, which hands files back to the calling user.
+	$(PREVIOUS_CLEAN)
+	rm -rf dist-previous
 	git worktree add --detach $(PREVIOUS_WORKTREE) "$(PREVIOUS_RELEASE)"
 	$(MAKE) -C $(PREVIOUS_WORKTREE) dist
 	cp -r $(PREVIOUS_WORKTREE)/dist dist-previous
-	git worktree remove --force $(PREVIOUS_WORKTREE)
+	$(PREVIOUS_CLEAN)
 
 .PHONY: docker-test-upgrade
 docker-test-upgrade: dist dist-previous ## Upgrade the previous release to this tree, with data, on Debian 12 and Ubuntu 24.04

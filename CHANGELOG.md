@@ -10,6 +10,17 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Added
 
+- **Backups of the panel itself, and a way to rebuild it on another host.** A
+  `panel` backup dumps the panel's own database, seals it with a key derived
+  from `ENCRYPTION_KEY`, and sends it to a destination like any other backup.
+  Only administrators can take one. `install.sh export-key --to FILE` writes the
+  key to a 0600 file to keep off the host, and `install.sh restore-panel --from
+  ARCHIVE --key-file FILE` replaces an installed panel's database with a
+  backup: it checks the archive before changing anything, loads it beside the
+  running panel, swaps the databases, keeps the one it replaced, and undoes the
+  whole restore if the panel does not come back ready. A CI drill backs up one
+  host and restores it onto another. See `docs/PANEL_BACKUP.md`.
+
 - **DNS zone templates.** What a new zone starts with is now a named, editable
   list of records rather than two lines hard-coded in Go. `{domain}` and `{ip}`
   are substituted when a zone is created, and a template is validated by
@@ -56,6 +67,13 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
   two sources, so the list grew the page instead.
 
 ### Fixed
+
+- **The Agent could not reach PostgreSQL on any installed host.** It connected
+  as `postgres` over the Unix socket, peer authentication refused root, and the
+  Agent reported PostgreSQL unavailable: customers could not create PostgreSQL
+  databases, and panel backups failed. The installer now creates a
+  `jothost_agent` role with a generated password for the Agent to connect as
+  over the loopback. `update` and `repair` add it to an existing install.
 
 - **HTTPS did not work on Debian, and the installer stopped before it
   finished.** nginx moved the HTTP/2 switch in 1.25.1 — before that it is a

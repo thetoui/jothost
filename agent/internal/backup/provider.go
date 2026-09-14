@@ -141,7 +141,10 @@ func (p *Provider) Capabilities() Capabilities {
 	case p.panelDatabase == "":
 		caps.PanelReason = ErrPanelUnavailable.Error()
 	case !caps.PostgresDump:
-		caps.PanelReason = "pg_dump is not available on this host, so the panel's database cannot be dumped"
+		// Either pg_dump is missing or PostgreSQL did not answer the Agent. The
+		// second is what an install without the Agent's database credentials
+		// looks like, and the reason says both rather than guessing.
+		caps.PanelReason = "the Agent cannot dump PostgreSQL on this host: pg_dump is missing, or PostgreSQL did not accept the Agent's connection"
 	default:
 		caps.Panel = true
 	}

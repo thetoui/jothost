@@ -112,8 +112,12 @@ A sealed backup is only as recoverable as the key.
 - The installer tells the operator, in its closing summary, to export the key
   and store it **off this host**.
 - `install.sh export-key --to FILE` writes it with mode `0600` and says what it
-  is for. It is never printed to a terminal or a log.
-- `docs/RECOVERY.md` gains a section: without the key there is no restore, and
+  is for. It is never printed to a terminal or a log, and an existing file is
+  never overwritten: that could replace the only copy that opens older backups.
+- The file holds `ENCRYPTION_KEY` itself, not the key the Agent seals with. The
+  Agent's derived key does not open a backup on its own, so a compromised Agent
+  cannot read the backups it writes.
+- `docs/RECOVERY.md` says it plainly: without the key there is no restore, and
   no way to make one.
 
 ---
@@ -121,22 +125,33 @@ A sealed backup is only as recoverable as the key.
 ## 7. Rebuilding a dead host
 
 ```bash
-sudo ./install.sh restore-panel --from jothost-panel-….tar.gz.sealed --key-file panel.key
+sudo ./install.sh install --domain panel.example.com   # if it is not installed
+sudo ./install.sh restore-panel --from panel-backup.tar.gz --key-file panel.key
 ```
 
-1. Install normally if the panel is not already installed.
-2. Put the escrowed key in place of the one this installation generated, so
-   the restored secrets can be read.
-3. Stop the API.
-4. `jothost-agent panel restore`: unseal, check every member against the
-   manifest, and replay the dump into the panel's database, replacing what is
-   there.
-5. Start the API. Migrations run forward if the archive came from an older
-   version.
-6. Check an administrator can sign in, the same way the installer does.
+`restore-panel` restores into an installed panel. It does not install one:
+installing is its own command, already proven on every supported host.
 
-An archive that fails to unseal or to match its manifest stops at step 4,
-before anything is replaced.
+1. **Open.** `jothost-agent -open-panel-backup` unseals the archive with the
+   key, checks every member against the manifest, and refuses an archive that
+   is not a panel backup. It writes the SQL dump into a 0700 directory and
+   changes nothing else.
+2. **Load**, while the panel keeps running: the dump is replayed into a new
+   database, as the panel's own role, so what is restored belongs to the
+   account the API connects as.
+3. **Swap.** The API is stopped, and the two databases are renamed in one
+   transaction. The database being replaced is kept as
+   `jothost_before_restore_<time>`.
+4. **Re-home.** If the backup came from a host with another name, its single
+   server record is renamed to this host. Otherwise the API would register a
+   second, empty server and every website would belong to the old one.
+5. **Key.** `ENCRYPTION_KEY` is replaced with the backup's, and the previous
+   `api.env` is kept.
+6. **Start.** Migrations run forward, and the panel must report itself ready.
+
+Steps 1 and 2 change nothing the panel is using, so a wrong key, a damaged
+archive or a dump that will not load stops there. After step 3, a failure puts
+the previous database and key back.
 
 ---
 
@@ -144,13 +159,19 @@ before anything is replaced.
 
 A two-host drill in CI, on the systemd hosts from stage 1's first item:
 
-1. Install onto host A, create an administrator, a website and a stored
-   credential.
-2. Take a `panel` backup to a destination both hosts can reach, and export the
-   key.
-3. Install onto a clean host B, then `restore-panel` from the archive and key.
-4. On host B: the administrator signs in, the website is listed, and the stored
-   credential **decrypts** - the check that the key really came across.
+`tests/recovery/panel_restore_drill.sh`:
+
+1. Install onto host A, create a website, a PostgreSQL database and a
+   destination with a stored secret.
+2. Take a `panel` backup through the API and export the key. Remove host A.
+   Only the archive and the key file go across, which is what an operator
+   would have kept.
+3. Install onto a clean host B. A restore with the wrong key is refused, and
+   B's own administrator still signs in.
+4. `restore-panel` from the archive and key.
+5. On host B: A's administrator signs in, A's website is listed, A's stored
+   secret **decrypts** (the check that the key really came across), B's old
+   password no longer works, and the panel is ready.
 
 Each part has a test that fails without it: the format against truncation,
 reordering, tampering and the wrong key; the permission against an operator;
@@ -175,3 +196,7 @@ the database name against a request that names one.
    `server.manage` requirement, the schedules page.
 3. **`restore-panel` and `export-key`**, the recovery documentation, and the
    two-host drill that closes the stage 1 gate.
+
+Writing the drill found that the Agent had never been able to reach PostgreSQL
+on an installed host (see the changelog). The unit tests used a stand-in
+database, so they could not have caught it.

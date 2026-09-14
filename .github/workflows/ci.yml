@@ -230,6 +230,11 @@ jobs:
       - name: Install onto a clean Ubuntu 24.04 host running systemd
         run: sh tests/installer/systemd-host.sh installer-host-ubuntu-2404
 
+      # Two hosts: a panel backup taken on one, restored onto the other with
+      # only the archive and the exported key carried across.
+      - name: Rebuild a panel on a second host from a panel backup
+        run: sh tests/recovery/panel_restore_drill.sh
+
       - name: Check the release archive against what it claims to be
         run: make release
       - name: Verify it

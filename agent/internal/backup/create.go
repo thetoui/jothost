@@ -374,7 +374,7 @@ func (p *Provider) addDatabase(ctx context.Context, archive *writer, dumpDir str
 	}
 
 	local := path.Join(dumpDir, safeSegment(spec.Engine)+"-"+safeSegment(spec.Name)+".sql")
-	if err := dumper.Dump(ctx, spec.Name, local); err != nil {
+	if err := p.dump(ctx, dumper, spec, backupType, local); err != nil {
 		return DatabaseMember{}, "", fmt.Errorf("%w: %s", ErrNothingToBackUp, err)
 	}
 	defer func() { _ = os.Remove(local) }()

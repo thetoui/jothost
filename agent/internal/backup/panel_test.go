@@ -36,7 +36,18 @@ func (f *fakePostgres) Reload(context.Context, string, string) error {
 	return errors.New("a panel backup is never reloaded through the Agent's restore")
 }
 
+// Dump refuses the reserved name the way the real engine does, so a panel
+// backup that went through it instead of DumpPanel fails here as it did on a
+// real host.
 func (f *fakePostgres) Dump(_ context.Context, name, destination string) error {
+	if err := validate.DatabaseName(name); err != nil {
+		return err
+	}
+	f.dumped = append(f.dumped, name)
+	return os.WriteFile(destination, []byte(panelDumpContent), 0o600)
+}
+
+func (f *fakePostgres) DumpPanel(_ context.Context, name, destination string) error {
 	f.dumped = append(f.dumped, name)
 	return os.WriteFile(destination, []byte(panelDumpContent), 0o600)
 }

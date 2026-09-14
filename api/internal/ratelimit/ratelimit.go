@@ -32,6 +32,28 @@ type Limiter struct {
 	window time.Duration
 }
 
+// consume counts one attempt and starts the window if none is running, in a
+// single atomic step.
+//
+// This was a MULTI of INCR and EXPIRE ... NX. NX - set the expiry only when
+// the key has none, so a burst of attempts cannot keep pushing the window
+// out - arrived in Redis 7.0. Ubuntu 22.04 ships Redis 6.0, which rejects the
+// option, discards the transaction, and makes every call here an error. The
+// limiter fails closed on purpose, so on that release nobody could sign in:
+// every login, right password or wrong, answered 500.
+//
+// The script gives the same meaning on any Redis since 2.6. "No expiry" is
+// PTTL == -1, which is exactly the condition NX tests, and it also covers a
+// counter that somehow exists without one - the window is started rather
+// than the key being left to lock an account out for ever.
+var consume = redis.NewScript(`
+local count = redis.call('INCR', KEYS[1])
+if redis.call('PTTL', KEYS[1]) == -1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`)
+
 // New builds a Limiter. prefix namespaces the keys, so several limiters can
 // share one Redis instance without colliding.
 func New(client *redis.Client, prefix string, limit int, window time.Duration) *Limiter {
@@ -49,17 +71,10 @@ func (l *Limiter) Limit() int { return l.limit }
 func (l *Limiter) Allow(ctx context.Context, key string) (Result, error) {
 	redisKey := l.prefix + key
 
-	pipe := l.redis.TxPipeline()
-	incr := pipe.Incr(ctx, redisKey)
-	// Set the expiry only when the key is new, so a burst of attempts cannot
-	// keep pushing the window out.
-	expire := pipe.ExpireNX(ctx, redisKey, l.window)
-	if _, err := pipe.Exec(ctx); err != nil {
+	count, err := consume.Run(ctx, l.redis, []string{redisKey}, l.window.Milliseconds()).Int64()
+	if err != nil {
 		return Result{}, fmt.Errorf("rate limit check: %w", err)
 	}
-
-	count := incr.Val()
-	_ = expire.Val()
 
 	if count > int64(l.limit) {
 		ttl, err := l.redis.TTL(ctx, redisKey).Result()

@@ -166,3 +166,64 @@ func TestLimitAccessor(t *testing.T) {
 		t.Fatalf("Limit() = %d, want 7", limiter.Limit())
 	}
 }
+
+// The window starts on the first attempt and is not pushed out by the ones
+// after it. This is the property EXPIRE ... NX gave, and the reason the
+// replacement script tests for a missing expiry rather than setting one every
+// time: a limiter that reset its window on each attempt would let an attacker
+// who keeps trying never be released, and one that never set a window would
+// lock an account out for ever.
+func TestTheWindowStartsOnceAndIsNotExtended(t *testing.T) {
+	limiter, ctx := newLimiter(t, 10, 5*time.Second)
+	deps := testsupport.Require(t)
+	redisKey := "test:rl:window"
+
+	if _, err := limiter.Allow(ctx, "window"); err != nil {
+		t.Fatalf("Allow: %v", err)
+	}
+	first, err := deps.Redis.PTTL(ctx, redisKey).Result()
+	if err != nil {
+		t.Fatalf("PTTL: %v", err)
+	}
+	if first <= 0 || first > 5*time.Second {
+		t.Fatalf("after the first attempt the window is %v, want within 5s", first)
+	}
+
+	time.Sleep(1200 * time.Millisecond)
+	if _, err := limiter.Allow(ctx, "window"); err != nil {
+		t.Fatalf("Allow: %v", err)
+	}
+	second, err := deps.Redis.PTTL(ctx, redisKey).Result()
+	if err != nil {
+		t.Fatalf("PTTL: %v", err)
+	}
+	if second >= first {
+		t.Fatalf("a later attempt pushed the window out: %v then %v", first, second)
+	}
+}
+
+// A counter that exists without an expiry - left by an interrupted write, or
+// by anything else - gets a window instead of blocking its key indefinitely.
+func TestACounterWithoutAnExpiryGetsOne(t *testing.T) {
+	limiter, ctx := newLimiter(t, 10, time.Minute)
+	deps := testsupport.Require(t)
+	redisKey := "test:rl:stranded"
+
+	if err := deps.Redis.Set(ctx, redisKey, 3, 0).Err(); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	result, err := limiter.Allow(ctx, "stranded")
+	if err != nil {
+		t.Fatalf("Allow: %v", err)
+	}
+	if want := 10 - 4; result.Remaining != want {
+		t.Fatalf("remaining = %d, want %d: the existing count was not respected", result.Remaining, want)
+	}
+	ttl, err := deps.Redis.PTTL(ctx, redisKey).Result()
+	if err != nil {
+		t.Fatalf("PTTL: %v", err)
+	}
+	if ttl <= 0 {
+		t.Fatalf("the counter still has no expiry (PTTL %v)", ttl)
+	}
+}

@@ -517,7 +517,7 @@ func (f *fixture) enableTOTP(t *testing.T, at time.Time) string {
 	if err != nil {
 		t.Fatalf("TOTPCode: %v", err)
 	}
-	if err := f.svc.EnableTwoFactor(f.ctx, f.userID, code, rc()); err != nil {
+	if _, err := f.svc.EnableTwoFactor(f.ctx, f.userID, code, rc()); err != nil {
 		t.Fatalf("EnableTwoFactor: %v", err)
 	}
 	return setup.Secret
@@ -573,7 +573,7 @@ func TestEnableTwoFactorRequiresAValidCode(t *testing.T) {
 		t.Fatalf("SetupTwoFactor: %v", err)
 	}
 
-	if err := f.svc.EnableTwoFactor(f.ctx, f.userID, "000000", rc()); !errors.Is(err, ErrInvalidTOTP) {
+	if _, err := f.svc.EnableTwoFactor(f.ctx, f.userID, "000000", rc()); !errors.Is(err, ErrInvalidTOTP) {
 		t.Fatalf("expected ErrInvalidTOTP, got %v", err)
 	}
 }

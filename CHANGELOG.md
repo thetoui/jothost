@@ -71,6 +71,34 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
   and IPv6 settings both saying "everything".
 - A per-website log route answered 500 rather than 404 for a website that does
   not exist.
+- **Every new website answered 403.** The Agent runs with umask 0077, which
+  narrows the mode given to every file and directory it creates, so the
+  placeholder page was written 0600 and nginx - which reads site content
+  through its group - could not open it. Everything else the Agent creates
+  for someone other than root to read now states its mode rather than
+  requesting it:
+  - files and folders created, uploaded or extracted in the file manager, which
+    were served as 403 as well;
+  - a restored site, whose files came back 0600;
+  - the PHP socket directory, which would come back 0700 after a reboot and
+    leave every PHP site answering 502;
+  - the ACME challenge directory, where nginx could not serve a token, so
+    every Let's Encrypt validation would have failed;
+  - the cron log directory: every scheduled job fired on time and did
+    nothing, because its account could not open its own log.
+- **A fresh installation had no built-in DNS template**, so new zones started
+  empty. The migration seeded one per existing server, and on a fresh database
+  the server is registered after the migrations run. It is now ensured when the
+  server registers, which also repairs installations already affected.
+- Release builds from a detached checkout - a pull request in CI, or a release
+  cut from a tag - were stamped "commit unknown", and `make dist` could not
+  set the binaries' mode on a Linux host.
+
+### Security
+
+- Go 1.23 to 1.26, and `golang.org/x/text`, `pgx` and `go-redis` updated,
+  clearing the 35 vulnerabilities `govulncheck` reported. CI now runs
+  `govulncheck` over all three modules on every push and pull request.
 
 ## [0.1.0] — 2026-09-06
 

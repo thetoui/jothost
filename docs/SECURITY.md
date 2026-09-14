@@ -155,8 +155,11 @@ misleading:
   do it honestly, so the panel does not pretend to. Take a backup first.
 - **The sidebar does not filter by permission.** A user sees links to pages
   they cannot use; the API refuses them. Cosmetic, not a bypass.
-- **No `govulncheck` in CI.** Dependencies are pinned but not scanned
-  automatically.
+- **Dependencies are scanned on every change, not on a schedule.** CI runs
+  `govulncheck` over all three Go modules on each push and pull request, and a
+  finding fails the build. Nothing re-checks a build that is not changing, so a
+  dependency that becomes vulnerable afterwards is found by the next change,
+  not by a clock.
 - **No visual regression or contrast testing.**
 - The panel does not protect a host from its own operator. Anyone with
   `server.manage` can change the firewall, SSH, and services — that is the

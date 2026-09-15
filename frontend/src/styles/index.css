@@ -1,6 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind 4 loads its theme from the v3-style config through @config rather
+   than a hand-converted @theme block: the colours, shadows and animations the
+   panel uses stay defined in one place (tailwind.config.js), and the risk of a
+   utility silently not being generated because a token was renamed in a rewrite
+   is avoided. */
+@import 'tailwindcss';
+@config '../../tailwind.config.js';
 
 @layer base {
   :root {

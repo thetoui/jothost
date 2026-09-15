@@ -35,7 +35,6 @@ function renderGuardedApp() {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter
         initialEntries={['/']}
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <Routes>
           <Route path="/login" element={<p>login page</p>} />

@@ -38,7 +38,10 @@ const (
 	// Two-factor was removed from an account from the host, with jothost-api
 	// reset-two-factor.
 	ActionTwoFactorReset = "user.2fa_reset"
-	ActionUserCreated    = "user.create"
+	// The panel's encryption key was rotated and every stored secret
+	// re-encrypted under the new one.
+	ActionEncryptionKeyRotated = "server.encryption_key_rotated"
+	ActionUserCreated          = "user.create"
 )
 
 // Outcome values.

@@ -79,6 +79,8 @@ func run(args []string) error {
 		return createAdmin(cfg, log)
 	case "reset-two-factor":
 		return resetTwoFactor(cfg, log, args[1:])
+	case "rotate-encryption-key":
+		return rotateEncryptionKey(cfg, log)
 	case "version":
 		printVersion("jothost-api")
 		return nil
@@ -113,6 +115,9 @@ Usage:
   jothost-api reset-two-factor USERNAME
                                  remove two-factor authentication from an account
                                  that has lost its authenticator and recovery codes
+  jothost-api rotate-encryption-key
+                                 re-encrypt every stored secret from
+                                 JOTHOST_OLD_ENCRYPTION_KEY to JOTHOST_NEW_ENCRYPTION_KEY
 
 create-admin reads credentials from the environment so they never appear in
 the process list or shell history:

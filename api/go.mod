@@ -3,7 +3,7 @@ module github.com/jothost/panel/api
 go 1.26.0
 
 require (
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/jothost/panel/shared v0.0.0
 	github.com/redis/go-redis/v9 v9.7.3
 	golang.org/x/crypto v0.57.0

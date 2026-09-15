@@ -10,6 +10,15 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Added
 
+- **A capacity harness.** `tests/capacity` (standard library only) drives an
+  installed panel through its API and measures the three things a capacity
+  baseline needs: how fast a host provisions websites, how the panel behaves
+  under concurrent readers (throughput, error rate, p50/p95/p99), and how long
+  a full backup takes. Every report states plainly that a number is a supported
+  limit only on the reference hardware it was measured on. `make capacity` runs
+  it against a throwaway host for same-machine regression checks; `docs/CAPACITY.md`
+  explains the method and holds the results table.
+
 - **Rotating the panel's secrets.** `install.sh rotate-key` re-encrypts every
   stored secret — two-factor secrets, database passwords, provider and
   destination credentials — under a new `ENCRYPTION_KEY` in one transaction,

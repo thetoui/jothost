@@ -565,6 +565,10 @@ docker-test-upgrade: dist dist-previous ## Upgrade the previous release to this 
 	sh tests/installer/upgrade.sh upgrade-host-debian
 	sh tests/installer/upgrade.sh upgrade-host-ubuntu-2404
 
+.PHONY: capacity
+capacity: dist ## Run the capacity harness against a throwaway installed host (baseline only, not a supported limit)
+	sh tests/capacity/run.sh
+
 .PHONY: docker-test-panel-restore
 docker-test-panel-restore: dist ## Back up a panel on one host and restore it onto another
 	sh tests/recovery/panel_restore_drill.sh

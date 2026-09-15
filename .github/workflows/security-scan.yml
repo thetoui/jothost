@@ -1,0 +1,133 @@
+# Scheduled security scanning.
+#
+# The push and pull-request checks in ci.yml scan the code as it changes. This
+# runs nightly against code that has not changed, because that is when most
+# vulnerabilities are found: an advisory disclosed today makes yesterday's
+# green build wrong, and nothing would notice until the next push. It fails
+# loudly instead, so a dependency or a base image that has gone bad overnight
+# is a red build in the morning rather than a surprise in production.
+#
+# It can also be run by hand from the Actions tab.
+name: Security scan
+
+on:
+  schedule:
+    # 04:17 UTC daily. The odd minute keeps it off the top of the hour, when
+    # GitHub's scheduler is most contended and most likely to drop a run.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+# One nightly run at a time; a manual run supersedes a scheduled one.
+concurrency:
+  group: security-scan
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # govulncheck reports only the advisories whose vulnerable code a module
+  # actually reaches, so a finding here is a call path this panel really has,
+  # not merely a version match. All three modules, though only api has
+  # third-party dependencies, because a standard-library advisory reached
+  # through the compiler version matters to the other two.
+  govulncheck:
+    name: govulncheck (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [shared, api, agent]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: false
+      - name: govulncheck
+        working-directory: ${{ matrix.module }}
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+  # The frontend's dependencies, from its lockfile. Runtime dependencies fail
+  # the build; the dev toolchain is reported but does not, because a vite or
+  # eslint advisory is not something a visitor to a served site can reach, and
+  # failing the nightly on it would train everyone to ignore a red build.
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: audit runtime dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+      - name: audit everything (report only)
+        if: always()
+        working-directory: frontend
+        run: npm audit || true
+
+  # The release images: the Go binaries' dependencies as actually shipped, plus
+  # the Alpine and Node base layers, which Dependabot cannot bump because they
+  # are pinned by tag rather than digest. Built here and scanned with Trivy for
+  # HIGH and CRITICAL fixable vulnerabilities.
+  images:
+    name: scan ${{ matrix.image }} image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            dockerfile: docker/api.Dockerfile
+          - image: agent
+            dockerfile: docker/agent.Dockerfile
+          - image: frontend
+            dockerfile: docker/frontend.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - name: build the image
+        run: docker build -f ${{ matrix.dockerfile }} -t jothost-${{ matrix.image }}:scan .
+      # Two passes, because the two kinds of finding have different owners.
+      #
+      # The library pass covers the Go binary's own dependencies, which this
+      # repository pins in go.mod and can fix by bumping — so a fixable HIGH or
+      # CRITICAL there fails the build.
+      #
+      # The OS pass covers the base image's packages (Alpine, nginx). Those are
+      # patched on the base maintainer's schedule, not this repository's; the
+      # remedy is to repull or bump the base tag, which is not always available
+      # the day an advisory lands. Failing the nightly on something with no
+      # in-repo fix would train everyone to ignore a red build, so this pass
+      # reports and does not fail. --ignore-unfixed keeps both to what someone
+      # can actually act on.
+      - name: scan the image's own dependencies (fails on fixable findings)
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            aquasec/trivy:0.58.1 image \
+              --scanners vuln \
+              --pkg-types library \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --exit-code 1 \
+              --no-progress \
+              jothost-${{ matrix.image }}:scan
+      - name: scan the base image's OS packages (report only)
+        if: always()
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            aquasec/trivy:0.58.1 image \
+              --scanners vuln \
+              --pkg-types os \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --exit-code 0 \
+              --no-progress \
+              jothost-${{ matrix.image }}:scan

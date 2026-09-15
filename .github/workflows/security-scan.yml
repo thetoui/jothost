@@ -39,7 +39,7 @@ jobs:
       matrix:
         module: [shared, api, agent]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
@@ -58,7 +58,7 @@ jobs:
     name: npm audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -88,7 +88,7 @@ jobs:
           - image: frontend
             dockerfile: docker/frontend.Dockerfile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: build the image
         run: docker build -f ${{ matrix.dockerfile }} -t jothost-${{ matrix.image }}:scan .
       # Two passes, because the two kinds of finding have different owners.

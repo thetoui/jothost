@@ -132,3 +132,37 @@ jobs:
               --exit-code 0 \
               --no-progress \
               jothost-${{ matrix.image }}:scan
+
+  # Live fuzzing of the validators, here rather than on every push. A fuzzer
+  # explores nondeterministically, so a per-push gate on it flakes: a run that
+  # happens to reach a new input fails a build that had nothing wrong with it,
+  # and the same input is not found the next time. The deterministic half — the
+  # seed corpus and every committed regression case — still runs on every push
+  # through `go test`. This drives the exploration, on a schedule, where a
+  # finding is investigated rather than blocking a merge.
+  #
+  # A genuine finding fails the job and its reproducer is uploaded, so it can be
+  # committed to testdata/fuzz as a regression and fixed.
+  fuzz:
+    name: fuzz the validators
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+          cache: false
+      - name: fuzz each target
+        working-directory: shared
+        run: |
+          for target in $(grep -roh '^func Fuzz[A-Za-z0-9_]*' ./validate | sed 's/^func //'); do
+            echo "--- $target"
+            go test ./validate/ -run="^$target$" -fuzz="^$target$" -fuzztime=120s
+          done
+      - name: upload any reproducer
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-testdata
+          path: shared/validate/testdata/fuzz
+          if-no-files-found: ignore

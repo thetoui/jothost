@@ -117,6 +117,17 @@ worker() {
       body=$(curl -s --max-time 30 "$API_BASE_URL$path" \
         -H "Authorization: Bearer $token" -w '\n%{http_code}' 2>/dev/null || true)
       code=$(printf '%s' "$body" | tail -n 1)
+      # A "000" is not an answer from the panel: curl could not complete the
+      # connection at all. Under a burst of concurrency that is a client-side
+      # hiccup — an ephemeral port not yet freed, a listen backlog momentarily
+      # full — and immediately retrying succeeds. A real fault (the panel
+      # refusing connections) fails the retry too and is then counted. An
+      # actual HTTP status is never retried: a 500 stays a 500, a 429 a 429.
+      if [ "$code" = "000" ]; then
+        body=$(curl -s --max-time 30 "$API_BASE_URL$path" \
+          -H "Authorization: Bearer $token" -w '\n%{http_code}' 2>/dev/null || true)
+        code=$(printf '%s' "$body" | tail -n 1)
+      fi
       printf '%s %s\n' "$code" "$path" >> "$out"
       case "$(printf '%s' "$body" | head -n -1)" in
         *'"username":"'*)

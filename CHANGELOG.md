@@ -91,6 +91,16 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Changed
 
+- **The frontend's major dependencies are current.** React 18 to 19, Tailwind
+  CSS 3 to 4, Vite 6 to 8, Vitest 3 to 5, ESLint 9 to 10, react-router 6 to 7,
+  jsdom, lucide-react and the testing libraries all move up a major, having been
+  held back from Dependabot's grouped bump because the group could not install.
+  Tailwind 4 keeps its theme in the existing config through an `@config`
+  directive rather than a hand-converted `@theme` block, so no utility silently
+  stops being generated; the ESLint and react-hooks majors are adopted without
+  their new default rulesets, which are opinions to weigh separately, not part
+  of this upgrade. TypeScript stays on 5.x: TypeScript 7 is a preview compiler
+  and `typescript-eslint` does not yet accept it.
 - The installer is now tested on Debian with systemd as well as Alpine with
   OpenRC. It picks its package manager and its service manager from what it
   finds, and only one of those pairs had ever been exercised.

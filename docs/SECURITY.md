@@ -110,6 +110,11 @@ These are encrypted with a key in `/etc/jothost/api.env`. **Back that file up
 separately** — without it the encrypted values cannot be read, and an install
 that loses it keeps the ciphertext and not the meaning.
 
+The key can be rotated: `install.sh rotate-key` re-encrypts every stored secret
+under a new key in one transaction, and undoes itself if the panel does not come
+back. The Agent token and the database password can be rotated too. See
+[RECOVERY.md](RECOVERY.md) section 7.
+
 The phpMyAdmin console hands the browser a database account's own password so
 phpMyAdmin can sign in with it. That discloses nothing new: the same permission
 can already reveal the same password directly. It is posted as a form body,

@@ -182,7 +182,63 @@ su -s /bin/sh jothost-api -c 'set -a; . /etc/jothost/api.env; set +a; /opt/jotho
 The account then signs in with its password alone. Turn two-factor back on
 straight away. The reset is recorded in the audit log as `user.2fa_reset`.
 
-## 7. Migrations
+## 7. Rotating a secret
+
+Each of the panel's three long-lived secrets can be replaced without a
+reinstall. Rotate one if it may have been exposed, or on a schedule.
+
+### The encryption key
+
+`ENCRYPTION_KEY` seals every stored secret — two-factor secrets, database
+passwords, provider and destination credentials — so it cannot simply be
+replaced: the values must be re-encrypted under the new key first.
+
+```bash
+sudo ./install.sh rotate-key            # a fresh key
+sudo ./install.sh rotate-key --key-file new.key   # a specific one
+```
+
+It stops the API, re-encrypts every stored secret in one transaction, swaps the
+key in `api.env` (keeping the old file as `api.env.before-rotate-<time>`), and
+starts the API. If re-encryption fails nothing is changed; if the panel does not
+come back on the new key, the rotation is undone and the old key restored.
+
+**A panel backup taken before a rotation stays sealed with the old key** — its
+seal key is derived from `ENCRYPTION_KEY`. Keep the key you exported before
+rotating, or take a fresh panel backup and export the new key afterwards
+(`export-key`). The rotation is audited as `server.encryption_key_rotated`.
+
+### The Agent token
+
+`AGENT_TOKEN` authenticates the API to the Agent. It lives in both
+`/etc/jothost/api.env` and `/etc/jothost/agent.env`. To rotate it, replace it in
+both files with the same new value and restart the Agent, then the API:
+
+```bash
+new=$(openssl rand -hex 32)
+sudo sed -i "s/^AGENT_TOKEN=.*/AGENT_TOKEN=\"$new\"/" /etc/jothost/api.env /etc/jothost/agent.env
+sudo systemctl restart jothost-agent
+sudo systemctl restart jothost-api
+```
+
+The socket's group and `AGENT_ALLOWED_UIDS` are the other locks on the Agent;
+the token is the one that is a secret, so it is the one worth rotating.
+
+### The database password
+
+Change it on the role and in `DATABASE_URL` together, then restart the API:
+
+```bash
+new=$(openssl rand -hex 24)
+sudo -u postgres psql -c "ALTER ROLE jothost WITH PASSWORD '$new'"
+sudo sed -i "s#\(postgres://jothost:\)[^@]*\(@\)#\1$new\2#" /etc/jothost/api.env
+sudo systemctl restart jothost-api
+```
+
+`repair` will not undo this: it only mints a password when the role has none,
+and preserves the one in `api.env` otherwise.
+
+## 8. Migrations
 
 The API applies pending migrations at startup when `AUTO_MIGRATE` is on, which
 is how the installer configures it. Each runs in a transaction, and a failure
@@ -203,7 +259,7 @@ Every migration has a paired `down`. Rolling one back is possible and is a
 deliberate act — read the `down` file first, because a down migration that
 drops a column drops the data in it.
 
-## 8. Removing the panel
+## 9. Removing the panel
 
 ```bash
 sudo ./install.sh uninstall          # keeps configuration and the panel database
@@ -216,7 +272,7 @@ sections 10 and 11. `uninstall` leaves configuration behind so a reinstall
 reuses it — including the encryption key, which is what makes the existing
 control database readable again.
 
-## 9. Reading what happened
+## 10. Reading what happened
 
 ```text
 /var/log/jothost/          the panel's own logs
@@ -228,7 +284,7 @@ And the audit trail, which answers "who deleted that website" without a
 database client: the panel's Audit page, or `GET /api/v1/audit`. See
 [AUDIT.md](AUDIT.md).
 
-## 10. When reporting a problem
+## 11. When reporting a problem
 
 Include:
 

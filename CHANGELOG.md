@@ -10,6 +10,17 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Added
 
+- **Rotating the panel's secrets.** `install.sh rotate-key` re-encrypts every
+  stored secret — two-factor secrets, database passwords, provider and
+  destination credentials — under a new `ENCRYPTION_KEY` in one transaction,
+  swaps the key in `api.env` keeping the old file, and undoes the whole rotation
+  if the panel does not come back ready. The set of encrypted columns is checked
+  against the database's own schema, so a store added without being taught to
+  rotation fails the build rather than being silently stranded under the old
+  key. `RECOVERY.md` documents rotating the Agent token and the database
+  password as well. Proven on an installed host: a stored secret still decrypts
+  after a rotation.
+
 - **Recovery codes for two-factor authentication.** Turning two-factor on now
   shows ten one-time codes, and the sign-in page accepts one in place of an
   authenticator code. They can be replaced from Account security with the

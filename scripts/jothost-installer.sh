@@ -50,6 +50,7 @@
 #   export-key  write the panel's key to a file, to keep off this host
 #   restore-panel
 #               replace the panel's database with a panel backup
+#   rotate-key  re-encrypt every stored secret under a new encryption key
 #
 # Run with --help for the options.
 
@@ -182,6 +183,7 @@ Usage:
   install.sh status
   install.sh export-key    --to FILE
   install.sh restore-panel --from ARCHIVE --key-file FILE
+  install.sh rotate-key    [--key-file FILE]
 
 Options:
   --domain DOMAIN     the name the panel is served on          (required to install)
@@ -215,7 +217,7 @@ parse_args() {
   [ $# -gt 0 ] && shift
 
   case "$COMMAND" in
-    install|update|repair|uninstall|status|export-key|restore-panel) ;;
+    install|update|repair|uninstall|status|export-key|restore-panel|rotate-key) ;;
     help|--help|-h|'') usage; exit 0 ;;
     *) usage >&2; die "unknown command \"$COMMAND\"" ;;
   esac
@@ -2246,6 +2248,106 @@ SQL
   say ""
 }
 
+# do_rotate_key rotates the panel's encryption key.
+#
+# ENCRYPTION_KEY seals every stored secret. Rotating it means re-encrypting all
+# of them under a new key and only then swapping the key in api.env, in an order
+# that is safe to interrupt:
+#
+#   1. Generate the new key (or take --key-file for a specific one).
+#   2. Stop the API, so nothing writes a secret under the old key mid-rotation.
+#   3. jothost-api rotate-encryption-key: re-encrypt every secret, old to new,
+#      in one transaction. If it fails, nothing changed and the old key still
+#      works — start the API and stop.
+#   4. Swap ENCRYPTION_KEY in api.env, keeping the old file.
+#   5. Start the API. If it does not come back ready, undo: put the old key
+#      file back, re-encrypt new to old, and start again.
+#
+# The Agent's derived panel-backup key changes with ENCRYPTION_KEY, so panel
+# backups taken before a rotation need the key that was exported before it.
+# That is said in the closing note and in RECOVERY.md.
+do_rotate_key() {
+  DIE_ADVICE="The encryption key has not been changed."
+  detect_host >/dev/null
+  load_install_env || die "no installation found; there is no key to rotate"
+  [ -x "$API_BIN" ] || die "no installation found at $PREFIX"
+
+  old_key=$(env_value "$API_ENV" ENCRYPTION_KEY || true)
+  valid_key "$old_key" || die "$API_ENV does not hold a usable ENCRYPTION_KEY"
+
+  if [ -n "$KEY_FILE" ]; then
+    [ -f "$KEY_FILE" ] || die "$KEY_FILE is not a file"
+    new_key=$(grep -v '^[[:space:]]*#' "$KEY_FILE" | tr -d ' \t\r' | grep -v '^$' | head -n 1)
+    valid_key "$new_key" || die "$KEY_FILE does not hold a 64-character hex key"
+  else
+    new_key=$(generate_secret 32)
+  fi
+  if [ "$new_key" = "$old_key" ]; then
+    die "the new key is the same as the current one"
+  fi
+
+  say ""
+  say "  This re-encrypts every stored secret under a new encryption key:"
+  say "  two-factor secrets, database passwords, and provider and destination"
+  say "  credentials. The current $API_ENV is kept alongside."
+  say ""
+  say "  ${C_WARN}Panel backups taken before this rotation stay sealed with the old"
+  say "  key.${C_OFF} Keep the key you exported before rotating, or take a fresh panel"
+  say "  backup and export the new key afterwards."
+  confirm "Rotate the panel's encryption key?" || { say "Nothing was changed."; exit 1; }
+
+  stamp=$(date -u +%Y%m%d%H%M%S)
+
+  step "Stopping the API"
+  service_stop_api || die "the API did not stop; nothing has been changed"
+
+  step "Re-encrypting stored secrets"
+  if ! as_api "$API_BIN rotate-encryption-key" \
+       "JOTHOST_OLD_ENCRYPTION_KEY=$old_key" \
+       "JOTHOST_NEW_ENCRYPTION_KEY=$new_key" > /tmp/jothost-rotate.log 2>&1; then
+    sed 's/^/     /' /tmp/jothost-rotate.log >&2
+    rm -f /tmp/jothost-rotate.log
+    service_start_api || true
+    die "re-encryption failed; every secret is unchanged under the current key"
+  fi
+  sed -n 's/^  /     /p' /tmp/jothost-rotate.log
+  rm -f /tmp/jothost-rotate.log
+  ok "every stored secret is re-encrypted"
+
+  step "Installing the new key"
+  cp -p "$API_ENV" "$API_ENV.before-rotate-$stamp"
+  chown root:root "$API_ENV.before-rotate-$stamp"
+  chmod 0600 "$API_ENV.before-rotate-$stamp"
+  # valid_key has confined new_key to hex, so sed sees nothing but the key.
+  sed -i "s/^ENCRYPTION_KEY=.*/ENCRYPTION_KEY=\"$new_key\"/" "$API_ENV"
+
+  DIE_ADVICE="The rotation was undone: the panel is back on its previous key."
+  service_start_api || true
+  if ! wait_until_ready; then
+    show_service_logs
+    # Undo: old key back, re-encrypt new -> old, start again.
+    cp -p "$API_ENV.before-rotate-$stamp" "$API_ENV"
+    chown root:"$PANEL_GROUP" "$API_ENV"
+    chmod 0640 "$API_ENV"
+    service_stop_api || true
+    as_api "$API_BIN rotate-encryption-key" \
+      "JOTHOST_OLD_ENCRYPTION_KEY=$new_key" \
+      "JOTHOST_NEW_ENCRYPTION_KEY=$old_key" >/dev/null 2>&1 || true
+    service_start_api || true
+    die "the panel did not become ready on the new key"
+  fi
+
+  say ""
+  say "${C_OK}${C_BOLD}The panel's encryption key is rotated.${C_OFF}"
+  say ""
+  say "  The previous configuration is kept as $API_ENV.before-rotate-$stamp."
+  say "  Remove it once you are sure the panel is working."
+  say ""
+  say "  Export the new key and keep it off this host:"
+  say "    $0 export-key --to /root/jothost-panel.key"
+  say ""
+}
+
 load_install_env() {
   [ -f "$INSTALL_ENV" ] || return 1
   # shellcheck disable=SC1090
@@ -2302,6 +2404,7 @@ main() {
     status)    do_status ;;
     export-key)    do_export_key ;;
     restore-panel) do_restore_panel ;;
+    rotate-key)    do_rotate_key ;;
   esac
 }
 

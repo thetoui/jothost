@@ -33,3 +33,5 @@ Thumbs.db
 run/
 dist-previous/
 .previous-release/
+capacity-report.md
+tests/capacity/capacity.bin

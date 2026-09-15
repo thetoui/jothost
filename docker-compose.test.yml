@@ -303,6 +303,12 @@ services:
       - ./tests:/tests:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
 
+  # A systemd host for the capacity harness (tests/capacity/run.sh): the panel
+  # is installed on it and driven through its API. The numbers are a same-machine
+  # baseline, not a supported limit — see the harness's report header.
+  capacity-host:
+    <<: *installer-systemd-host
+
   # Hosts for the upgrade test (tests/installer/upgrade.sh): the previous
   # release is installed from dist-previous/, then updated to dist/. Ubuntu
   # 22.04 is not among them: the previous release could not sign anybody in

@@ -637,10 +637,49 @@ else
 fi
 contains "and the administrator signs in with the password alone" "$(sign_in_admin)" '"access_token"'
 
-# ----------------------------------------------------------- 11. uninstall
+# ------------------------------------------- 11. rotating the encryption key
 
 log ""
-log "11. Uninstall removes the panel and nothing else"
+log "11. Rotating the encryption key re-encrypts the stored secrets"
+
+# A destination with a secret sealed under the current key. Its endpoint is a
+# closed local port, so a check reaches the Agent and fails to connect - but
+# only after the secret has been decrypted, which is what this proves survives.
+TOKEN=$(first_field "$(sign_in_admin)" access_token)
+rot_dest=$(api_json POST /backup-destinations '{"name":"rotate s3","kind":"s3","endpoint":"http://127.0.0.1:9","region":"us-east-1","bucket":"rotate","access_key":"rotate-access","secret_key":"rotate-secret-value","path_style":true}' "$TOKEN")
+rot_id=$(first_field "$rot_dest" id)
+[ -n "$rot_id" ] && pass "a destination with a stored secret was created" || fail "creating the destination: $(printf '%s' "$rot_dest" | cut -c1-200)"
+
+key_before=$(env_value /etc/jothost/api.env ENCRYPTION_KEY)
+if "$DIST/install.sh" rotate-key --yes > /tmp/rotate.log 2>&1; then
+  pass "rotate-key completed"
+else
+  fail "rotate-key failed"
+  tail -20 /tmp/rotate.log | sed 's/^/        /'
+fi
+key_after=$(env_value /etc/jothost/api.env ENCRYPTION_KEY)
+differs "the encryption key in api.env changed" "$key_before" "$key_after"
+[ -f "$(ls -1 /etc/jothost/api.env.before-rotate-* 2>/dev/null | head -1)" ]   && pass "the previous configuration was kept" || fail "no api.env.before-rotate backup was kept"
+
+# The secret still decrypts: the check reaches the Agent rather than failing to
+# read the credential. The panel must have come back ready on the new key.
+TOKEN=$(first_field "$(sign_in_admin)" access_token)
+rot_check=$(api_json POST "/backup-destinations/$rot_id/check" '{}' "$TOKEN")
+if printf '%s' "$rot_check" | grep -q 'stored credentials could not be read'; then
+  fail "the stored secret no longer decrypts after the rotation"
+else
+  pass "the stored secret still decrypts under the new key"
+fi
+if curl -fsS --max-time 5 http://127.0.0.1:8080/readyz >/dev/null 2>&1; then
+  pass "the panel is ready on the rotated key"
+else
+  fail "the panel is not ready after the rotation"
+fi
+
+# ----------------------------------------------------------- 12. uninstall
+
+log ""
+log "12. Uninstall removes the panel and nothing else"
 
 # A customer's website, to prove what uninstall does not touch. This is the
 # single most destructive thing the script could do, and nobody typing
@@ -679,7 +718,7 @@ else
 fi
 
 log ""
-log "12. Purge removes the panel's own data, and still not the customers'"
+log "13. Purge removes the panel's own data, and still not the customers'"
 
 if "$DIST/install.sh" uninstall --purge --yes > /tmp/purge.log 2>&1; then
   pass "purge completed"

@@ -28,15 +28,18 @@ const RANGES: MetricRange[] = ['1h', '24h', '7d', '30d'];
 
 // Chart colours are fixed hex values rather than Tailwind classes because they
 // are passed to SVG stroke attributes, which do not read class names.
+// Series colours track the dark redesign's accent set (green/violet/amber for
+// resources, green/sky for network) rather than the old light-theme blues, so
+// the charts read as part of the same palette as everything around them.
 const RESOURCE_SERIES: ChartSeries[] = [
-  { label: 'CPU', color: '#3b6ef6', value: (p: MetricPoint) => p.cpu_percent },
-  { label: 'Memory', color: '#8b5cf6', value: (p: MetricPoint) => p.memory_percent },
-  { label: 'Disk', color: '#f59e0b', value: (p: MetricPoint) => p.disk_percent },
+  { label: 'CPU', color: '#34d399', value: (p: MetricPoint) => p.cpu_percent },
+  { label: 'Memory', color: '#a78bfa', value: (p: MetricPoint) => p.memory_percent },
+  { label: 'Disk', color: '#fbbf24', value: (p: MetricPoint) => p.disk_percent },
 ];
 
 const NETWORK_SERIES: ChartSeries[] = [
-  { label: 'Received', color: '#10b981', value: (p: MetricPoint) => p.network_rx_per_second },
-  { label: 'Sent', color: '#3b6ef6', value: (p: MetricPoint) => p.network_tx_per_second },
+  { label: 'Received', color: '#34d399', value: (p: MetricPoint) => p.network_rx_per_second },
+  { label: 'Sent', color: '#38bdf8', value: (p: MetricPoint) => p.network_tx_per_second },
 ];
 
 export function DashboardPage() {
@@ -62,7 +65,7 @@ export function DashboardPage() {
   const { server } = snapshot;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-ink-strong">{server.hostname}</h1>
@@ -150,7 +153,73 @@ export function DashboardPage() {
         {(alerts) => <AlertList alerts={alerts} />}
       </WidgetCard>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      {/* Trends come before the per-resource breakdown: on an operations
+          dashboard the shape of the last hour answers "is this normal?" faster
+          than any single current reading, so it earns the space above the fold
+          rather than the bottom of the page. */}
+      <section aria-labelledby="dash-trends" className="space-y-3">
+        <h2 id="dash-trends" className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-ink-dim">
+          Trends
+        </h2>
+        <WidgetCard
+          title="History"
+          widget={{ available: true, data: history.data?.points ?? [] }}
+          action={
+            <div className="flex gap-1" role="group" aria-label="History range">
+              {RANGES.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setRange(option)}
+                  aria-pressed={range === option}
+                  className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${focusRingTight} ${
+                    range === option
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-ink-muted hover:bg-surface-muted hover:text-ink-strong'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          {(points) => (
+            <div className="grid gap-6 xl:grid-cols-2">
+              <div>
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
+                  Resource usage
+                </h3>
+                <MetricChart
+                  points={points}
+                  series={RESOURCE_SERIES}
+                  max={100}
+                  formatValue={(value) => `${value.toFixed(0)}%`}
+                />
+              </div>
+
+              <div>
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
+                  Network throughput
+                </h3>
+                <MetricChart
+                  points={points}
+                  series={NETWORK_SERIES}
+                  formatValue={(value) => formatBytes(value, 0)}
+                />
+              </div>
+            </div>
+          )}
+        </WidgetCard>
+      </section>
+
+      {/* The per-resource detail, three across on wide screens so the compact
+          panels (Services, Server, Network) stop leaving half the row empty. */}
+      <section aria-labelledby="dash-resources" className="space-y-3">
+        <h2 id="dash-resources" className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-ink-dim">
+          Resources
+        </h2>
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <WidgetCard title="CPU" widget={snapshot.cpu}>
           {(cpu) => (
             <div className="space-y-4">
@@ -261,58 +330,8 @@ export function DashboardPage() {
             </dl>
           )}
         </WidgetCard>
-      </div>
-
-      <WidgetCard
-        title="History"
-        widget={{ available: true, data: history.data?.points ?? [] }}
-        action={
-          <div className="flex gap-1" role="group" aria-label="History range">
-            {RANGES.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setRange(option)}
-                aria-pressed={range === option}
-                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${focusRingTight} ${
-                  range === option
-                    ? 'bg-brand-50 text-brand-700'
-                    : 'text-ink-muted hover:bg-surface-muted hover:text-ink-strong'
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        }
-      >
-        {(points) => (
-          <div className="space-y-6">
-            <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
-                Resource usage
-              </h3>
-              <MetricChart
-                points={points}
-                series={RESOURCE_SERIES}
-                max={100}
-                formatValue={(value) => `${value.toFixed(0)}%`}
-              />
-            </div>
-
-            <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
-                Network throughput
-              </h3>
-              <MetricChart
-                points={points}
-                series={NETWORK_SERIES}
-                formatValue={(value) => formatBytes(value, 0)}
-              />
-            </div>
-          </div>
-        )}
-      </WidgetCard>
+        </div>
+      </section>
     </div>
   );
 }

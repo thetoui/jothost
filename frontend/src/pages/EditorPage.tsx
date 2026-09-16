@@ -118,8 +118,8 @@ export function EditorPage() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Code editor</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-ink-strong">Code editor</h1>
+          <p className="text-sm text-ink-muted">
             Edit the files under {ROOT} in place.
           </p>
         </div>
@@ -273,7 +273,7 @@ function StatusBar({ tab, saving }: { tab: EditorTab; saving: boolean }) {
   const lines = useMemo(() => tab.content.split('\n').length, [tab.content]);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-surface-border px-3 py-1.5 text-xs text-slate-500">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-surface-border px-3 py-1.5 text-xs text-ink-muted">
       <span className="truncate font-mono">{tab.path}</span>
       <span className="flex items-center gap-3">
         <span>{tab.language}</span>
@@ -333,7 +333,7 @@ function ConflictDialog({ tab, saving, onClose, onOverwrite, onReload }: Conflic
         }
       }}
     >
-      <div className="mt-3 space-y-2 text-sm text-slate-600">
+      <div className="mt-3 space-y-2 text-sm text-ink">
         <p className="font-mono text-xs">{tab?.path}</p>
         <p>
           Overwriting discards whatever was written to the file after you opened it.

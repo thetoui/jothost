@@ -111,7 +111,7 @@ export function Sidebar() {
       }`}
     >
       <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-rail-border px-4">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand-500 text-sm font-bold text-white">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand-500 text-sm font-bold text-[#04140a]">
           J
         </span>
         {!collapsed && (

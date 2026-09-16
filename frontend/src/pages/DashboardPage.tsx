@@ -51,7 +51,7 @@ export function DashboardPage() {
   if (isError || !snapshot) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
+        <h1 className="text-xl font-semibold text-ink-strong">Dashboard</h1>
         <Alert tone="danger" title="The dashboard could not be loaded">
           {errorMessage(error, 'Try again in a moment.')}
         </Alert>
@@ -65,8 +65,8 @@ export function DashboardPage() {
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">{server.hostname}</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-ink-strong">{server.hostname}</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             Updated {formatDateTime(snapshot.generated_at)}
           </p>
         </div>
@@ -195,7 +195,7 @@ export function DashboardPage() {
           {(disk) => (
             <div className="space-y-4">
               {disk.filesystems.length === 0 ? (
-                <p className="text-sm text-slate-500">No filesystems reported.</p>
+                <p className="text-sm text-ink-muted">No filesystems reported.</p>
               ) : (
                 disk.filesystems.map((fs) => (
                   <UsageBar
@@ -214,13 +214,13 @@ export function DashboardPage() {
           {(network) => (
             <div className="space-y-3">
               {network.interfaces.length === 0 ? (
-                <p className="text-sm text-slate-500">No interfaces reported.</p>
+                <p className="text-sm text-ink-muted">No interfaces reported.</p>
               ) : (
                 <ul className="divide-y divide-surface-border">
                   {network.interfaces.map((iface) => (
                     <li key={iface.name} className="flex items-center justify-between py-2 text-sm">
-                      <span className="font-medium text-slate-800">{iface.name}</span>
-                      <span className="tabular-nums text-xs text-slate-600">
+                      <span className="font-medium text-ink-strong">{iface.name}</span>
+                      <span className="tabular-nums text-xs text-ink">
                         ↓ {formatBytesPerSecond(iface.rx_bytes_per_second)} · ↑{' '}
                         {formatBytesPerSecond(iface.tx_bytes_per_second)}
                       </span>
@@ -277,7 +277,7 @@ export function DashboardPage() {
                 className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${focusRingTight} ${
                   range === option
                     ? 'bg-brand-50 text-brand-700'
-                    : 'text-slate-500 hover:bg-surface-muted hover:text-slate-800'
+                    : 'text-ink-muted hover:bg-surface-muted hover:text-ink-strong'
                 }`}
               >
                 {option}
@@ -289,7 +289,7 @@ export function DashboardPage() {
         {(points) => (
           <div className="space-y-6">
             <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
                 Resource usage
               </h3>
               <MetricChart
@@ -301,7 +301,7 @@ export function DashboardPage() {
             </div>
 
             <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
                 Network throughput
               </h3>
               <MetricChart
@@ -320,8 +320,8 @@ export function DashboardPage() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="font-medium uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="mt-0.5 text-slate-900">{value}</dd>
+      <dt className="font-medium uppercase tracking-wide text-ink-muted">{label}</dt>
+      <dd className="mt-0.5 text-ink-strong">{value}</dd>
     </div>
   );
 }

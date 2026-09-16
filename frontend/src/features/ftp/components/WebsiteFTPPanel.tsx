@@ -57,13 +57,13 @@ export function WebsiteFTPPanel({ websiteId, domain }: WebsiteFTPPanelProps) {
       />
       <CardBody className="p-0">
         {!available ? (
-          <p className="px-5 py-4 text-sm text-slate-500">
+          <p className="px-5 py-4 text-sm text-ink-muted">
             No FTP server is installed on this host.
           </p>
         ) : isPending ? (
           <SkeletonRows rows={2} />
         ) : users.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-slate-500">
+          <p className="px-5 py-4 text-sm text-ink-muted">
             No FTP accounts for this website yet.
           </p>
         ) : (
@@ -90,7 +90,7 @@ export function WebsiteFTPPanel({ websiteId, domain }: WebsiteFTPPanelProps) {
 function AccountSummary({ user }: { user: FTPUser }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="font-medium text-slate-900">{user.username}</span>
+      <span className="font-medium text-ink-strong">{user.username}</span>
       {user.suspended ? (
         <StatusPill label="Suspended" tone="warn" dot />
       ) : user.access_level === 'readonly' ? (
@@ -98,7 +98,7 @@ function AccountSummary({ user }: { user: FTPUser }) {
       ) : (
         <StatusPill label="Full access" tone="ok" dot />
       )}
-      <span className="ml-auto font-mono text-xs text-slate-400">{user.home}</span>
+      <span className="ml-auto font-mono text-xs text-ink-dim">{user.home}</span>
     </div>
   );
 }

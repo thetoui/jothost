@@ -106,13 +106,13 @@ export function Tabs<T extends string>({
               '-mb-px shrink-0 border-b-2 px-0.5 pb-2 text-sm transition-colors',
               focusRingTight,
               active
-                ? 'border-brand-600 font-medium text-slate-900'
-                : 'border-transparent text-slate-500 hover:border-surface-strong hover:text-slate-800',
+                ? 'border-brand-600 font-medium text-ink-strong'
+                : 'border-transparent text-ink-muted hover:border-surface-strong hover:text-ink-strong',
             ].join(' ')}
           >
             {item.label}
             {item.count !== undefined && (
-              <span className="ml-1.5 text-xs text-slate-400">{item.count}</span>
+              <span className="ml-1.5 text-xs text-ink-dim">{item.count}</span>
             )}
           </button>
         );

@@ -33,7 +33,7 @@ export function NodeAppPanel({ app }: { app: NodeApp }) {
   return (
     <div className="space-y-3 border-t border-surface-border bg-surface-sunken/40 px-5 py-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-slate-500">
+        <dl className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-ink-muted">
           <Fact label="Directory" value={current.application_root} />
           <Fact label="Entry point" value={current.startup_file} />
           <Fact label="Account" value={current.system_user ?? '—'} />
@@ -169,7 +169,7 @@ function EnvironmentCard({ app }: { app: NodeApp }) {
         )}
 
         {keys.length === 0 ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             Nothing set. The panel always provides <code className="font-mono">PORT</code>,{' '}
             <code className="font-mono">HOME</code>, and{' '}
             <code className="font-mono">NODE_ENV</code>.
@@ -179,10 +179,10 @@ function EnvironmentCard({ app }: { app: NodeApp }) {
             {keys.map((name) => (
               <li key={name} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
-                  <p className="font-mono text-slate-800">{name}</p>
+                  <p className="font-mono text-ink-strong">{name}</p>
                   {revealed?.[name] !== undefined && (
-                    <code className="mt-0.5 block select-all break-all rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-xs text-slate-700">
-                      {revealed[name] || <span className="text-slate-400">(empty)</span>}
+                    <code className="mt-0.5 block select-all break-all rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-xs text-ink">
+                      {revealed[name] || <span className="text-ink-dim">(empty)</span>}
                     </code>
                   )}
                 </div>
@@ -220,7 +220,7 @@ function EnvironmentCard({ app }: { app: NodeApp }) {
           </RequirePermission>
         )}
 
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           A change takes effect the next time the application is restarted — a process reads its
           environment once, at startup.
         </p>
@@ -262,17 +262,17 @@ function LogsCard({ app }: { app: NodeApp }) {
               {logs.data.detail}
             </Alert>
           ) : (logs.data?.lines.length ?? 0) === 0 ? (
-            <p className="text-sm text-slate-500">Nothing written yet.</p>
+            <p className="text-sm text-ink-muted">Nothing written yet.</p>
           ) : (
-            <pre className="max-h-64 overflow-auto rounded bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">
+            <pre className="max-h-64 overflow-auto rounded bg-console p-3 text-xs leading-relaxed text-console">
               {logs.data?.lines.join('\n')}
             </pre>
           )}
 
           {(logs.data?.error_lines.length ?? 0) > 0 && (
             <>
-              <p className="mt-3 text-xs font-medium text-slate-600">Errors</p>
-              <pre className="mt-1 max-h-40 overflow-auto rounded bg-slate-900 p-3 text-xs leading-relaxed text-danger-200">
+              <p className="mt-3 text-xs font-medium text-ink">Errors</p>
+              <pre className="mt-1 max-h-40 overflow-auto rounded bg-console p-3 text-xs leading-relaxed text-danger-200">
                 {logs.data?.error_lines.join('\n')}
               </pre>
             </>
@@ -287,7 +287,7 @@ function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-1.5">
       <dt>{label}</dt>
-      <dd className="font-mono font-medium text-slate-700">{value}</dd>
+      <dd className="font-mono font-medium text-ink">{value}</dd>
     </div>
   );
 }

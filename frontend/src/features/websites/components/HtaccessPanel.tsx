@@ -57,7 +57,7 @@ export function HtaccessPanel({ site }: HtaccessPanelProps) {
         </RequirePermission>
 
         {site.apache_port !== null && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             nginx proxies this site to Apache on{' '}
             <span className="font-mono">127.0.0.1:{site.apache_port}</span>. The backend is
             reachable from this host only.

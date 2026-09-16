@@ -37,7 +37,7 @@ export function DomainList({ sites, expanded, onToggle }: DomainListProps) {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[44rem] border-collapse text-sm">
         <thead>
-          <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-ink-muted">
             <th scope="col" className="w-8 px-2 py-2">
               <span className="sr-only">Expand</span>
             </th>
@@ -94,7 +94,7 @@ export function DomainList({ sites, expanded, onToggle }: DomainListProps) {
                       <button
                         type="button"
                         onClick={() => onToggle(site.id)}
-                        className={`truncate rounded-sm font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
+                        className={`truncate rounded-sm font-medium text-ink-strong underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
                       >
                         {site.primary_domain}
                       </button>
@@ -116,8 +116,8 @@ export function DomainList({ sites, expanded, onToggle }: DomainListProps) {
                     />
                   </td>
 
-                  <td className="px-3 py-2 text-slate-600">
-                    {site.php_version ?? <span className="text-slate-400">—</span>}
+                  <td className="px-3 py-2 text-ink">
+                    {site.php_version ?? <span className="text-ink-dim">—</span>}
                   </td>
 
                   <td className="px-3 py-2">
@@ -127,7 +127,7 @@ export function DomainList({ sites, expanded, onToggle }: DomainListProps) {
                         On
                       </span>
                     ) : (
-                      <span className="text-slate-400">Off</span>
+                      <span className="text-ink-dim">Off</span>
                     )}
                   </td>
 

@@ -20,7 +20,7 @@ export function RequireAuth() {
   if (status === 'unknown' || (status === 'authenticated' && isLoading)) {
     return (
       <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
-        <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-slate-400" />
+        <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-ink-dim" />
         <span className="sr-only">Checking your session</span>
       </div>
     );

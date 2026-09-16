@@ -44,8 +44,8 @@ export class ErrorBoundary extends Component<Props, State> {
         role="alert"
         className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center"
       >
-        <h1 className="text-xl font-semibold text-slate-900">Something went wrong</h1>
-        <p className="max-w-md text-sm text-slate-600">
+        <h1 className="text-xl font-semibold text-ink-strong">Something went wrong</h1>
+        <p className="max-w-md text-sm text-ink">
           The page failed to render. Reloading usually resolves it. If the problem persists,
           check the API logs.
         </p>

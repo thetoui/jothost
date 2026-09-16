@@ -183,7 +183,7 @@ export function PermissionsDialog({
       <div className="space-y-4">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+            <tr className="text-left text-xs uppercase tracking-wide text-ink-muted">
               <th scope="col" className="py-1 font-medium">
                 Who
               </th>
@@ -197,7 +197,7 @@ export function PermissionsDialog({
           <tbody>
             {PERMISSION_ROWS.map((row) => (
               <tr key={row.label}>
-                <th scope="row" className="py-1.5 text-left font-normal text-slate-700">
+                <th scope="row" className="py-1.5 text-left font-normal text-ink">
                   {row.label}
                 </th>
                 {PERMISSION_BITS.map((bit) => (

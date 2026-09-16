@@ -72,7 +72,7 @@ export function GrafanaPanels() {
           description="Grafana draws the history behind these alerts. The alert engine does not need it."
         />
         <CardBody className="space-y-3">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink">
             {state.detail ?? 'Grafana is not available on this host.'}
           </p>
 
@@ -102,7 +102,7 @@ export function GrafanaPanels() {
                 {/* Said before the install, not after. Somebody who would
                     rather not run a second web application on the host should
                     find that out here. */}
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-ink-muted">
                   Grafana is installed listening on loopback only, with a read-only database
                   role of its own, and it authenticates its own visitors — the panel does not
                   sign you in to it.
@@ -133,7 +133,7 @@ export function GrafanaPanels() {
       <CardBody className="grid gap-4 xl:grid-cols-2">
         {panels.map((panel) => (
           <figure key={panel.id} className="min-w-0">
-            <figcaption className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+            <figcaption className="mb-1 text-xs font-medium uppercase tracking-wide text-ink-muted">
               {panel.title}
             </figcaption>
             <iframe

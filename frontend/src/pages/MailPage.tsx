@@ -57,8 +57,8 @@ export function MailPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Mail</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Mail</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           The mailboxes on this host, and whether the rest of the world believes them.
         </p>
       </header>
@@ -172,7 +172,7 @@ function Health({
           <AddComponents status={status} onInstalling={onInstalling} />
 
           {status.queue_length > 0 && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-muted">
               {status.queue_length} message(s) waiting to be delivered
               {status.queue_oldest_seconds > 3600
                 ? `, the oldest for ${Math.floor(status.queue_oldest_seconds / 3600)} hour(s) — a queue that is not moving`
@@ -241,21 +241,21 @@ function AddComponents({
 
   return (
     <div className="rounded-md border border-surface-border bg-surface-muted p-3">
-      <p className="text-sm text-slate-700">
+      <p className="text-sm text-ink">
         {missingScanner && missingFilter
           ? 'This server has no spam filter and no virus scanner.'
           : missingScanner
             ? 'This server has no virus scanner, so nothing checks mail for malware.'
             : 'This server has no spam filter.'}
       </p>
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1 text-xs text-ink-muted">
         {missingScanner
           ? 'The signature database is several hundred megabytes and is downloaded during the install, so this takes a few minutes. Mail keeps being delivered throughout, and nothing already configured is changed.'
           : 'Installing takes a few minutes. Nothing already configured is changed.'}
       </p>
 
       {install.isSuccess && (
-        <p className="mt-2 text-xs text-slate-600">
+        <p className="mt-2 text-xs text-ink">
           Installing. This page keeps checking; it is safe to leave.
         </p>
       )}
@@ -309,13 +309,13 @@ function Daemon({
   const colour = daemon.running
     ? 'text-ok-700'
     : !installed || !daemon.installed
-      ? 'text-slate-400'
+      ? 'text-ink-dim'
       : 'text-danger-700';
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+      <dt className="text-xs uppercase tracking-wide text-ink-muted">{label}</dt>
       <dd className={`mt-1 text-sm font-semibold ${colour}`}>{state}</dd>
-      {daemon.detail && <p className="mt-0.5 text-xs text-slate-500">{daemon.detail}</p>}
+      {daemon.detail && <p className="mt-0.5 text-xs text-ink-muted">{daemon.detail}</p>}
     </div>
   );
 }
@@ -396,7 +396,7 @@ function InstallMailServer({ status }: { status: MailStatus }) {
             Install the mail server
           </Button>
           {install.isPending && (
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-ink-muted">
               {antivirus
                 ? 'Installing, and downloading virus signatures. This can take several minutes.'
                 : 'Installing. This takes a moment.'}
@@ -422,7 +422,7 @@ function Ports({ status }: { status: MailStatus }) {
               ? 'bg-ok-50 text-ok-800'
               : port.configured
                 ? 'bg-danger-50 text-danger-800'
-                : 'bg-slate-100 text-slate-500'
+                : 'bg-surface-sunken text-ink-muted'
           }`}
           title={
             port.listening
@@ -573,18 +573,18 @@ function Domains({ overview }: { overview: MailOverview }) {
           />
         </CardBody>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {domains.map((domain) => (
             <li key={domain.id} className="px-5 py-4">
               <div className="flex items-start gap-4">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-900">
+                  <p className="text-sm font-medium text-ink-strong">
                     {domain.domain}
                     {!domain.active && (
-                      <span className="ml-2 text-xs text-slate-500">· not accepting mail</span>
+                      <span className="ml-2 text-xs text-ink-muted">· not accepting mail</span>
                     )}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-ink-muted">
                     {domain.mailboxes} mailbox(es) · {domain.aliases} forwarder(s)
                   </p>
                   <Publication domain={domain} />
@@ -680,7 +680,7 @@ function Publication({ domain }: { domain: MailDomain }) {
 
 function Badge({ label, ok, skipped }: { label: string; ok: boolean; skipped?: boolean }) {
   const tone = skipped
-    ? 'bg-slate-100 text-slate-500'
+    ? 'bg-surface-sunken text-ink-muted'
     : ok
       ? 'bg-ok-50 text-ok-800'
       : 'bg-warn-50 text-warn-800';
@@ -704,7 +704,7 @@ function DomainDetail({ domain }: { domain: MailDomain }) {
     <div className="mt-4 space-y-4 rounded-md bg-surface-muted p-4">
       <div>
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
             Mailboxes
           </h3>
           <RequirePermission permission={Permission.MailManage}>
@@ -717,15 +717,15 @@ function DomainDetail({ domain }: { domain: MailDomain }) {
         {mailboxes.isPending ? (
           <SkeletonRows rows={2} />
         ) : (mailboxes.data?.mailboxes ?? []).length === 0 ? (
-          <p className="mt-2 text-xs text-slate-500">No mailboxes yet.</p>
+          <p className="mt-2 text-xs text-ink-muted">No mailboxes yet.</p>
         ) : (
           <ul className="mt-2 space-y-1.5">
             {(mailboxes.data?.mailboxes ?? []).map((box) => (
               <li key={box.id} className="flex items-center gap-3 text-sm">
-                <Inbox aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                <span className="min-w-0 flex-1 truncate text-slate-900">{box.address}</span>
-                <span className="shrink-0 text-xs text-slate-500">{describeUsage(box)}</span>
-                {!box.active && <span className="shrink-0 text-xs text-slate-500">suspended</span>}
+                <Inbox aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
+                <span className="min-w-0 flex-1 truncate text-ink-strong">{box.address}</span>
+                <span className="shrink-0 text-xs text-ink-muted">{describeUsage(box)}</span>
+                {!box.active && <span className="shrink-0 text-xs text-ink-muted">suspended</span>}
                 <RequirePermission permission={Permission.MailManage}>
                   <TextButton size="xs" className="shrink-0" onClick={() => setResetting(box)}>
                     Set password
@@ -747,7 +747,7 @@ function DomainDetail({ domain }: { domain: MailDomain }) {
 
       <div>
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
             Forwarders
           </h3>
           <RequirePermission permission={Permission.MailManage}>
@@ -758,13 +758,13 @@ function DomainDetail({ domain }: { domain: MailDomain }) {
         </div>
 
         {(aliases.data?.aliases ?? []).length === 0 ? (
-          <p className="mt-2 text-xs text-slate-500">No forwarders.</p>
+          <p className="mt-2 text-xs text-ink-muted">No forwarders.</p>
         ) : (
           <ul className="mt-2 space-y-1.5">
             {(aliases.data?.aliases ?? []).map((alias) => (
               <li key={alias.id} className="flex items-center gap-3 text-sm">
-                <AtSign aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                <span className="min-w-0 flex-1 truncate text-slate-900">
+                <AtSign aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
+                <span className="min-w-0 flex-1 truncate text-ink-strong">
                   {alias.source}@{domain.domain} → {alias.destination}
                 </span>
                 <RequirePermission permission={Permission.MailManage}>

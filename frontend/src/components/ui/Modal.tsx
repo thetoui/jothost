@@ -161,11 +161,11 @@ export function Modal({
       >
         <div className="flex items-start justify-between gap-4 px-5 pb-3 pt-4">
           <div className="min-w-0">
-            <h2 id={titleId} className="text-base font-semibold text-slate-900">
+            <h2 id={titleId} className="text-base font-semibold text-ink-strong">
               {title}
             </h2>
             {description && (
-              <p id={descriptionId} className="mt-1 text-sm text-slate-600">
+              <p id={descriptionId} className="mt-1 text-sm text-ink">
                 {description}
               </p>
             )}
@@ -181,7 +181,7 @@ export function Modal({
           />
         </div>
 
-        {children && <div className="px-5 pb-1 text-sm text-slate-700">{children}</div>}
+        {children && <div className="px-5 pb-1 text-sm text-ink">{children}</div>}
 
         {footer && (
           <div className="mt-3 flex flex-wrap items-center justify-end gap-2 rounded-b-card border-t border-surface-border bg-surface-muted px-5 py-3">

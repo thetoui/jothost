@@ -74,7 +74,7 @@ export function PasswordReveal({ userId, initial }: PasswordRevealProps) {
   if (!visible) {
     return (
       <div className="flex items-center gap-2">
-        <code className="font-mono text-xs text-slate-400">••••••••••••</code>
+        <code className="font-mono text-xs text-ink-dim">••••••••••••</code>
         <Button
           size="sm"
           variant="ghost"
@@ -95,7 +95,7 @@ export function PasswordReveal({ userId, initial }: PasswordRevealProps) {
 
   return (
     <div className="flex items-center gap-1.5">
-      <code className="select-all break-all rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-xs text-slate-800">
+      <code className="select-all break-all rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-xs text-ink-strong">
         {password}
       </code>
       <Button

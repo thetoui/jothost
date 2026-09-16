@@ -66,7 +66,7 @@ export function CreateDatabaseForm({ onCreated, onCancel, websiteId }: CreateDat
   };
 
   if (engines.isPending) {
-    return <p className="text-sm text-slate-500">Checking what this server runs…</p>;
+    return <p className="text-sm text-ink-muted">Checking what this server runs…</p>;
   }
 
   if (available.length === 0) {
@@ -171,7 +171,7 @@ export function CreateDatabaseForm({ onCreated, onCancel, websiteId }: CreateDat
               <option value="%">Any host (%)</option>
             </SelectField>
           ) : (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-muted">
               PostgreSQL roles are global; where they may connect from is decided by the
               server&rsquo;s own configuration, not by the panel.
             </p>

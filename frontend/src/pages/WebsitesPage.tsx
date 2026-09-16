@@ -69,8 +69,8 @@ export function WebsitesPage() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Websites &amp; Domains</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-2xl font-semibold text-ink-strong">Websites &amp; Domains</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           {websites.length} {websites.length === 1 ? 'item' : 'items'} total. Each site runs under
           its own system account.
         </p>
@@ -97,7 +97,7 @@ export function WebsitesPage() {
             <div className="relative">
               <Search
                 aria-hidden="true"
-                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim"
               />
               <input
                 type="search"
@@ -105,7 +105,7 @@ export function WebsitesPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Find domain..."
                 aria-label="Find domain"
-                className="h-9 w-56 rounded-md border border-surface-border bg-surface pl-8 pr-3 text-sm shadow-card placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                className="h-9 w-56 rounded-md border border-surface-border bg-surface pl-8 pr-3 text-sm shadow-card placeholder:text-ink-dim focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
               />
             </div>
           </div>
@@ -202,7 +202,7 @@ function ServerRail({ sites }: { sites: Website[] }) {
 
       <Card label="System overview">
         <div className="space-y-2 p-3 text-sm">
-          <h3 className="text-sm font-semibold text-slate-900">System Overview</h3>
+          <h3 className="text-sm font-semibold text-ink-strong">System Overview</h3>
           <dl className="space-y-1.5 text-xs">
             <RailFact label="Hostname" value={info?.hostname ?? '—'} />
             <RailFact
@@ -219,7 +219,7 @@ function ServerRail({ sites }: { sites: Website[] }) {
 
       <Card label="System security">
         <div className="space-y-2 p-3">
-          <h3 className="text-sm font-semibold text-slate-900">System Security</h3>
+          <h3 className="text-sm font-semibold text-ink-strong">System Security</h3>
           {/* Only what this build actually enforces. Plesk lists ModSecurity
               and IP banning here; claiming either would be a lie. */}
           <ul className="space-y-1.5 text-xs">
@@ -252,9 +252,9 @@ function RailLink({ to, icon, label }: { to: string; icon: React.ReactNode; labe
   return (
     <Link
       to={to}
-      className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 transition-colors hover:bg-surface-sunken hover:text-brand-700 ${focusRingTight}`}
+      className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm text-ink transition-colors hover:bg-surface-sunken hover:text-brand-700 ${focusRingTight}`}
     >
-      <span className="text-slate-400" aria-hidden="true">
+      <span className="text-ink-dim" aria-hidden="true">
         {icon}
       </span>
       {label}
@@ -265,8 +265,8 @@ function RailLink({ to, icon, label }: { to: string; icon: React.ReactNode; labe
 function RailFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="truncate font-medium text-slate-800">{value}</dd>
+      <dt className="text-ink-muted">{label}</dt>
+      <dd className="truncate font-medium text-ink-strong">{value}</dd>
     </div>
   );
 }
@@ -274,11 +274,11 @@ function RailFact({ label, value }: { label: string; value: string }) {
 function SecurityRow({ label, on, note }: { label: string; on: boolean; note?: string }) {
   return (
     <li className="flex items-center justify-between gap-2">
-      <span className="text-slate-600">{label}</span>
+      <span className="text-ink">{label}</span>
       <span
         className={[
           'inline-flex items-center gap-1 font-medium',
-          on ? 'text-ok-700' : 'text-slate-400',
+          on ? 'text-ok-700' : 'text-ink-dim',
         ].join(' ')}
       >
         <ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />

@@ -68,7 +68,7 @@ interface SpinnerProps {
 export function Spinner({ className = 'h-5 w-5', label }: SpinnerProps) {
   return (
     <>
-      <Loader2 aria-hidden="true" className={`animate-spin text-slate-400 ${className}`} />
+      <Loader2 aria-hidden="true" className={`animate-spin text-ink-dim ${className}`} />
       {label && <span className="sr-only">{label}</span>}
     </>
   );
@@ -134,12 +134,12 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
     <div className="flex flex-col items-center px-6 py-12 text-center">
       <span
         aria-hidden="true"
-        className="grid h-12 w-12 place-items-center rounded-full bg-surface-sunken text-slate-400"
+        className="grid h-12 w-12 place-items-center rounded-full bg-surface-sunken text-ink-dim"
       >
         {icon}
       </span>
-      <p className="mt-3 text-sm font-semibold text-slate-900">{title}</p>
-      {description && <p className="mt-1 max-w-sm text-sm text-slate-500">{description}</p>}
+      <p className="mt-3 text-sm font-semibold text-ink-strong">{title}</p>
+      {description && <p className="mt-1 max-w-sm text-sm text-ink-muted">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

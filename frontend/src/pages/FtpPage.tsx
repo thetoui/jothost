@@ -48,8 +48,8 @@ export function FtpPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">FTP</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">FTP</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Who can reach this host&rsquo;s files over FTP, and who is connected now.
         </p>
       </header>
@@ -194,7 +194,7 @@ function Accounts({ users, supportsQuota }: { users: FTPUser[]; supportsQuota: b
       />
       <CardBody className="divide-y divide-surface-border p-0">
         {users.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-slate-500">
+          <p className="px-5 py-4 text-sm text-ink-muted">
             No FTP accounts yet. They are added from a website&rsquo;s own FTP tab, because
             an account belongs to a site.
           </p>
@@ -225,7 +225,7 @@ function AccountRow({ user, supportsQuota }: { user: FTPUser; supportsQuota: boo
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-slate-900">{user.username}</span>
+            <span className="font-medium text-ink-strong">{user.username}</span>
             {user.missing_on_host ? (
               <StatusPill label="Needs a new password" tone="warn" dot />
             ) : user.suspended ? (
@@ -234,13 +234,13 @@ function AccountRow({ user, supportsQuota }: { user: FTPUser; supportsQuota: boo
               <StatusPill label="Active" tone="ok" dot />
             )}
             {user.access_level === 'readonly' && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+              <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink">
                 Read-only
               </span>
             )}
           </div>
 
-          <p className="mt-0.5 text-sm text-slate-500">
+          <p className="mt-0.5 text-sm text-ink-muted">
             {user.website_domain} &middot;{' '}
             <span className="font-mono text-xs">{user.home}</span>
           </p>
@@ -252,7 +252,7 @@ function AccountRow({ user, supportsQuota }: { user: FTPUser; supportsQuota: boo
             </p>
           )}
 
-          <p className="mt-0.5 text-xs text-slate-400">
+          <p className="mt-0.5 text-xs text-ink-dim">
             {/* The system account is shown because it is the answer to "what can
                 this credential actually touch". */}
             uploads as {user.system_user}
@@ -327,13 +327,13 @@ function Sessions({
       />
       <CardBody className="divide-y divide-surface-border p-0">
         {!running ? (
-          <p className="px-5 py-4 text-sm text-slate-500">
+          <p className="px-5 py-4 text-sm text-ink-muted">
             Nobody can be connected while the FTP server is stopped.
           </p>
         ) : loading ? (
           <SkeletonRows rows={2} />
         ) : sessions.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-slate-500">Nobody is connected.</p>
+          <p className="px-5 py-4 text-sm text-ink-muted">Nobody is connected.</p>
         ) : (
           sessions.map((session) => <SessionRow key={session.pid} session={session} />)
         )}
@@ -354,7 +354,7 @@ function SessionRow({ session }: { session: FTPSession }) {
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-slate-900">{session.user}</span>
+            <span className="font-medium text-ink-strong">{session.user}</span>
             {/* Worth its own pill: it is the difference between a password that
                 crossed the network encrypted and one that did not. */}
             {encrypted ? (
@@ -363,10 +363,10 @@ function SessionRow({ session }: { session: FTPSession }) {
               <StatusPill label="Not encrypted" tone="warn" dot />
             )}
           </div>
-          <p className="mt-0.5 text-sm text-slate-500">
+          <p className="mt-0.5 text-sm text-ink-muted">
             {session.client} &middot; {session.activity || 'idle'}
           </p>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <p className="mt-0.5 text-xs text-ink-dim">
             {session.elapsed && <>connected {session.elapsed} &middot; </>}
             in <span className="font-mono">{session.location || '/'}</span>
           </p>
@@ -459,11 +459,11 @@ function ServerSettings({ status }: { status: FTPOverview }) {
                 onChange={(checked) => save.mutate({ require_tls: checked })}
               />
               {status.settings.tls_domain ? (
-                <p className="mt-2 text-xs text-slate-400">
+                <p className="mt-2 text-xs text-ink-dim">
                   Presenting the certificate for {status.settings.tls_domain}.
                 </p>
               ) : (
-                <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-dim">
                   <Lock aria-hidden="true" className="h-3 w-3" />
                   No certificate is bound, so encryption is not offered yet.
                 </p>

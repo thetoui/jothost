@@ -60,7 +60,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             loading={loading}
             className={
-              destructive ? 'bg-danger-600 hover:bg-danger-700 active:bg-danger-700' : undefined
+              destructive ? 'bg-danger-500 hover:bg-danger-400 active:bg-danger-300' : undefined
             }
             icon={
               destructive ? <Trash2 aria-hidden="true" className="h-4 w-4" /> : undefined

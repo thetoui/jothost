@@ -101,22 +101,22 @@ function ZoneState({ detail }: { detail: DNSZoneDetail }) {
   return (
     <dl className="grid gap-3 text-sm sm:grid-cols-3">
       <div>
-        <dt className="text-xs uppercase tracking-wide text-slate-400">Loaded</dt>
-        <dd className="mt-0.5 text-slate-700">{state.last_loaded || 'yes'}</dd>
+        <dt className="text-xs uppercase tracking-wide text-ink-dim">Loaded</dt>
+        <dd className="mt-0.5 text-ink">{state.last_loaded || 'yes'}</dd>
       </div>
       <div>
-        <dt className="text-xs uppercase tracking-wide text-slate-400">Serial in the file</dt>
-        <dd className="mt-0.5 text-slate-700">{detail.zone.serial}</dd>
+        <dt className="text-xs uppercase tracking-wide text-ink-dim">Serial in the file</dt>
+        <dd className="mt-0.5 text-ink">{detail.zone.serial}</dd>
       </div>
       <div>
         {/* The two differ on every signed zone: named keeps its own serial on
             the signed copy and it runs ahead. Showing one number would make
             that look like drift. */}
-        <dt className="text-xs uppercase tracking-wide text-slate-400">Serial being served</dt>
-        <dd className="mt-0.5 text-slate-700">
+        <dt className="text-xs uppercase tracking-wide text-ink-dim">Serial being served</dt>
+        <dd className="mt-0.5 text-ink">
           {state.signed_serial > 0 ? state.signed_serial : state.serial}
           {state.signed_serial > 0 && state.signed_serial !== state.serial && (
-            <span className="ml-2 text-xs text-slate-500">(signing keeps its own)</span>
+            <span className="ml-2 text-xs text-ink-muted">(signing keeps its own)</span>
           )}
         </dd>
       </div>
@@ -134,7 +134,7 @@ function Records({ detail }: { detail: DNSZoneDetail }) {
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-900">Records</h3>
+        <h3 className="text-sm font-semibold text-ink-strong">Records</h3>
         <RequirePermission permission={Permission.DNSManage}>
           <Button
             onClick={() => setAdding(true)}
@@ -146,11 +146,11 @@ function Records({ detail }: { detail: DNSZoneDetail }) {
       </div>
 
       {records.length === 0 ? (
-        <p className="text-sm text-slate-500">This zone has no records yet.</p>
+        <p className="text-sm text-ink-muted">This zone has no records yet.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-slate-400">
+            <thead className="text-xs uppercase tracking-wide text-ink-dim">
               <tr>
                 <th className="py-1 pr-3 font-normal">Name</th>
                 <th className="py-1 pr-3 font-normal">Type</th>
@@ -159,21 +159,21 @@ function Records({ detail }: { detail: DNSZoneDetail }) {
                 <th className="py-1" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-line">
               {records.map((record) => (
                 <tr key={record.id}>
-                  <td className="py-1.5 pr-3 font-mono text-xs text-slate-700">{record.name}</td>
-                  <td className="py-1.5 pr-3 text-slate-700">{record.type}</td>
-                  <td className="py-1.5 pr-3 font-mono text-xs text-slate-700">
+                  <td className="py-1.5 pr-3 font-mono text-xs text-ink">{record.name}</td>
+                  <td className="py-1.5 pr-3 text-ink">{record.type}</td>
+                  <td className="py-1.5 pr-3 font-mono text-xs text-ink">
                     {describeValue(record)}
                   </td>
-                  <td className="py-1.5 pr-3 text-slate-500">
+                  <td className="py-1.5 pr-3 text-ink-muted">
                     {record.ttl === 0 ? `${detail.zone.ttl} (zone)` : record.ttl}
                   </td>
                   <td className="py-1.5 text-right">
                     {record.managed ? (
                       <span
-                        className="text-xs text-slate-400"
+                        className="text-xs text-ink-dim"
                         title="Maintained by the panel for a subdomain"
                       >
                         managed
@@ -444,7 +444,7 @@ function Signing({ detail }: { detail: DNSZoneDetail }) {
 
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-semibold text-slate-900">DNSSEC</h3>
+      <h3 className="text-sm font-semibold text-ink-strong">DNSSEC</h3>
       <RequirePermission permission={Permission.DNSManage}>
         <Toggle
           id="dns-zone-dnssec"
@@ -469,7 +469,7 @@ function Signing({ detail }: { detail: DNSZoneDetail }) {
       {detail.zone.dnssec && keys.length > 0 && (
         <div className="rounded border border-surface-border p-3 text-sm">
           {keys.map((key) => (
-            <p key={key.id} className="text-slate-700">
+            <p key={key.id} className="text-ink">
               <KeyRound aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />
               Key {key.id} ({key.algorithm}, {key.role}) — {key.rollover || 'no rollover scheduled'}
             </p>
@@ -484,7 +484,7 @@ function Signing({ detail }: { detail: DNSZoneDetail }) {
           {ds.map((record) => (
             <pre
               key={record.key_tag}
-              className="mt-2 overflow-x-auto rounded bg-slate-900 p-2 font-mono text-xs text-slate-100"
+              className="mt-2 overflow-x-auto rounded bg-console p-2 font-mono text-xs text-console"
             >
               {record.record}
             </pre>
@@ -509,7 +509,7 @@ function Transfers({ detail }: { detail: DNSZoneDetail }) {
 
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-semibold text-slate-900">Secondary servers</h3>
+      <h3 className="text-sm font-semibold text-ink-strong">Secondary servers</h3>
       <TextField
         id="dns-zone-transfer"
         label="Allow transfers to"
@@ -563,8 +563,8 @@ function RemoteSync({ detail }: { detail: DNSZoneDetail }) {
   if (providers.length === 0) {
     return (
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-slate-900">Publish elsewhere</h3>
-        <p className="text-sm text-slate-600">
+        <h3 className="text-sm font-semibold text-ink-strong">Publish elsewhere</h3>
+        <p className="text-sm text-ink">
           No DNS provider is connected. Connect one under{' '}
           <TextLink to="/dns">Providers</TextLink> to publish this zone to it, or to import
           the records it already has.
@@ -577,7 +577,7 @@ function RemoteSync({ detail }: { detail: DNSZoneDetail }) {
 
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-semibold text-slate-900">Publish elsewhere</h3>
+      <h3 className="text-sm font-semibold text-ink-strong">Publish elsewhere</h3>
       <SelectField
         id="dns-sync-provider"
         label="Provider"
@@ -619,8 +619,8 @@ function RemoteSync({ detail }: { detail: DNSZoneDetail }) {
 
       <div className="space-y-3 border-t border-surface-border pt-3">
         <div>
-          <h4 className="text-sm font-medium text-slate-900">Import from the provider</h4>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <h4 className="text-sm font-medium text-ink-strong">Import from the provider</h4>
+          <p className="mt-0.5 text-xs text-ink-muted">
             The other direction, for a zone that already exists there. Nothing runs this on its
             own — publishing never decides to import instead.
           </p>

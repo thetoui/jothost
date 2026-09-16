@@ -59,8 +59,8 @@ export function TenancyPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Accounts &amp; plans</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Accounts &amp; plans</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Who this server hosts, what they were sold, and what they are using. Countable
           limits are enforced when somebody asks for one more; disk and bandwidth are
           measured on the host and reported.
@@ -182,7 +182,7 @@ function SubscriptionRow({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-medium text-slate-900">
+            <span className="truncate text-sm font-medium text-ink-strong">
               {subscription.name}
             </span>
             <StatusPill
@@ -203,7 +203,7 @@ function SubscriptionRow({
               }
             />
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 text-xs text-ink-muted">
             {subscription.owner_username} &middot; {subscription.plan_name} &middot;{' '}
             {subscription.enforcement === 'hard' ? 'hard limits' : 'soft limits'}
           </p>
@@ -269,8 +269,8 @@ function SubscriptionRow({
           return (
             <div key={dimension.key}>
               <div className="flex items-baseline justify-between text-xs">
-                <span className="text-slate-600">{dimension.label}</span>
-                <span className="text-slate-500">
+                <span className="text-ink">{dimension.label}</span>
+                <span className="text-ink-muted">
                   {used} / {limitLabel(limit)}
                 </span>
               </div>
@@ -300,13 +300,13 @@ function SubscriptionRow({
         <p className="mt-2 text-xs text-warn-700">{subscription.usage.measure_error}</p>
       )}
       {!subscription.usage.measured_at && (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-ink-muted">
           Disk and bandwidth have not been measured yet.
         </p>
       )}
 
       {subscription.addons.length > 0 && (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-ink-muted">
           Add-ons:{' '}
           {subscription.addons
             .map((addon) => `${addon.name}${addon.quantity > 1 ? ` ×${addon.quantity}` : ''}`)
@@ -370,8 +370,8 @@ function MeasuredFigure({
   return (
     <div>
       <div className="flex items-baseline justify-between text-xs">
-        <span className="text-slate-600">{label}</span>
-        <span className="text-slate-500">
+        <span className="text-ink">{label}</span>
+        <span className="text-ink-muted">
           {used} / {limit === null ? 'Unlimited' : `${limit} MB`}
         </span>
       </div>
@@ -509,7 +509,7 @@ function PlansTab({ plans }: { plans: ServicePlan[] }) {
             <li key={plan.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-slate-900">{plan.name}</span>
+                  <span className="text-sm font-medium text-ink-strong">{plan.name}</span>
                   <StatusPill
                     label={plan.kind === 'addon' ? 'Add-on' : 'Plan'}
                     tone={plan.kind === 'addon' ? 'info' : 'neutral'}
@@ -521,14 +521,14 @@ function PlansTab({ plans }: { plans: ServicePlan[] }) {
                     />
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-ink-muted">
                   {plan.owner_username
                     ? `Sold by ${plan.owner_username}`
                     : 'In the server catalogue'}
                   {' · '}
                   {plan.subscriptions} subscription{plan.subscriptions === 1 ? '' : 's'}
                 </p>
-                <p className="mt-1 text-xs text-slate-600">
+                <p className="mt-1 text-xs text-ink">
                   {countedDimensions
                     .map(
                       (dimension) =>
@@ -536,7 +536,7 @@ function PlansTab({ plans }: { plans: ServicePlan[] }) {
                     )
                     .join(' · ')}
                 </p>
-                <p className="mt-0.5 text-xs text-slate-600">
+                <p className="mt-0.5 text-xs text-ink">
                   {/* The unit belongs to the number, not to the word that
                       replaces it: "Unlimited MB" is not a quantity. */}
                   Disk: {megabytes(plan.limits.disk_mb)} · Bandwidth:{' '}
@@ -806,7 +806,7 @@ function PlanDialog({
 
         {kind === 'plan' && (
           <>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-muted">
               Resource limits are applied as a systemd slice per subscription. Leave them
               empty to cap nothing.
             </p>
@@ -880,13 +880,13 @@ function AccountsTab({ accounts }: { accounts: TenantAccount[] }) {
           >
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-slate-900">{account.username}</span>
+                <span className="text-sm font-medium text-ink-strong">{account.username}</span>
                 <StatusPill label={account.tier} tone={tierTone(account.tier)} />
                 {account.status !== 'active' && (
                   <StatusPill label={account.status} tone="warn" />
                 )}
               </div>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-ink-muted">
                 {account.full_name ?? account.email ?? '—'}
                 {account.parent_username ? ` · under ${account.parent_username}` : ''}
                 {` · ${account.subscriptions} subscription${account.subscriptions === 1 ? '' : 's'}`}
@@ -1032,7 +1032,7 @@ function NewAccountDialog({
             </option>
           ))}
         </SelectField>
-        <p className="flex items-start gap-2 text-xs text-slate-500">
+        <p className="flex items-start gap-2 text-xs text-ink-muted">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
           A customer account owns a subscription. It is not given a role that browses this
           panel: signing in as them from this page is how you reach their hosting.

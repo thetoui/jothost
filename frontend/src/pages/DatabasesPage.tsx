@@ -101,8 +101,8 @@ export function DatabasesPage() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Databases</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-2xl font-semibold text-ink-strong">Databases</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           {databases.length} {databases.length === 1 ? 'item' : 'items'} total
           {data && data.total_size_bytes > 0 ? `, ${formatBytes(data.total_size_bytes)}` : ''}. Each
           has its own accounts and grants.
@@ -128,16 +128,16 @@ export function DatabasesPage() {
             omitted: leaving it out makes the panel look like it only knows
             about one, and leaves someone hunting for the other. */}
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-2 text-xs">
-          <Server aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
+          <Server aria-hidden="true" className="h-3.5 w-3.5 text-ink-dim" />
           {(engines.data?.engines ?? []).length === 0 ? (
-            <span className="text-slate-500">no database server</span>
+            <span className="text-ink-muted">no database server</span>
           ) : (
             engines.data?.engines.map((engine, index) => (
               <Fragment key={engine.engine}>
-                {index > 0 && <span className="text-slate-300">·</span>}
+                {index > 0 && <span className="text-ink-dim">·</span>}
                 <span
                   title={engine.detail}
-                  className={engine.available ? 'text-slate-600' : 'text-slate-400'}
+                  className={engine.available ? 'text-ink' : 'text-ink-dim'}
                 >
                   {engineLabel(engine.engine)}{' '}
                   {engine.available ? engineVersion(engine.version) : 'unavailable'}
@@ -193,7 +193,7 @@ export function DatabasesPage() {
             <div className="relative">
               <Search
                 aria-hidden="true"
-                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim"
               />
               <input
                 type="search"
@@ -201,7 +201,7 @@ export function DatabasesPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Find database..."
                 aria-label="Find database"
-                className="h-9 w-56 rounded-md border border-surface-border bg-surface pl-8 pr-3 text-sm shadow-card placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                className="h-9 w-56 rounded-md border border-surface-border bg-surface pl-8 pr-3 text-sm shadow-card placeholder:text-ink-dim focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
               />
             </div>
           </div>
@@ -276,7 +276,7 @@ export function DatabasesPage() {
         error={remove.isError ? String((remove.error as Error).message) : null}
       >
         {confirmDelete && confirmDelete.user_count > 0 && (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink">
             {confirmDelete.user_count}{' '}
             {confirmDelete.user_count === 1 ? 'account has' : 'accounts have'} access to it. Their
             grants go with it; the accounts themselves stay.
@@ -305,7 +305,7 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
     <div className="overflow-x-auto">
       <table className="w-full min-w-[46rem] border-collapse text-sm">
         <thead>
-          <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-ink-muted">
             <th scope="col" className="w-8 px-2 py-2">
               <span className="sr-only">Expand</span>
             </th>
@@ -362,11 +362,11 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
                       <button
                         type="button"
                         onClick={() => onToggle(database.id)}
-                        className={`truncate rounded-sm font-mono font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
+                        className={`truncate rounded-sm font-mono font-medium text-ink-strong underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
                       >
                         {database.name}
                       </button>
-                      <span className="shrink-0 text-xs text-slate-400">
+                      <span className="shrink-0 text-xs text-ink-dim">
                         {engineLabel(database.engine)}
                       </span>
                     </div>
@@ -376,7 +376,7 @@ function DatabaseTable({ databases, expanded, onToggle, onDelete }: DatabaseTabl
                     <RelatedTo database={database} />
                   </td>
 
-                  <td className="px-3 py-2 text-slate-600">{formatBytes(database.size_bytes)}</td>
+                  <td className="px-3 py-2 text-ink">{formatBytes(database.size_bytes)}</td>
 
                   <td className="px-3 py-2">
                     <StatusPill
@@ -480,7 +480,7 @@ function RelatedTo({ database }: { database: Database }) {
     <div className="flex items-center gap-1.5">
       {database.website_id && database.website_domain ? (
         <>
-          <span className="text-slate-600">Related to</span>
+          <span className="text-ink">Related to</span>
           <TextLink to={`/websites/${database.website_id}`} className="truncate">
             {database.website_domain}
           </TextLink>
@@ -496,7 +496,7 @@ function RelatedTo({ database }: { database: Database }) {
       ) : (
         <RequirePermission
           permission={Permission.DatabaseManage}
-          fallback={<span className="text-slate-400">—</span>}
+          fallback={<span className="text-ink-dim">—</span>}
         >
           <TextButton onClick={() => setEditing(true)}>
             Assign this database to a website
@@ -536,7 +536,7 @@ function UserManagement() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[46rem] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-ink-muted">
                   <th scope="col" className="px-3 py-2 font-medium">
                     Name
                   </th>
@@ -559,9 +559,9 @@ function UserManagement() {
                 {users.map((user) => (
                   <tr key={user.id} className="border-b border-surface-border/60">
                     <td className="px-3 py-2">
-                      <span className="font-mono text-slate-800">
+                      <span className="font-mono text-ink-strong">
                         {user.username}
-                        {user.host && <span className="text-slate-400">@{user.host}</span>}
+                        {user.host && <span className="text-ink-dim">@{user.host}</span>}
                       </span>
                     </td>
 
@@ -573,7 +573,7 @@ function UserManagement() {
                               key={grant.database_id}
                               className="inline-flex items-center gap-1"
                             >
-                              <span className="font-mono text-slate-700">
+                              <span className="font-mono text-ink">
                                 {grant.database_name}
                               </span>
                               <StatusPill
@@ -586,11 +586,11 @@ function UserManagement() {
                       ) : (
                         // An account with no grant can sign in and reach
                         // nothing. Saying so is more use than an empty cell.
-                        <span className="text-slate-400">No access granted</span>
+                        <span className="text-ink-dim">No access granted</span>
                       )}
                     </td>
 
-                    <td className="px-3 py-2 text-slate-600">
+                    <td className="px-3 py-2 text-ink">
                       localhost ({engineLabel(user.engine)})
                     </td>
 

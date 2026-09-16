@@ -56,8 +56,8 @@ export function Fail2BanPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Intrusion prevention</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Intrusion prevention</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           What this host bans, for how long, and who it is banning now.
         </p>
       </header>
@@ -143,7 +143,7 @@ function Jails({ jails, running }: { jails: Fail2BanJail[]; running: boolean }) 
       />
       <CardBody className="divide-y divide-surface-border p-0">
         {jails.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-slate-500">This host has no jails.</p>
+          <p className="px-5 py-4 text-sm text-ink-muted">This host has no jails.</p>
         ) : (
           jails.map((jail) => <JailRow key={jail.name} jail={jail} running={running} />)
         )}
@@ -167,7 +167,7 @@ function JailRow({ jail, running }: { jail: Fail2BanJail; running: boolean }) {
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-slate-900">{jail.label || jail.name}</span>
+            <span className="font-medium text-ink-strong">{jail.label || jail.name}</span>
             {jail.enabled && running ? (
               <StatusPill label="Watching" tone="ok" dot />
             ) : jail.enabled ? (
@@ -176,16 +176,16 @@ function JailRow({ jail, running }: { jail: Fail2BanJail; running: boolean }) {
               <StatusPill label="Off" tone="neutral" dot />
             )}
             {!jail.managed && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+              <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink">
                 Configured outside the panel
               </span>
             )}
           </div>
 
-          <p className="mt-0.5 text-sm text-slate-500">{jail.summary || jail.name}</p>
+          <p className="mt-0.5 text-sm text-ink-muted">{jail.summary || jail.name}</p>
 
           {jail.available ? (
-            <p className="mt-0.5 text-xs text-slate-400">
+            <p className="mt-0.5 text-xs text-ink-dim">
               {jail.log_paths.join(', ') || 'no log'}
               {jail.enabled && running && (
                 <>
@@ -346,13 +346,13 @@ function Banned({
       />
       <CardBody className="p-0">
         {!running ? (
-          <p className="px-5 py-4 text-sm text-slate-500">
+          <p className="px-5 py-4 text-sm text-ink-muted">
             Nothing is banned while fail2ban is stopped.
           </p>
         ) : loading ? (
           <SkeletonRows rows={2} />
         ) : entries.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-slate-500">
+          <p className="px-5 py-4 text-sm text-ink-muted">
             Nothing is banned at the moment.
           </p>
         ) : (
@@ -363,8 +363,8 @@ function Banned({
                 className="flex items-center gap-3 px-5 py-3"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-mono text-sm text-slate-900">{entry.address}</p>
-                  <p className="text-xs text-slate-400">banned by {entry.jail}</p>
+                  <p className="font-mono text-sm text-ink-strong">{entry.address}</p>
+                  <p className="text-xs text-ink-dim">banned by {entry.jail}</p>
                 </div>
                 <RequirePermission permission={Permission.FirewallManage}>
                   <Button

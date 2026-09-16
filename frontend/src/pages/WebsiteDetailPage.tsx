@@ -104,12 +104,12 @@ export function WebsiteDetailPage() {
           />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="truncate text-xl font-semibold text-slate-900">
+              <h1 className="truncate text-xl font-semibold text-ink-strong">
                 {site.primary_domain}
               </h1>
               <StatusPill label={pill.label} tone={pill.tone} dot pulse={settling} />
             </div>
-            {site.name && <p className="mt-0.5 text-sm text-slate-500">{site.name}</p>}
+            {site.name && <p className="mt-0.5 text-sm text-ink-muted">{site.name}</p>}
           </div>
         </div>
 
@@ -217,10 +217,10 @@ export function WebsiteDetailPage() {
         error={deleteError}
       >
         <p className="mb-2">
-          <span className="font-medium text-slate-900">{site.primary_domain}</span> is removed from
+          <span className="font-medium text-ink-strong">{site.primary_domain}</span> is removed from
           the host:
         </p>
-        <ul className="ml-4 list-disc space-y-1 text-slate-600">
+        <ul className="ml-4 list-disc space-y-1 text-ink">
           <li>
             its system account <span className="font-mono text-xs">{site.system_user}</span>
           </li>
@@ -240,7 +240,7 @@ export function WebsiteDetailPage() {
           {/* Both answers have a consequence, so both are stated. The panel used
               to say the files were deleted and then keep them, which is the one
               option that was never on offer. */}
-          <p className="mt-2.5 text-xs text-slate-500">
+          <p className="mt-2.5 text-xs text-ink-muted">
             {removeFiles
               ? 'The content is deleted permanently. Take a backup first if you may want it.'
               : 'The files are kept and reassigned to root. The domain cannot be created again until the directory is cleared.'}
@@ -288,7 +288,7 @@ function BackLink() {
   return (
     <Link
       to="/websites"
-      className={`inline-flex items-center gap-1.5 rounded-sm text-sm font-medium text-slate-500 hover:text-slate-900 ${focusRingTight}`}
+      className={`inline-flex items-center gap-1.5 rounded-sm text-sm font-medium text-ink-muted hover:text-ink-strong ${focusRingTight}`}
     >
       <ArrowLeft aria-hidden="true" className="h-4 w-4" />
       All websites
@@ -306,11 +306,11 @@ interface DetailProps {
 function Detail({ label, value, mono, icon }: DetailProps) {
   return (
     <div className="min-w-0">
-      <dt className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+      <dt className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-dim">
         {icon}
         {label}
       </dt>
-      <dd className={`mt-1 truncate text-sm text-slate-900 ${mono ? 'font-mono text-xs' : ''}`}>
+      <dd className={`mt-1 truncate text-sm text-ink-strong ${mono ? 'font-mono text-xs' : ''}`}>
         {value}
       </dd>
     </div>
@@ -366,11 +366,11 @@ function ActivityCard({ jobs }: { jobs: Job[] }) {
               return (
                 <li key={job.id} className="px-5 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <span className="flex items-center gap-2 text-sm font-medium text-ink-strong">
                       {jobLabel(job.type)}
                       {repeats > 1 && (
                         <span
-                          className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-xs font-medium text-slate-500"
+                          className="rounded-full bg-surface-sunken px-1.5 py-0.5 text-xs font-medium text-ink-muted"
                           title={`${repeats} identical entries, most recently ${new Date(job.created_at).toLocaleString()}`}
                         >
                           ×{repeats}
@@ -391,14 +391,14 @@ function ActivityCard({ jobs }: { jobs: Job[] }) {
                     />
                   )}
 
-                  {job.message && <p className="mt-1.5 text-xs text-slate-500">{job.message}</p>}
+                  {job.message && <p className="mt-1.5 text-xs text-ink-muted">{job.message}</p>}
                   {job.error && <p className="mt-1.5 text-xs text-danger-600">{job.error}</p>}
-                  <p className="mt-1 text-xs text-slate-400">
+                  <p className="mt-1 text-xs text-ink-dim">
                     {new Date(job.created_at).toLocaleString()}
                     {repeats > 1 && (
                       <>
                         {' '}
-                        <span className="text-slate-300">·</span> earliest{' '}
+                        <span className="text-ink-dim">·</span> earliest{' '}
                         {new Date(group.oldest.created_at).toLocaleString()}
                       </>
                     )}
@@ -470,13 +470,13 @@ function DomainSection({ websiteId }: { websiteId: string }) {
           <li key={domain.id} className="flex items-center justify-between gap-3 px-5 py-3">
             <div className="flex min-w-0 flex-col gap-1">
               <div className="flex min-w-0 items-center gap-2.5">
-                <span className="truncate text-sm text-slate-900">{domain.domain}</span>
+                <span className="truncate text-sm text-ink-strong">{domain.domain}</span>
                 <StatusPill
                   label={domain.type}
                   tone={domain.type === 'primary' ? 'info' : 'neutral'}
                 />
                 {domain.redirect_to && (
-                  <span className="truncate text-xs text-slate-500">→ {domain.redirect_to}</span>
+                  <span className="truncate text-xs text-ink-muted">→ {domain.redirect_to}</span>
                 )}
               </div>
               {/* Where this name in particular is served from. A name with no
@@ -484,7 +484,7 @@ function DomainSection({ websiteId }: { websiteId: string }) {
                   path: the two look identical written out, and the difference
                   is whether the name follows the site when the site moves. */}
               {domain.type !== 'redirect' && (
-                <span className="truncate font-mono text-xs text-slate-500">
+                <span className="truncate font-mono text-xs text-ink-muted">
                   {domain.document_root ??
                     (domain.type === 'primary'
                       ? site?.document_root
@@ -582,7 +582,7 @@ function DomainSection({ websiteId }: { websiteId: string }) {
         loading={removeDomain.isPending}
       >
         <p>
-          <span className="font-mono text-xs text-slate-900">{removing?.domain}</span> is detached
+          <span className="font-mono text-xs text-ink-strong">{removing?.domain}</span> is detached
           from this website. Its content is not affected.
         </p>
       </ConfirmDialog>
@@ -661,11 +661,11 @@ function DomainRootDialog({
           placeholder="shop"
           // adornment, not prefix: "prefix" is a real HTML attribute, so
           // TypeScript accepts it and React renders nothing at all.
-          adornment={<span className="font-mono text-xs text-slate-500">{base}/</span>}
+          adornment={<span className="font-mono text-xs text-ink-muted">{base}/</span>}
           hint="A path inside the site, such as shop or public/shop. It is created if it does not exist yet."
         />
 
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           Leave it empty to serve this name from the website&rsquo;s own document root, which is
           where it is served from now unless it says otherwise. Empty is not the same as typing
           that path out: a name left empty follows the site if the site is moved later.

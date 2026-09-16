@@ -48,7 +48,7 @@ function TreeLevel({ path, depth, activePath, onOpen, defaultOpen = false }: Tre
   }
   if (listing.isLoading) {
     return (
-      <div className="flex items-center gap-2 py-1 text-slate-500" style={indent(depth)}>
+      <div className="flex items-center gap-2 py-1 text-ink-muted" style={indent(depth)}>
         <Spinner className="h-3.5 w-3.5" />
         <span className="text-xs">Loading…</span>
       </div>
@@ -65,7 +65,7 @@ function TreeLevel({ path, depth, activePath, onOpen, defaultOpen = false }: Tre
   const entries = listing.data?.entries ?? [];
   if (entries.length === 0) {
     return (
-      <p className="py-1 text-xs text-slate-400" style={indent(depth)}>
+      <p className="py-1 text-xs text-ink-dim" style={indent(depth)}>
         Empty
       </p>
     );
@@ -83,7 +83,7 @@ function TreeLevel({ path, depth, activePath, onOpen, defaultOpen = false }: Tre
         />
       ))}
       {listing.data?.truncated && (
-        <li className="py-1 text-xs text-slate-400" style={indent(depth)}>
+        <li className="py-1 text-xs text-ink-dim" style={indent(depth)}>
           Showing the first {entries.length}. Use the file manager to see the rest.
         </li>
       )}
@@ -132,7 +132,7 @@ function TreeNode({ entry, depth, activePath, onOpen }: TreeNodeProps) {
           className={[
             'flex w-full items-center gap-1.5 rounded px-2 py-1 text-left transition-colors',
             focusRingTight,
-            isActive ? 'bg-brand-50 font-medium text-brand-800' : 'text-slate-700',
+            isActive ? 'bg-brand-50 font-medium text-brand-800' : 'text-ink',
             openable || isDirectory ? 'hover:bg-surface-sunken' : 'cursor-not-allowed opacity-50',
           ].join(' ')}
           style={indent(depth)}
@@ -140,9 +140,9 @@ function TreeNode({ entry, depth, activePath, onOpen }: TreeNodeProps) {
           {isDirectory ? (
             <>
               {expanded ? (
-                <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
               ) : (
-                <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
               )}
               {expanded ? (
                 <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-500" />
@@ -153,7 +153,7 @@ function TreeNode({ entry, depth, activePath, onOpen }: TreeNodeProps) {
           ) : (
             <>
               <span className="w-3.5 shrink-0" aria-hidden="true" />
-              <FileIcon aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-400" />
+              <FileIcon aria-hidden="true" className="h-4 w-4 shrink-0 text-ink-dim" />
             </>
           )}
           <span className="truncate">{entry.name}</span>

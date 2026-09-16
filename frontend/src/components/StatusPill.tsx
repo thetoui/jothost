@@ -13,7 +13,7 @@ const toneClasses: Record<StatusTone, string> = {
   warn: 'bg-warn-50 text-warn-700 ring-warn-600/20',
   error: 'bg-danger-50 text-danger-700 ring-danger-600/20',
   info: 'bg-brand-50 text-brand-700 ring-brand-600/20',
-  neutral: 'bg-surface-sunken text-slate-600 ring-slate-500/20',
+  neutral: 'bg-surface-sunken text-ink ring-line/20',
 };
 
 const dotClasses: Record<StatusTone, string> = {
@@ -21,7 +21,7 @@ const dotClasses: Record<StatusTone, string> = {
   warn: 'bg-warn-500',
   error: 'bg-danger-500',
   info: 'bg-brand-500',
-  neutral: 'bg-slate-400',
+  neutral: 'bg-ink-dim',
 };
 
 /** Small status badge reused across the panel. */

@@ -1,9 +1,9 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
 
 const controlClasses =
-  'w-full rounded-md border bg-surface px-3 text-sm text-slate-900 shadow-card transition-colors ' +
-  'placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:bg-surface-muted ' +
-  'disabled:text-slate-500';
+  'w-full rounded-md border bg-surface px-3 text-sm text-ink-strong shadow-card transition-colors ' +
+  'placeholder:text-ink-dim focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:bg-surface-muted ' +
+  'disabled:text-ink-muted';
 
 function borderFor(invalid: boolean): string {
   return invalid
@@ -32,10 +32,10 @@ export function FieldShell({ id, label, hint, error, suffix, children }: FieldSh
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="text-sm font-medium text-slate-700">
+        <label htmlFor={id} className="text-sm font-medium text-ink">
           {label}
         </label>
-        {suffix && <span className="text-xs text-slate-400">{suffix}</span>}
+        {suffix && <span className="text-xs text-ink-dim">{suffix}</span>}
       </div>
 
       {children}
@@ -46,7 +46,7 @@ export function FieldShell({ id, label, hint, error, suffix, children }: FieldSh
         </p>
       ) : (
         hint && (
-          <p id={`${id}-hint`} className="mt-1 text-xs text-slate-500">
+          <p id={`${id}-hint`} className="mt-1 text-xs text-ink-muted">
             {hint}
           </p>
         )
@@ -78,7 +78,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
         {adornment && (
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-dim"
           >
             {adornment}
           </span>
@@ -159,7 +159,7 @@ export function Toggle({ id, label, description, checked, onChange, disabled }: 
           checked={checked}
           disabled={disabled}
           onChange={(event) => onChange(event.target.checked)}
-          className="peer h-5 w-9 cursor-pointer appearance-none rounded-full bg-surface-strong transition-colors checked:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-55"
+          className="peer h-5 w-9 cursor-pointer appearance-none rounded-full bg-surface-strong transition-colors checked:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-55"
         />
         <span
           aria-hidden="true"
@@ -168,8 +168,8 @@ export function Toggle({ id, label, description, checked, onChange, disabled }: 
       </span>
 
       <label htmlFor={id} className="cursor-pointer select-none">
-        <span className="block text-sm font-medium text-slate-700">{label}</span>
-        {description && <span className="mt-0.5 block text-xs text-slate-500">{description}</span>}
+        <span className="block text-sm font-medium text-ink">{label}</span>
+        {description && <span className="mt-0.5 block text-xs text-ink-muted">{description}</span>}
       </label>
     </div>
   );

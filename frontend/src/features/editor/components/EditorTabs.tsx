@@ -31,7 +31,7 @@ export function EditorTabs({ tabs, activePath, onActivate, onClose }: EditorTabs
             key={tab.path}
             className={[
               'group flex shrink-0 items-center gap-1.5 border-r border-surface-border px-3 py-1.5 text-sm',
-              active ? 'bg-surface text-slate-900' : 'text-slate-600 hover:bg-surface/60',
+              active ? 'bg-surface text-ink-strong' : 'text-ink hover:bg-surface/60',
             ].join(' ')}
           >
             <button
@@ -56,7 +56,7 @@ export function EditorTabs({ tabs, activePath, onActivate, onClose }: EditorTabs
               type="button"
               onClick={() => onClose(tab)}
               aria-label={`Close ${tab.name}${dirty ? ' (unsaved changes)' : ''}`}
-              className={`rounded p-0.5 text-slate-400 opacity-0 transition-opacity hover:bg-surface-sunken hover:text-slate-700 focus:opacity-100 group-hover:opacity-100 ${focusRingTight}`}
+              className={`rounded p-0.5 text-ink-dim opacity-0 transition-opacity hover:bg-surface-sunken hover:text-ink focus:opacity-100 group-hover:opacity-100 ${focusRingTight}`}
             >
               <X aria-hidden="true" className="h-3.5 w-3.5" />
             </button>

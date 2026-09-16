@@ -68,13 +68,13 @@ function Editor({ site }: { site: Website }) {
           rows={10}
           spellCheck={false}
           placeholder={'location /assets/ {\n    expires 30d;\n}'}
-          className={`w-full rounded-md border border-surface-border bg-surface p-3 font-mono text-xs leading-relaxed text-slate-800 shadow-card placeholder:text-slate-400 disabled:bg-surface-muted ${focusRing}`}
+          className={`w-full rounded-md border border-surface-border bg-surface p-3 font-mono text-xs leading-relaxed text-ink-strong shadow-card placeholder:text-ink-dim disabled:bg-surface-muted ${focusRing}`}
         />
 
         {/* What the panel can and cannot promise, said once and plainly. It is
             the difference between an operator who knows this is nginx and one
             who assumes the panel is checking their configuration for them. */}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           Checked for structure — braces must balance, and{' '}
           <span className="font-mono">include</span> is refused because it points at a file the
           panel cannot show you. What the directives <em>do</em> is not checked: this is nginx

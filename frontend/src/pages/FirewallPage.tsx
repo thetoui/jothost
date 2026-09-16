@@ -32,8 +32,8 @@ export function FirewallPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Firewall</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Firewall</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Which traffic this host accepts. Every change is undone automatically unless the
           panel is still reachable afterwards.
         </p>
@@ -142,7 +142,7 @@ function FirewallView({ status }: { status: FirewallStatus }) {
           }
         />
         <CardBody>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             Ports {status.guarded_ports.join(', ')} can never be closed from here: they are
             how this host is administered, and the panel cannot put them back.
           </p>
@@ -258,14 +258,14 @@ function RuleRow({
   return (
     <li className="flex flex-wrap items-center gap-3 py-2.5">
       <StatusPill label={rule.action} tone={tone} />
-      <span className="font-mono text-sm text-slate-900">
+      <span className="font-mono text-sm text-ink-strong">
         {rule.port || 'any port'}
         {rule.protocol !== 'any' && `/${rule.protocol}`}
       </span>
-      <span className="text-sm text-slate-500">
+      <span className="text-sm text-ink-muted">
         {rule.direction === 'in' ? 'from' : 'to'} {rule.source}
       </span>
-      {rule.comment && <span className="text-xs text-slate-400">{rule.comment}</span>}
+      {rule.comment && <span className="text-xs text-ink-dim">{rule.comment}</span>}
 
       <div className="ml-auto">
         <RequirePermission permission={Permission.ServerManage}>
@@ -383,7 +383,7 @@ function AddRuleForm({
         </Button>
       </div>
 
-      <p className="flex items-start gap-1.5 text-xs text-slate-500">
+      <p className="flex items-start gap-1.5 text-xs text-ink-muted">
         <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         The rule takes effect immediately and is undone automatically unless this page can
         still reach the panel afterwards.

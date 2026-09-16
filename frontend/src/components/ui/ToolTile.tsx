@@ -21,7 +21,7 @@ const toneClasses: Record<ToolTone, string> = {
   green: 'bg-emerald-100 text-emerald-700',
   violet: 'bg-violet-100 text-violet-700',
   amber: 'bg-amber-100 text-amber-700',
-  slate: 'bg-slate-100 text-slate-600',
+  slate: 'bg-surface-sunken text-ink',
   rose: 'bg-rose-100 text-rose-700',
 };
 
@@ -66,7 +66,7 @@ export function ToolTile({
       <span
         className={[
           'flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
-          unavailable ? 'bg-slate-100 text-slate-400' : toneClasses[tone],
+          unavailable ? 'bg-surface-sunken text-ink-dim' : toneClasses[tone],
         ].join(' ')}
         aria-hidden="true"
       >
@@ -79,13 +79,13 @@ export function ToolTile({
         <span
           className={[
             'block text-sm font-medium leading-tight',
-            unavailable ? 'text-slate-400' : 'text-slate-800',
+            unavailable ? 'text-ink-dim' : 'text-ink-strong',
           ].join(' ')}
         >
           {label}
         </span>
         {(detail || unavailable) && (
-          <span className="mt-0.5 block truncate text-xs text-slate-500">
+          <span className="mt-0.5 block truncate text-xs text-ink-muted">
             {unavailable ?? detail}
           </span>
         )}
@@ -138,7 +138,7 @@ interface ToolGroupProps {
 export function ToolGroup({ title, children }: ToolGroupProps) {
   return (
     <section className="space-y-1">
-      <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
+      <h4 className="text-sm font-semibold text-ink-strong">{title}</h4>
       {/* Two columns until there is genuinely room for three. The panel sits
           inside a grid column, so its width is far below the viewport's. */}
       <div className="grid gap-x-4 gap-y-0.5 md:grid-cols-2 2xl:grid-cols-3">{children}</div>

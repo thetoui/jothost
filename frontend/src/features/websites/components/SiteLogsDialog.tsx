@@ -89,24 +89,24 @@ export function SiteLogsDialog({
         {available.isPending || tail.isPending ? (
           <SkeletonRows rows={6} />
         ) : present && !present.present ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink">
             This site has no {kind} log yet. One appears the first time the web server writes to
             it.
           </p>
         ) : lines.length === 0 ? (
-          <p className="text-sm text-slate-600">Nothing in it yet.</p>
+          <p className="text-sm text-ink">Nothing in it yet.</p>
         ) : (
-          <div className="max-h-96 overflow-auto rounded-md border border-surface-border bg-slate-950">
+          <div className="max-h-96 overflow-auto rounded-md border border-surface-border bg-console">
             {/* Rendered as text, never as markup. Every line here was written
                 by whoever made the request it describes. */}
-            <pre className="p-3 font-mono text-xs leading-relaxed text-slate-100">
+            <pre className="p-3 font-mono text-xs leading-relaxed text-console">
               {lines.map((line) => line.text).join('\n')}
             </pre>
           </div>
         )}
 
         {present?.path && (
-          <p className="font-mono text-xs text-slate-500">{present.path}</p>
+          <p className="font-mono text-xs text-ink-muted">{present.path}</p>
         )}
       </div>
     </Modal>

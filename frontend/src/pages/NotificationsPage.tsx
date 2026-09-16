@@ -51,8 +51,8 @@ export function NotificationsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Notifications</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Notifications</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Where this panel sends what it finds out, and whether it is getting through.
         </p>
       </header>
@@ -140,10 +140,10 @@ function Stat({
   tone?: 'danger';
 }) {
   const colour =
-    value === 0 ? 'text-slate-400' : tone === 'danger' ? 'text-danger-700' : 'text-slate-900';
+    value === 0 ? 'text-ink-dim' : tone === 'danger' ? 'text-danger-700' : 'text-ink-strong';
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+      <dt className="text-xs uppercase tracking-wide text-ink-muted">{label}</dt>
       <dd className={`mt-1 text-lg font-semibold ${colour}`}>{value}</dd>
     </div>
   );
@@ -185,18 +185,18 @@ function Channels({ overview }: { overview: NotificationOverview }) {
           />
         </CardBody>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {channels.map((channel) => (
             <li key={channel.id} className="flex items-start gap-4 px-5 py-4">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900">
+                <p className="text-sm font-medium text-ink-strong">
                   {channel.name}{' '}
-                  <span className="font-normal text-slate-500">({channel.kind})</span>
+                  <span className="font-normal text-ink-muted">({channel.kind})</span>
                   {!channel.enabled && (
-                    <span className="ml-2 text-xs text-slate-500">· disabled</span>
+                    <span className="ml-2 text-xs text-ink-muted">· disabled</span>
                   )}
                 </p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-ink-muted">
                   {describeChannel(channel)}
                 </p>
                 <p className="mt-1 text-xs">{describeHealth(channel)}</p>
@@ -225,7 +225,7 @@ function Channels({ overview }: { overview: NotificationOverview }) {
       )}
 
       <CardBody>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           Testing sends a real message through the channel now, while you are watching.
           It is the only way to find out that a channel works before the night it has to.
         </p>
@@ -316,13 +316,13 @@ function Deliveries({ overview }: { overview: NotificationOverview }) {
           />
         </CardBody>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {deliveries.map((delivery) => (
             <li key={delivery.id} className="flex items-start gap-3 px-5 py-3">
               <DeliveryIcon status={delivery.status} />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-slate-900">{delivery.event_title}</p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="truncate text-sm text-ink-strong">{delivery.event_title}</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
                   {delivery.channel_name} · {formatWhen(delivery.created_at)}
                   {delivery.attempts > 1 ? ` · ${delivery.attempts} attempts` : ''}
                 </p>
@@ -337,7 +337,7 @@ function Deliveries({ overview }: { overview: NotificationOverview }) {
 
       <CardBody>
         {/* The reason this list is on the page at all. */}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           This is the only place a failed notification is visible. A channel that is not
           working cannot deliver the message saying it is not working.
         </p>
@@ -361,7 +361,7 @@ function DeliveryIcon({ status }: { status: NotificationDelivery['status'] }) {
     );
   }
   return (
-    <AlertTriangle aria-label="queued" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+    <AlertTriangle aria-label="queued" className="mt-0.5 h-4 w-4 shrink-0 text-ink-dim" />
   );
 }
 

@@ -39,20 +39,20 @@ export function StatTile({
     <Card className="p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-dim">{label}</p>
 
           {unavailable ? (
-            <p className="mt-1.5 text-sm text-slate-400">{unavailable}</p>
+            <p className="mt-1.5 text-sm text-ink-dim">{unavailable}</p>
           ) : value === undefined ? (
             <Skeleton className="mt-2 h-6 w-20" />
           ) : (
-            <p className="mt-1 truncate text-2xl font-semibold tabular-nums text-slate-900">
+            <p className="mt-1 truncate text-2xl font-semibold tabular-nums text-ink-strong">
               {value}
             </p>
           )}
 
           {detail && !unavailable && (
-            <p className="mt-0.5 truncate text-xs text-slate-500">{detail}</p>
+            <p className="mt-0.5 truncate text-xs text-ink-muted">{detail}</p>
           )}
         </div>
 

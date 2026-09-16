@@ -53,7 +53,7 @@ export function MetricChart({
 
   if (points.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-slate-400">
+      <p className="py-8 text-center text-sm text-ink-dim">
         No data yet for this range.
       </p>
     );
@@ -93,7 +93,7 @@ export function MetricChart({
                 y1={line.y}
                 x2={VIEW_WIDTH - PADDING.right}
                 y2={line.y}
-                className="stroke-slate-200"
+                className="stroke-ink-dim"
                 strokeWidth={1}
               />
               {!duplicate && (
@@ -101,7 +101,7 @@ export function MetricChart({
                   x={PADDING.left - 6}
                   y={line.y + 3}
                   textAnchor="end"
-                  className="fill-slate-400 text-[9px]"
+                  className="fill-ink-dim text-[9px]"
                 >
                   {label}
                 </text>
@@ -132,7 +132,7 @@ export function MetricChart({
             x={label.x}
             y={height - 6}
             textAnchor="middle"
-            className="fill-slate-400 text-[9px]"
+            className="fill-ink-dim text-[9px]"
           >
             {label.text}
           </text>
@@ -141,7 +141,7 @@ export function MetricChart({
 
       <ul className="mt-2 flex flex-wrap gap-4">
         {series.map((entry) => (
-          <li key={entry.label} className="flex items-center gap-1.5 text-xs text-slate-600">
+          <li key={entry.label} className="flex items-center gap-1.5 text-xs text-ink">
             <span
               aria-hidden="true"
               className="h-2 w-2 rounded-full"

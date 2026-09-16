@@ -52,8 +52,8 @@ export function MonitoringPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Monitoring</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Monitoring</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           What has gone wrong on this host, and what the panel is watching for.
         </p>
       </header>
@@ -108,15 +108,15 @@ function OpenAlerts({ overview }: { overview: MonitoringOverview }) {
         }
         icon={<TintedIcon icon={<AlertTriangle className="h-5 w-5" />} tone="danger" />}
       />
-      <ul className="divide-y divide-slate-100">
+      <ul className="divide-y divide-line">
         {open.map((alert) => (
           <li key={alert.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <SeverityPill severity={alert.severity} />
-                <span className="font-medium text-slate-900">{alert.message}</span>
+                <span className="font-medium text-ink-strong">{alert.message}</span>
               </div>
-              <div className="mt-0.5 text-xs text-slate-500">
+              <div className="mt-0.5 text-xs text-ink-muted">
                 Since {formatWhen(alert.opened_at)}
                 {alert.worst != null && ` · worst ${formatNumber(alert.worst)}`}
                 {alert.acknowledged_at && ' · acknowledged'}
@@ -139,7 +139,7 @@ function OpenAlerts({ overview }: { overview: MonitoringOverview }) {
       <CardBody>
         {/* Said out loud, because a panel where a person can mark a full disk
             as fine is a panel that will one day say a full disk is fine. */}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           Acknowledging says you have seen it. Alerts clear on their own when the condition
           does — there is no way to mark one as fine by hand.
         </p>
@@ -169,13 +169,13 @@ function Services({ overview }: { overview: MonitoringOverview }) {
               key={service.service}
               className="flex items-center justify-between rounded border border-surface-border px-3 py-2 text-sm"
             >
-              <span className="font-medium text-slate-800">{service.service}</span>
+              <span className="font-medium text-ink-strong">{service.service}</span>
               <span
                 className={
                   service.running
                     ? 'text-xs text-ok-700'
                     : service.status === 'not installed'
-                      ? 'text-xs text-slate-400'
+                      ? 'text-xs text-ink-dim'
                       : 'text-xs text-danger-700'
                 }
               >
@@ -227,7 +227,7 @@ function Rules({ overview }: { overview: MonitoringOverview }) {
           />
         </CardBody>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {rules.map((rule) => (
             <li key={rule.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <button
@@ -237,14 +237,14 @@ function Rules({ overview }: { overview: MonitoringOverview }) {
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <SeverityPill severity={rule.severity} />
-                  <span className="font-medium text-slate-900">{rule.name}</span>
+                  <span className="font-medium text-ink-strong">{rule.name}</span>
                   {!rule.enabled && (
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
+                    <span className="rounded bg-surface-sunken px-1.5 py-0.5 text-xs text-ink-muted">
                       off
                     </span>
                   )}
                 </div>
-                <div className="mt-0.5 text-xs text-slate-500">
+                <div className="mt-0.5 text-xs text-ink-muted">
                   {describeRule(rule)}
                 </div>
               </button>
@@ -296,7 +296,7 @@ function Rules({ overview }: { overview: MonitoringOverview }) {
         loading={remove.isPending}
         error={remove.error instanceof ApiError ? remove.error.message : null}
       >
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-ink">
           The alerts it has already opened stay in the history — deleting a rule does not erase
           what it caught.
         </p>
@@ -511,8 +511,8 @@ function RecentAlerts({ overview }: { overview: MonitoringOverview }) {
             {resolved.map((alert) => (
               <li key={alert.id} className="flex flex-wrap items-baseline gap-2">
                 <SeverityPill severity={alert.severity} />
-                <span className="text-slate-700">{alert.message}</span>
-                <span className="text-xs text-slate-500">{describeIncident(alert)}</span>
+                <span className="text-ink">{alert.message}</span>
+                <span className="text-xs text-ink-muted">{describeIncident(alert)}</span>
               </li>
             ))}
           </ul>

@@ -30,7 +30,7 @@ export function FirewallPage() {
   const { data, isPending, isError, error } = useFirewall();
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header>
         <h1 className="text-xl font-semibold text-ink-strong">Firewall</h1>
         <p className="mt-1 text-sm text-ink-muted">

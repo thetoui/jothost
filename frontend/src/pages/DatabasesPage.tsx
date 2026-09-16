@@ -99,9 +99,9 @@ export function DatabasesPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold text-ink-strong">Databases</h1>
+        <h1 className="text-xl font-semibold text-ink-strong">Databases</h1>
         <p className="mt-1 text-sm text-ink-muted">
           {databases.length} {databases.length === 1 ? 'item' : 'items'} total
           {data && data.total_size_bytes > 0 ? `, ${formatBytes(data.total_size_bytes)}` : ''}. Each

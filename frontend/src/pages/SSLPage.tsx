@@ -26,7 +26,7 @@ export function SSLPage() {
   const needingAttention = data?.needing_attention ?? 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header>
         <h1 className="text-xl font-semibold text-ink-strong">SSL certificates</h1>
         <p className="mt-1 text-sm text-ink-muted">

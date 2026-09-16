@@ -63,7 +63,7 @@ export function NodePage() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-strong">Node.js</h1>
+          <h1 className="text-xl font-semibold text-ink-strong">Node.js</h1>
           <p className="mt-1 text-sm text-ink-muted">
             {apps.length} {apps.length === 1 ? 'application' : 'applications'}. Each runs under its
             website&rsquo;s own system account, with nginx in front of it.

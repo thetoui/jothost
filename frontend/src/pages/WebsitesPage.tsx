@@ -67,9 +67,9 @@ export function WebsitesPage() {
   }, []);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold text-ink-strong">Websites &amp; Domains</h1>
+        <h1 className="text-xl font-semibold text-ink-strong">Websites &amp; Domains</h1>
         <p className="mt-1 text-sm text-ink-muted">
           {websites.length} {websites.length === 1 ? 'item' : 'items'} total. Each site runs under
           its own system account.

@@ -47,7 +47,7 @@ export function ServicesPage() {
   const controllable = data?.controllable ?? false;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header>
         <h1 className="text-xl font-semibold text-ink-strong">Services</h1>
         <p className="mt-1 text-sm text-ink-muted">
@@ -81,25 +81,31 @@ export function ServicesPage() {
           />
         </Card>
       ) : (
-        sections
-          .map((section) => ({
-            ...section,
-            entries: services.filter((service) => service.role === section.role),
-          }))
-          .filter((section) => section.entries.length > 0)
-          .map((section) => (
-            <Card key={section.role}>
-              <CardHeader
-                title={section.title}
-                icon={<TintedIcon tone="brand" icon={section.icon} />}
-              />
-              <CardBody className="divide-y divide-surface-border p-0">
-                {section.entries.map((service) => (
-                  <ServiceRow key={service.key} service={service} />
-                ))}
-              </CardBody>
-            </Card>
-          ))
+        // Two across on wide screens: a host runs several service roles and a
+        // single column left the right half of the page empty while pushing the
+        // lower roles below the fold. items-start so a role with one daemon does
+        // not stretch to match a taller neighbour.
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          {sections
+            .map((section) => ({
+              ...section,
+              entries: services.filter((service) => service.role === section.role),
+            }))
+            .filter((section) => section.entries.length > 0)
+            .map((section) => (
+              <Card key={section.role}>
+                <CardHeader
+                  title={section.title}
+                  icon={<TintedIcon tone="brand" icon={section.icon} />}
+                />
+                <CardBody className="divide-y divide-surface-border p-0">
+                  {section.entries.map((service) => (
+                    <ServiceRow key={service.key} service={service} />
+                  ))}
+                </CardBody>
+              </Card>
+            ))}
+        </div>
       )}
     </div>
   );

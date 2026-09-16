@@ -71,8 +71,8 @@ export function AuditPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Audit trail</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <h1 className="text-xl font-semibold text-ink-strong">Audit trail</h1>
+        <p className="mt-1 text-sm text-ink">
           Every sensitive action on this host, with who did it and from where. The record is
           append-only: nothing in this panel can change or remove an entry.
         </p>
@@ -174,7 +174,7 @@ export function AuditPage() {
           <div className={`overflow-x-auto ${isPlaceholderData ? 'opacity-60' : ''}`}>
             <table className="w-full min-w-[52rem] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-ink-muted">
                   <th scope="col" className="w-8 px-2 py-2">
                     <span className="sr-only">Detail</span>
                   </th>
@@ -211,7 +211,7 @@ export function AuditPage() {
 
         {total > pageSize && (
           <div className="flex items-center justify-between gap-3 border-t border-surface-border px-5 py-3">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-muted">
               {offset + 1}–{Math.min(offset + entries.length, total)} of {total.toLocaleString()}
             </p>
             <div className="flex gap-2">
@@ -269,33 +269,33 @@ function AuditRow({
             />
           )}
         </td>
-        <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+        <td className="whitespace-nowrap px-3 py-2 text-ink">
           <time dateTime={entry.created_at} title={entry.created_at}>
             {new Date(entry.created_at).toLocaleString()}
           </time>
         </td>
         <td className="px-3 py-2">
-          <span className="font-mono text-xs text-slate-800">{entry.action}</span>
+          <span className="font-mono text-xs text-ink-strong">{entry.action}</span>
         </td>
         <td className="px-3 py-2">
           {entry.username ? (
-            <span className="inline-flex items-center gap-1.5 text-slate-700">
-              <User aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
+            <span className="inline-flex items-center gap-1.5 text-ink">
+              <User aria-hidden="true" className="h-3.5 w-3.5 text-ink-dim" />
               {entry.username}
             </span>
           ) : (
             // Two different silences, and they are worth telling apart: an
             // action with no actor at all, and one whose actor was deleted
             // afterwards. The row survives; the name cannot.
-            <span className="text-xs italic text-slate-400">
+            <span className="text-xs italic text-ink-dim">
               {entry.user_id ? 'account deleted' : 'not signed in'}
             </span>
           )}
         </td>
-        <td className="px-3 py-2 font-mono text-xs text-slate-500">{entry.ip_address ?? '—'}</td>
+        <td className="px-3 py-2 font-mono text-xs text-ink-muted">{entry.ip_address ?? '—'}</td>
         <td className="px-3 py-2">
           {entry.status === null ? (
-            <span className="text-xs text-slate-400">—</span>
+            <span className="text-xs text-ink-dim">—</span>
           ) : (
             <StatusPill
               label={failed ? 'Failed' : 'Succeeded'}
@@ -313,26 +313,26 @@ function AuditRow({
             <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               {Object.entries(entry.metadata ?? {}).map(([key, value]) => (
                 <div key={key} className="flex gap-2 text-xs">
-                  <dt className="shrink-0 text-slate-500">{key}</dt>
-                  <dd className="min-w-0 break-all font-mono text-slate-700">
+                  <dt className="shrink-0 text-ink-muted">{key}</dt>
+                  <dd className="min-w-0 break-all font-mono text-ink">
                     {typeof value === 'string' ? value : JSON.stringify(value)}
                   </dd>
                 </div>
               ))}
               {entry.resource_id && (
                 <div className="flex gap-2 text-xs">
-                  <dt className="shrink-0 text-slate-500">
+                  <dt className="shrink-0 text-ink-muted">
                     {entry.resource_type ?? 'resource'} id
                   </dt>
-                  <dd className="min-w-0 break-all font-mono text-slate-700">
+                  <dd className="min-w-0 break-all font-mono text-ink">
                     {entry.resource_id}
                   </dd>
                 </div>
               )}
               {entry.user_agent && (
                 <div className="flex gap-2 text-xs sm:col-span-2">
-                  <dt className="shrink-0 text-slate-500">agent</dt>
-                  <dd className="min-w-0 break-all text-slate-600">{entry.user_agent}</dd>
+                  <dt className="shrink-0 text-ink-muted">agent</dt>
+                  <dd className="min-w-0 break-all text-ink">{entry.user_agent}</dd>
                 </div>
               )}
             </dl>

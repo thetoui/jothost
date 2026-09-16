@@ -61,7 +61,7 @@ function ApiStatus({
   // from "present and undefined", and health data arrives as the latter.
   version: string | undefined;
 }) {
-  const tone = pending ? 'bg-slate-300' : failed ? 'bg-danger-500' : 'bg-ok-500';
+  const tone = pending ? 'bg-ink-dim' : failed ? 'bg-danger-500' : 'bg-ok-500';
   const label = pending ? 'Checking the API' : failed ? 'API unreachable' : 'API online';
 
   return (
@@ -76,8 +76,8 @@ function ApiStatus({
       </span>
       {/* Hidden visually on narrow viewports, but never hidden from assistive
           technology: the dot alone carries no meaning without it. */}
-      <span className="sr-only text-xs text-slate-500 sm:not-sr-only">{label}</span>
-      {version && <span className="hidden text-xs text-slate-400 md:inline">v{version}</span>}
+      <span className="sr-only text-xs text-ink-muted sm:not-sr-only">{label}</span>
+      {version && <span className="hidden text-xs text-ink-dim md:inline">v{version}</span>}
     </div>
   );
 }
@@ -101,7 +101,7 @@ function Breadcrumbs() {
   const segments = pathname.split('/').filter(Boolean);
 
   if (segments.length === 0) {
-    return <span className="truncate text-sm font-medium text-slate-900">Dashboard</span>;
+    return <span className="truncate text-sm font-medium text-ink-strong">Dashboard</span>;
   }
 
   const [first] = segments;
@@ -110,19 +110,19 @@ function Breadcrumbs() {
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
-      <Link to="/" className={`shrink-0 rounded-sm text-slate-500 hover:text-slate-900 ${focusRingTight}`}>
+      <Link to="/" className={`shrink-0 rounded-sm text-ink-muted hover:text-ink-strong ${focusRingTight}`}>
         Dashboard
       </Link>
-      <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+      <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
       {isDetail ? (
         <Link
           to={`/${first}`}
-          className={`truncate rounded-sm text-slate-500 hover:text-slate-900 ${focusRingTight}`}
+          className={`truncate rounded-sm text-ink-muted hover:text-ink-strong ${focusRingTight}`}
         >
           {label}
         </Link>
       ) : (
-        <span aria-current="page" className="truncate font-medium text-slate-900">
+        <span aria-current="page" className="truncate font-medium text-ink-strong">
           {label}
         </span>
       )}
@@ -177,14 +177,14 @@ function UserMenu({ username, roles }: { username: string; roles: string[] }) {
         >
           {username.slice(0, 2)}
         </span>
-        <span className="hidden max-w-32 truncate text-slate-700 sm:inline">{username}</span>
+        <span className="hidden max-w-32 truncate text-ink sm:inline">{username}</span>
       </button>
 
       {open && (
         <MenuPanel label={`Account menu for ${username}`}>
           <div className="border-b border-surface-border px-3.5 py-2.5">
-            <p className="truncate text-sm font-medium text-slate-900">{username}</p>
-            <p className="mt-0.5 truncate text-xs capitalize text-slate-500">
+            <p className="truncate text-sm font-medium text-ink-strong">{username}</p>
+            <p className="mt-0.5 truncate text-xs capitalize text-ink-muted">
               {roles.length > 0 ? roles.join(', ') : 'No role assigned'}
             </p>
           </div>

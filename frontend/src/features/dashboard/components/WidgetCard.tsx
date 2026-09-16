@@ -47,7 +47,7 @@ function renderBody<T>(widget: Widget<T> | undefined, children: (data: T) => Rea
 
   if (widget.unsupported && !widget.data) {
     return (
-      <p className="flex items-center gap-2 text-sm text-slate-500">
+      <p className="flex items-center gap-2 text-sm text-ink-muted">
         <MinusCircle aria-hidden="true" className="h-4 w-4 shrink-0" />
         {widget.error ?? 'Not available on this host'}
       </p>

@@ -38,10 +38,10 @@ function iconFor(entry: FileEntry) {
     return <Folder aria-hidden="true" className="h-4 w-4 text-brand-500" />;
   }
   if (entry.type === 'symlink') {
-    return <Link2 aria-hidden="true" className="h-4 w-4 text-slate-400" />;
+    return <Link2 aria-hidden="true" className="h-4 w-4 text-ink-dim" />;
   }
   if (entry.type === 'other') {
-    return <HelpCircle aria-hidden="true" className="h-4 w-4 text-slate-400" />;
+    return <HelpCircle aria-hidden="true" className="h-4 w-4 text-ink-dim" />;
   }
 
   const extension = entry.name.split('.').pop()?.toLowerCase() ?? '';
@@ -58,7 +58,7 @@ function iconFor(entry: FileEntry) {
   ) {
     return <FileCode aria-hidden="true" className="h-4 w-4 text-sky-500" />;
   }
-  return <FileIcon aria-hidden="true" className="h-4 w-4 text-slate-400" />;
+  return <FileIcon aria-hidden="true" className="h-4 w-4 text-ink-dim" />;
 }
 
 /**
@@ -88,7 +88,7 @@ export function FileTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[46rem] border-collapse text-sm">
         <thead>
-          <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-ink-muted">
             <th scope="col" className="w-10 px-3 py-2">
               <input
                 type="checkbox"
@@ -151,19 +151,19 @@ export function FileTable({
                         }}
                         aria-haspopup={entry.type === 'file' ? 'menu' : undefined}
                         aria-expanded={entry.type === 'file' ? menuFor === entry.path : undefined}
-                        className={`truncate rounded-sm text-left font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
+                        className={`truncate rounded-sm text-left font-medium text-ink-strong underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
                       >
                         {entry.name}
                       </button>
                     ) : (
-                      <span className="truncate text-slate-600">{entry.name}</span>
+                      <span className="truncate text-ink">{entry.name}</span>
                     )}
 
                     {entry.type === 'symlink' && (
                       <span
                         className={[
                           'shrink-0 rounded px-1.5 py-0.5 text-[11px]',
-                          dangling ? 'bg-warn-100 text-warn-800' : 'bg-slate-100 text-slate-600',
+                          dangling ? 'bg-warn-100 text-warn-800' : 'bg-surface-sunken text-ink',
                         ].join(' ')}
                         title={entry.target ?? ''}
                       >
@@ -183,24 +183,24 @@ export function FileTable({
                   )}
                 </td>
 
-                <td className="px-3 py-2 tabular-nums text-slate-600">
+                <td className="px-3 py-2 tabular-nums text-ink">
                   {formatSize(entry.size, entry.type)}
                 </td>
-                <td className="px-3 py-2 text-slate-600">{formatModified(entry.modified)}</td>
+                <td className="px-3 py-2 text-ink">{formatModified(entry.modified)}</td>
                 <td className="px-3 py-2">
                   <span
                     className={[
                       'font-mono text-xs',
                       // World-writable inside a document root is almost always
                       // a mistake, and the one a person most needs to spot.
-                      isWorldWritable(entry.mode) ? 'text-danger-600' : 'text-slate-600',
+                      isWorldWritable(entry.mode) ? 'text-danger-600' : 'text-ink',
                     ].join(' ')}
                     title={isWorldWritable(entry.mode) ? 'Writable by anyone on this host' : undefined}
                   >
                     {entry.mode} {describeMode(entry.mode)}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-slate-600">
+                <td className="px-3 py-2 text-ink">
                   {entry.owner}:{entry.group}
                 </td>
               </tr>

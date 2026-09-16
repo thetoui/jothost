@@ -47,8 +47,8 @@ export function UpdatesPage() {
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">System updates</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-ink-strong">System updates</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             What this host has waiting, and what has been applied.
           </p>
         </div>
@@ -262,7 +262,7 @@ function PendingList({ overview }: { overview: UpdateOverview }) {
         loading={apply.isPending}
         error={failure}
       >
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-ink">
           A package manager resolves dependencies, so this usually moves more packages than are
           listed — every one that actually changes is recorded in the history below.
         </p>
@@ -282,7 +282,7 @@ function PackageTable({
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="text-xs uppercase tracking-wide text-slate-400">
+        <thead className="text-xs uppercase tracking-wide text-ink-dim">
           <tr>
             <th className="py-1 pr-3 font-normal">Package</th>
             <th className="py-1 pr-3 font-normal">Installed</th>
@@ -290,12 +290,12 @@ function PackageTable({
             {securityKnown && <th className="py-1 font-normal">Security</th>}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-line">
           {packages.map((pkg) => (
             <tr key={pkg.name}>
-              <td className="py-1.5 pr-3 font-medium text-slate-800">{pkg.name}</td>
-              <td className="py-1.5 pr-3 font-mono text-xs text-slate-500">{pkg.installed}</td>
-              <td className="py-1.5 pr-3 font-mono text-xs text-slate-700">{pkg.available}</td>
+              <td className="py-1.5 pr-3 font-medium text-ink-strong">{pkg.name}</td>
+              <td className="py-1.5 pr-3 font-mono text-xs text-ink-muted">{pkg.installed}</td>
+              <td className="py-1.5 pr-3 font-mono text-xs text-ink">{pkg.available}</td>
               {securityKnown && (
                 <td className="py-1.5">
                   {pkg.security && (
@@ -338,13 +338,13 @@ function RuntimeList({ overview }: { overview: UpdateOverview }) {
       <CardBody className="space-y-4">
         {php.length > 0 && (
           <div>
-            <h3 className="mb-1 text-sm font-semibold text-slate-900">PHP</h3>
+            <h3 className="mb-1 text-sm font-semibold text-ink-strong">PHP</h3>
             <PackageTable packages={php} securityKnown={overview.check.security_known} />
           </div>
         )}
         {node.length > 0 && (
           <div>
-            <h3 className="mb-1 text-sm font-semibold text-slate-900">Node.js</h3>
+            <h3 className="mb-1 text-sm font-semibold text-ink-strong">Node.js</h3>
             <PackageTable packages={node} securityKnown={overview.check.security_known} />
           </div>
         )}
@@ -374,18 +374,18 @@ function HeldList({ overview }: { overview: UpdateOverview }) {
         icon={<TintedIcon icon={<Lock className="h-5 w-5" />} tone="neutral" />}
       />
       <CardBody>
-        <p className="mb-3 text-sm text-slate-500">
+        <p className="mb-3 text-sm text-ink-muted">
           These were pinned deliberately, so the panel leaves them alone. They are listed here
           rather than with the updates above, where they would look like work that never gets done.
         </p>
         <ul className="space-y-2 text-sm">
           {held.map((entry) => (
             <li key={entry.name} className="flex flex-wrap items-baseline gap-2">
-              <span className="font-medium text-slate-800">{entry.name}</span>
-              <span className="font-mono text-xs text-slate-500">
+              <span className="font-medium text-ink-strong">{entry.name}</span>
+              <span className="font-mono text-xs text-ink-muted">
                 {entry.installed} → {entry.available}
               </span>
-              <span className="text-xs text-slate-500">{entry.reason}</span>
+              <span className="text-xs text-ink-muted">{entry.reason}</span>
             </li>
           ))}
         </ul>
@@ -494,7 +494,7 @@ function AutomaticUpdates({ overview }: { overview: UpdateOverview }) {
           onChange={(event) => setExcluded(event.target.value)}
         />
 
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           {settings.last_checked_at
             ? `Last checked ${formatWhen(settings.last_checked_at)}.`
             : 'Not checked yet.'}{' '}
@@ -571,8 +571,8 @@ function RecentRuns({ overview }: { overview: UpdateOverview }) {
                         ? 'Running'
                         : 'Applied'}
                   </span>
-                  <span className="text-slate-500">{formatWhen(run.started_at)}</span>
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                  <span className="text-ink-muted">{formatWhen(run.started_at)}</span>
+                  <span className="rounded bg-surface-sunken px-1.5 py-0.5 text-xs text-ink">
                     {run.trigger}
                   </span>
                   {run.reboot_required && (
@@ -586,7 +586,7 @@ function RecentRuns({ overview }: { overview: UpdateOverview }) {
                 {run.error && <p className="mt-1 text-sm text-danger-700">{run.error}</p>}
 
                 {run.changes.length > 0 ? (
-                  <ul className="mt-2 space-y-0.5 font-mono text-xs text-slate-600">
+                  <ul className="mt-2 space-y-0.5 font-mono text-xs text-ink">
                     {run.changes.map((change) => (
                       <li key={change.name}>
                         {change.name} {change.from || '—'} → {change.to || 'removed'}
@@ -595,7 +595,7 @@ function RecentRuns({ overview }: { overview: UpdateOverview }) {
                   </ul>
                 ) : (
                   run.status !== 'running' && (
-                    <p className="mt-1 text-xs text-slate-500">Nothing moved.</p>
+                    <p className="mt-1 text-xs text-ink-muted">Nothing moved.</p>
                   )
                 )}
               </li>

@@ -115,14 +115,14 @@ function SubdomainRow({ parentId, subdomain }: { parentId: string; subdomain: We
           className={`flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left ${focusRingTight}`}
         >
           {expanded ? (
-            <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-400" />
+            <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-ink-dim" />
           ) : (
-            <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-400" />
+            <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-ink-dim" />
           )}
-          <span className="truncate font-medium text-slate-900">{subdomain.primary_domain}</span>
+          <span className="truncate font-medium text-ink-strong">{subdomain.primary_domain}</span>
           <StatusPill label={pill.label} tone={pill.tone} dot pulse={settling} />
           {wildcard && (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink">
               Catch-all
             </span>
           )}
@@ -157,7 +157,7 @@ function SubdomainRow({ parentId, subdomain }: { parentId: string; subdomain: We
       </div>
 
       {expanded && (
-        <dl className="mt-2 grid gap-x-6 gap-y-1 pl-6 text-xs text-slate-500 sm:grid-cols-2">
+        <dl className="mt-2 grid gap-x-6 gap-y-1 pl-6 text-xs text-ink-muted sm:grid-cols-2">
           <Fact label="Files" value={subdomain.document_root} mono />
           <Fact label="System user" value={subdomain.system_user} mono />
           <Fact
@@ -193,7 +193,7 @@ function SubdomainRow({ parentId, subdomain }: { parentId: string; subdomain: We
         error={removeError}
       >
         <p>
-          <span className="font-medium text-slate-900">{subdomain.primary_domain}</span> stops being
+          <span className="font-medium text-ink-strong">{subdomain.primary_domain}</span> stops being
           served.{' '}
           {subdomain.system_user_mode === 'inherit'
             ? "The account it shares with the parent site is kept, because the parent's files belong to it."
@@ -208,7 +208,7 @@ function Fact({ label, value, mono }: { label: string; value: string; mono?: boo
   return (
     <div className="flex gap-1.5">
       <dt className="shrink-0">{label}</dt>
-      <dd className={mono ? 'truncate font-mono text-slate-700' : 'truncate text-slate-700'}>
+      <dd className={mono ? 'truncate font-mono text-ink' : 'truncate text-ink'}>
         {value}
       </dd>
     </div>
@@ -318,7 +318,7 @@ function CreateSubdomainForm({
       </div>
 
       {userMode === 'dedicated' && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           Its own account means the parent site cannot read its files, and it needs its own PHP
           pool to run as itself.
         </p>

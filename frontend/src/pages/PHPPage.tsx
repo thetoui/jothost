@@ -23,8 +23,8 @@ export function PHPPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">PHP</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">PHP</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Versions installed on this server. Each website chooses one and runs it in its own
           pool, under its own account.
         </p>
@@ -75,7 +75,7 @@ export function PHPPage() {
             <Card className="h-fit">
               <CardHeader title="Installing versions" />
               <CardBody>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-ink-muted">
                   Installing or removing a PHP version changes the whole server, so it needs the
                   server management permission.
                 </p>
@@ -113,9 +113,9 @@ function VersionRow({ version }: { version: PHPVersion }) {
             icon={<FileCode2 className="h-4 w-4" />}
           />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900">PHP {version.version}</p>
+            <p className="text-sm font-semibold text-ink-strong">PHP {version.version}</p>
             {version.fpm_service && (
-              <p className="truncate font-mono text-xs text-slate-500">{version.fpm_service}</p>
+              <p className="truncate font-mono text-xs text-ink-muted">{version.fpm_service}</p>
             )}
           </div>
         </div>
@@ -133,7 +133,7 @@ function VersionRow({ version }: { version: PHPVersion }) {
             // Removing a version websites still run would take every one of
             // them offline, so the row says why instead of offering an action
             // the API will refuse.
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-ink-muted">
               In use by {version.in_use} website{version.in_use === 1 ? '' : 's'}
             </span>
           ) : (
@@ -235,7 +235,7 @@ function InstallCard() {
             {install.isPending ? 'Queuing…' : 'Install'}
           </Button>
 
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             Installation runs in the background and can take several minutes. Existing sites keep
             serving throughout.
           </p>

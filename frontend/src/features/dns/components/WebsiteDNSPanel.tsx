@@ -59,14 +59,14 @@ export function WebsiteDNSPanel({ websiteId, domain }: WebsiteDNSPanelProps) {
       />
       <CardBody>
         {!available ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             This host has no name server, so DNS for {domain} is served somewhere else.
           </p>
         ) : isPending ? (
           <SkeletonRows rows={2} />
         ) : zones.length === 0 ? (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-ink-muted">
               This host does not answer for {domain}. It does not have to — the site is reached
               through whatever already resolves the name — but a zone here is what lets the panel
               publish records for it.
@@ -92,7 +92,7 @@ export function WebsiteDNSPanel({ websiteId, domain }: WebsiteDNSPanelProps) {
                   onClick={() => setOpen(zone.id)}
                   className={`w-full rounded border border-surface-border px-3 py-2 text-left transition-colors hover:border-surface-strong ${focusRingTight}`}
                 >
-                  <span className="flex items-center gap-2 font-medium text-slate-900">
+                  <span className="flex items-center gap-2 font-medium text-ink-strong">
                     {zone.name}
                     {zone.dnssec && (
                       <span className="inline-flex items-center gap-1 rounded bg-ok-50 px-1.5 py-0.5 text-xs font-normal text-ok-700">
@@ -101,7 +101,7 @@ export function WebsiteDNSPanel({ websiteId, domain }: WebsiteDNSPanelProps) {
                       </span>
                     )}
                   </span>
-                  <span className="mt-0.5 block text-xs text-slate-500">
+                  <span className="mt-0.5 block text-xs text-ink-muted">
                     {zone.record_count} {zone.record_count === 1 ? 'record' : 'records'} · serial{' '}
                     {zone.serial}
                   </span>

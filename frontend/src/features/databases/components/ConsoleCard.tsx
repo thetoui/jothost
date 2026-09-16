@@ -129,15 +129,15 @@ export function ConsoleCard() {
                   panel's /phpmyadmin/ location, so a name typed here reached
                   nothing — it was displayed as an address and no request could
                   ever arrive with it. */}
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-ink">
                 It will be served by this panel, at{' '}
-                <code className="font-mono text-xs text-slate-800">{CONSOLE_MOUNT}</code> on the
+                <code className="font-mono text-xs text-ink-strong">{CONSOLE_MOUNT}</code> on the
                 address you are reading this on. It is reachable only by people who can already
                 sign in here.
               </p>
 
               <div className="flex items-center justify-between gap-3">
-                <p className="flex items-start gap-1.5 text-xs text-slate-500">
+                <p className="flex items-start gap-1.5 text-xs text-ink-muted">
                   <ShieldAlert aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   Signing in needs a database account. The panel stores no credentials in its
                   configuration, and the server&rsquo;s root account cannot sign in here at all.
@@ -176,8 +176,8 @@ export function ConsoleCard() {
 function Fact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className={['truncate text-slate-800', mono ? 'font-mono text-xs' : ''].join(' ')}>
+      <dt className="text-ink-muted">{label}</dt>
+      <dd className={['truncate text-ink-strong', mono ? 'font-mono text-xs' : ''].join(' ')}>
         {value}
       </dd>
     </div>

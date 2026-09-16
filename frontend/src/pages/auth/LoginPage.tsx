@@ -65,8 +65,8 @@ function PasswordStep() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-slate-900">Sign in</h2>
-        <p className="mt-1 text-sm text-slate-500">Use your panel administrator account.</p>
+        <h2 className="text-base font-semibold text-ink-strong">Sign in</h2>
+        <p className="mt-1 text-sm text-ink-muted">Use your panel administrator account.</p>
       </div>
 
       <TextField
@@ -127,8 +127,8 @@ function TwoFactorStep() {
       <div className="flex items-start gap-3">
         <ShieldCheck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Two-factor verification</h2>
-          <p className="mt-1 text-xs text-slate-500">
+          <h2 className="text-sm font-semibold text-ink-strong">Two-factor verification</h2>
+          <p className="mt-1 text-xs text-ink-muted">
             {useRecovery
               ? 'Enter one of the recovery codes you saved when you turned on two-factor. Each works once.'
               : 'Enter the 6-digit code from your authenticator app.'}
@@ -138,7 +138,7 @@ function TwoFactorStep() {
 
       {useRecovery ? (
         <div className="space-y-1">
-          <label htmlFor="recovery-code" className="block text-xs font-medium text-slate-700">
+          <label htmlFor="recovery-code" className="block text-xs font-medium text-ink">
             Recovery code
           </label>
           <input
@@ -159,7 +159,7 @@ function TwoFactorStep() {
         </div>
       ) : (
         <div className="space-y-1">
-          <label htmlFor="code" className="block text-xs font-medium text-slate-700">
+          <label htmlFor="code" className="block text-xs font-medium text-ink">
             Verification code
           </label>
           <input

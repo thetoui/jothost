@@ -80,8 +80,8 @@ export function LogsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Logs</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Logs</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           What this host has recorded, read straight from the files on it.
         </p>
       </header>
@@ -112,7 +112,7 @@ export function LogsPage() {
             {isPending ? (
               <SkeletonRows rows={5} />
             ) : sources.length === 0 ? (
-              <p className="px-5 py-4 text-sm text-slate-500">
+              <p className="px-5 py-4 text-sm text-ink-muted">
                 This host has no logs the panel can read.
               </p>
             ) : (
@@ -124,7 +124,7 @@ export function LogsPage() {
                 .filter((group) => group.entries.length > 0)
                 .map((group) => (
                   <div key={group.key} className="border-b border-surface-border last:border-0">
-                    <p className="sticky top-0 z-10 flex items-center gap-2 bg-surface px-4 pb-1 pt-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400">
+                    <p className="sticky top-0 z-10 flex items-center gap-2 bg-surface px-4 pb-1 pt-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-ink-dim">
                       {group.icon}
                       {group.title}
                     </p>
@@ -184,12 +184,12 @@ function SourceButton({
       onClick={onSelect}
       aria-current={selected ? 'true' : undefined}
       className={`flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm transition-colors ${focusRingTight} ${
-        selected ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-surface-muted'
+        selected ? 'bg-brand-50 text-brand-700' : 'text-ink hover:bg-surface-muted'
       }`}
     >
       <span className="min-w-0">
         <span className="block truncate font-medium">{source.label}</span>
-        <span className="block truncate text-xs text-slate-400">
+        <span className="block truncate text-xs text-ink-dim">
           {source.present ? formatBytes(source.size) : 'not on this host'}
         </span>
       </span>
@@ -308,7 +308,7 @@ function LogViewer({
             disabled={!source.present}
           />
           {live && <StatusPill label="Live" tone="ok" dot pulse />}
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-ink-muted">
             {tail.lines.length} line{tail.lines.length === 1 ? '' : 's'}
             {tail.filtered > 0 && <> · {tail.filtered} hidden by the filters</>}
           </span>
@@ -328,7 +328,7 @@ function LogViewer({
         )}
 
         {tail.partial && !tail.error && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             This log is larger than one read can carry, so this is its end. Download it for
             the whole file.
           </p>
@@ -339,12 +339,12 @@ function LogViewer({
           role="log"
           aria-label={`${source.label} contents`}
           aria-live="off"
-          className="max-h-[32rem] overflow-auto rounded-md border border-surface-border bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-200"
+          className="max-h-[32rem] overflow-auto rounded-md border border-surface-border bg-console p-3 font-mono text-xs leading-relaxed text-console"
         >
           {tail.loading ? (
-            <p className="text-slate-400">Reading…</p>
+            <p className="text-ink-dim">Reading…</p>
           ) : tail.lines.length === 0 ? (
-            <p className="text-slate-400">
+            <p className="text-ink-dim">
               {!source.present
                 ? 'This host does not have this log.'
                 : search !== '' || level !== ''
@@ -358,7 +358,7 @@ function LogViewer({
                 className={`whitespace-pre-wrap break-all ${toneFor(line.level)}`}
               >
                 {line.text}
-                {line.truncated && <span className="text-slate-500"> … (line truncated)</span>}
+                {line.truncated && <span className="text-ink-muted"> … (line truncated)</span>}
               </div>
             ))
           )}
@@ -376,9 +376,9 @@ function toneFor(level: string): string {
     case 'warn':
       return 'text-warn-300';
     case 'debug':
-      return 'text-slate-400';
+      return 'text-ink-dim';
     default:
-      return 'text-slate-200';
+      return 'text-console';
   }
 }
 

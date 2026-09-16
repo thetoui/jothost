@@ -17,7 +17,7 @@ interface ServiceListProps {
  */
 export function ServiceList({ services, unsupportedNote }: ServiceListProps) {
   if (services.length === 0) {
-    return <p className="text-sm text-slate-500">{unsupportedNote ?? 'No services monitored.'}</p>;
+    return <p className="text-sm text-ink-muted">{unsupportedNote ?? 'No services monitored.'}</p>;
   }
 
   return (
@@ -25,23 +25,23 @@ export function ServiceList({ services, unsupportedNote }: ServiceListProps) {
       <ul className="divide-y divide-surface-border">
         {services.map((service) => (
           <li key={`${service.kind}-${service.name}`} className="flex items-center justify-between py-2">
-            <span className="flex items-center gap-2 text-sm text-slate-800">
+            <span className="flex items-center gap-2 text-sm text-ink-strong">
               <StatusIcon service={service} />
               {service.name}
             </span>
-            <span className="text-xs text-slate-500">{service.status}</span>
+            <span className="text-xs text-ink-muted">{service.status}</span>
           </li>
         ))}
       </ul>
 
-      {unsupportedNote && <p className="text-xs text-slate-500">{unsupportedNote}</p>}
+      {unsupportedNote && <p className="text-xs text-ink-muted">{unsupportedNote}</p>}
     </div>
   );
 }
 
 function StatusIcon({ service }: { service: ServiceState }) {
   if (service.status === 'not installed') {
-    return <CircleSlash aria-label="Not installed" className="h-4 w-4 shrink-0 text-slate-400" />;
+    return <CircleSlash aria-label="Not installed" className="h-4 w-4 shrink-0 text-ink-dim" />;
   }
   if (service.running) {
     return <CircleDot aria-label="Running" className="h-4 w-4 shrink-0 text-ok-600" />;

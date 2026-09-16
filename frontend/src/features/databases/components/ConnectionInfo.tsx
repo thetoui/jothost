@@ -38,16 +38,16 @@ export function ConnectionInfo({ database, users }: ConnectionInfoProps) {
       <div className="rounded-md border border-surface-border bg-surface-sunken/50 p-3">
         {user ? (
           <>
-            <p className="mb-2 text-sm font-medium text-slate-800">
+            <p className="mb-2 text-sm font-medium text-ink-strong">
               {user.username}
-              {user.host && <span className="text-slate-400">@{user.host}</span>}
+              {user.host && <span className="text-ink-dim">@{user.host}</span>}
             </p>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-xs text-slate-500">Password</span>
+              <span className="text-xs text-ink-muted">Password</span>
               <PasswordReveal userId={user.id} />
             </div>
             {users.length > 1 && (
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-ink-muted">
                 {users.length - 1} other{' '}
                 {users.length === 2 ? 'account has' : 'accounts have'} access; their passwords are
                 on the Users tab.
@@ -55,14 +55,14 @@ export function ConnectionInfo({ database, users }: ConnectionInfoProps) {
             )}
           </>
         ) : (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             No account can reach this database yet, so nothing can connect to it. Add one from the
             Users tab.
           </p>
         )}
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-muted">
         {database.engine === 'postgres'
           ? 'PostgreSQL accepts connections over the local socket and, where the server is configured for it, over the port above.'
           : 'The account is limited to connecting from this server unless it was created to accept any host.'}
@@ -74,8 +74,8 @@ export function ConnectionInfo({ database, users }: ConnectionInfoProps) {
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className={['truncate text-slate-800', mono ? 'font-mono text-xs' : ''].join(' ')}>
+      <dt className="text-ink-muted">{label}</dt>
+      <dd className={['truncate text-ink-strong', mono ? 'font-mono text-xs' : ''].join(' ')}>
         {value || '—'}
       </dd>
     </div>

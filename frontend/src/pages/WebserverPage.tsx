@@ -30,8 +30,8 @@ export function WebserverPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Web server</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Web server</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           How this host serves its websites. The choice applies to every site on the machine.
         </p>
       </header>
@@ -141,7 +141,7 @@ function Arrangement({ status }: { status: WebserverStatus }) {
                   >
                     Install Apache
                   </Button>
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-ink-muted">
                     {status.apache.can_install
                       ? 'Installs Apache and the FastCGI proxy module. It changes nothing about how sites are served until the arrangement is switched.'
                       : 'This host has no package manager the panel can use.'}
@@ -176,7 +176,7 @@ function Arrangement({ status }: { status: WebserverStatus }) {
         <p className="mb-2">
           Every website on this host — {status.sites} of them — has its configuration rewritten.
         </p>
-        <p className="text-slate-600">
+        <p className="text-ink">
           Sites keep serving throughout: each is reconfigured and reloaded in turn, and a site
           that fails to reload keeps the configuration it already had.
         </p>
@@ -225,18 +225,18 @@ function ModeCard({
           )
         }
       />
-      <CardBody className="space-y-2 text-sm text-slate-600">
+      <CardBody className="space-y-2 text-sm text-ink">
         <p>{summary}</p>
         <ul className="space-y-1">
           {points.map((point) => (
             <li key={point} className="flex gap-2">
-              <Check aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <Check aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-dim" />
               <span>{point}</span>
             </li>
           ))}
         </ul>
         {disabled && disabledReason && (
-          <p className="text-xs text-slate-500">{disabledReason}</p>
+          <p className="text-xs text-ink-muted">{disabledReason}</p>
         )}
       </CardBody>
     </Card>
@@ -246,8 +246,8 @@ function ModeCard({
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-medium text-slate-900">{value}</span>
+      <span className="text-ink-muted">{label}</span>
+      <span className="font-medium text-ink-strong">{value}</span>
     </div>
   );
 }

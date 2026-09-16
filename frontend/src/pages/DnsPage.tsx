@@ -47,8 +47,8 @@ export function DnsPage() {
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">DNS</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-ink-strong">DNS</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             The zones this host answers for, and what they say.
           </p>
         </div>
@@ -219,7 +219,7 @@ function ServerCard({ overview }: { overview: DNSOverview }) {
         <Detail label="Configuration">
           <code className="font-mono text-xs">{overview.config_path}</code>
           {!overview.managed_config && (
-            <span className="ml-2 text-xs text-slate-500">
+            <span className="ml-2 text-xs text-ink-muted">
               (this host&rsquo;s own; the panel added one include line)
             </span>
           )}
@@ -254,8 +254,8 @@ function listenSummary(addresses: string[] | null | undefined): string {
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="mt-0.5 text-slate-700">{children}</div>
+      <div className="text-xs uppercase tracking-wide text-ink-dim">{label}</div>
+      <div className="mt-0.5 text-ink">{children}</div>
     </div>
   );
 }
@@ -291,7 +291,7 @@ function ZoneList({
           />
         </CardBody>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {zones.map((zone) => (
             <li key={zone.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <button
@@ -299,7 +299,7 @@ function ZoneList({
                 onClick={() => onOpen(zone.id)}
                 className={`flex-1 rounded-sm text-left ${focusRingTight}`}
               >
-                <div className="flex items-center gap-2 font-medium text-slate-900">
+                <div className="flex items-center gap-2 font-medium text-ink-strong">
                   {zone.name}
                   {zone.dnssec && (
                     <span
@@ -311,12 +311,12 @@ function ZoneList({
                     </span>
                   )}
                   {zone.kind === 'slave' && (
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600">
+                    <span className="rounded bg-surface-sunken px-1.5 py-0.5 text-xs font-normal text-ink">
                       Secondary
                     </span>
                   )}
                 </div>
-                <div className="mt-0.5 text-xs text-slate-500">
+                <div className="mt-0.5 text-xs text-ink-muted">
                   {zone.kind === 'slave'
                     ? `Transferred from ${zone.masters.join(', ')}`
                     : `${zone.record_count} ${zone.record_count === 1 ? 'record' : 'records'} · serial ${zone.serial}`}
@@ -359,7 +359,7 @@ function ZoneList({
         loading={remove.isPending}
         error={remove.error instanceof ApiError ? remove.error.message : null}
       >
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-ink">
           Anything pointing at these names stops resolving as soon as the caches expire, which can
           take as long as the zone&rsquo;s longest TTL.
         </p>
@@ -482,7 +482,7 @@ function CreateZoneDialog({
         )}
 
         {kind === 'forward' && defaultNS.length > 0 && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             It will be delegated to {defaultNS.join(', ')}
             {/* Named rather than described: what a new zone starts with is the
                 default template's business now, and saying "the zone itself and

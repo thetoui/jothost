@@ -141,7 +141,7 @@ export function DatabasePanel({ database }: { database: Database }) {
 
       {/* The facts strip Plesk puts under a database. It answers "where is this,
           who can reach it, and how big is it" without opening anything. */}
-      <dl className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-surface-border pt-3 text-xs text-slate-500">
+      <dl className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-surface-border pt-3 text-xs text-ink-muted">
         <Fact label="Host" value={`localhost (${engineLabel(database.engine)})`} />
         <Fact
           label="Users"
@@ -157,7 +157,7 @@ export function DatabasePanel({ database }: { database: Database }) {
         <Fact label="Collation" value={database.collation ?? 'server default'} />
         <div className="flex items-center gap-1.5">
           <dt>Size</dt>
-          <dd className="font-medium text-slate-700">{formatBytes(database.size_bytes)}</dd>
+          <dd className="font-medium text-ink">{formatBytes(database.size_bytes)}</dd>
           <RequirePermission permission={Permission.DatabaseManage}>
             <IconButton
               size="sm"
@@ -196,7 +196,7 @@ function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-1.5">
       <dt>{label}</dt>
-      <dd className="font-medium text-slate-700">{value}</dd>
+      <dd className="font-medium text-ink">{value}</dd>
     </div>
   );
 }

@@ -108,7 +108,7 @@ function IssueForm({ websiteId, domain }: { websiteId: string; domain: string })
     <RequirePermission
       permission={Permission.SSLManage}
       fallback={
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-ink-muted">
           This website is served over plain HTTP. Issuing a certificate needs the SSL
           management permission.
         </p>
@@ -267,7 +267,7 @@ function CertificateDetail({
               ? 'text-danger-600'
               : tone === 'warn'
                 ? 'text-warn-700'
-                : 'text-slate-600'
+                : 'text-ink'
           }`}
         >
           {expiryLabel(certificate.days_remaining)}
@@ -343,10 +343,10 @@ function CertificateDetail({
         error={revokeError}
       >
         <p className="mb-2">
-          <span className="font-medium text-slate-900">{domain}</span> stops serving HTTPS,
+          <span className="font-medium text-ink-strong">{domain}</span> stops serving HTTPS,
           and the certificate is withdrawn.
         </p>
-        <p className="text-slate-600">
+        <p className="text-ink">
           Revocation cannot be undone: the certificate is refused by every client that
           checks, and restoring HTTPS means issuing a new one.
         </p>
@@ -365,9 +365,9 @@ interface DetailProps {
 function Detail({ label, value, mono, truncate }: DetailProps) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</dt>
+      <dt className="text-xs font-medium uppercase tracking-wide text-ink-dim">{label}</dt>
       <dd
-        className={`mt-1 text-sm text-slate-900 ${mono ? 'font-mono text-xs' : ''} ${
+        className={`mt-1 text-sm text-ink-strong ${mono ? 'font-mono text-xs' : ''} ${
           truncate ? 'truncate' : 'break-words'
         }`}
         title={truncate ? value : undefined}

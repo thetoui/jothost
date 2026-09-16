@@ -28,8 +28,8 @@ export function UsageBar({ percent, label, detail }: UsageBarProps) {
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between gap-2">
-        <span className="text-xs font-medium text-slate-700">{label}</span>
-        <span className="text-xs tabular-nums text-slate-600">
+        <span className="text-xs font-medium text-ink">{label}</span>
+        <span className="text-xs tabular-nums text-ink">
           {clamped.toFixed(1)}%{detail ? ` · ${detail}` : ''}
         </span>
       </div>

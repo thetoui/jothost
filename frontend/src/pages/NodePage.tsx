@@ -63,8 +63,8 @@ export function NodePage() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Node.js</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-ink-strong">Node.js</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             {apps.length} {apps.length === 1 ? 'application' : 'applications'}. Each runs under its
             website&rsquo;s own system account, with nginx in front of it.
           </p>
@@ -168,7 +168,7 @@ function RuntimeSummary() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-muted">
       <span className="inline-flex items-center gap-1.5">
         <Server aria-hidden="true" className="h-3.5 w-3.5" />
         {data.versions.length > 0
@@ -199,7 +199,7 @@ function AppTable({ apps, expanded, onToggle, onDelete }: AppTableProps) {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[48rem] border-collapse text-sm">
         <thead>
-          <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-ink-muted">
             <th scope="col" className="w-8 px-2 py-2">
               <span className="sr-only">Expand</span>
             </th>
@@ -258,7 +258,7 @@ function AppTable({ apps, expanded, onToggle, onDelete }: AppTableProps) {
                     <button
                       type="button"
                       onClick={() => onToggle(app.id)}
-                      className={`truncate rounded-sm font-mono font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
+                      className={`truncate rounded-sm font-mono font-medium text-ink-strong underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
                     >
                       {app.name}
                     </button>
@@ -284,12 +284,12 @@ function AppTable({ apps, expanded, onToggle, onDelete }: AppTableProps) {
                         )}
                       </span>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-ink-dim">—</span>
                     )}
                   </td>
 
-                  <td className="px-3 py-2 text-slate-600">{app.node_version}</td>
-                  <td className="px-3 py-2 font-mono text-slate-600">{app.port}</td>
+                  <td className="px-3 py-2 text-ink">{app.node_version}</td>
+                  <td className="px-3 py-2 font-mono text-ink">{app.port}</td>
 
                   <td className="px-3 py-2">
                     <StatusPill

@@ -80,7 +80,7 @@ export function WebsitePHPPanel({ websiteId }: WebsitePHPPanelProps) {
             <RequirePermission
               permission={Permission.WebsiteUpdate}
               fallback={
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-ink">
                   {state?.enabled
                     ? `This website runs PHP ${current}.`
                     : 'This website serves static content.'}
@@ -178,7 +178,7 @@ function ConfigForm({ websiteId, pool }: { websiteId: string; pool: PHPPool }) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4 border-t border-surface-border pt-5">
-      <h3 className="text-sm font-semibold text-slate-900">Configuration</h3>
+      <h3 className="text-sm font-semibold text-ink-strong">Configuration</h3>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <TextField

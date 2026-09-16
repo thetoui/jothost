@@ -19,7 +19,7 @@ const rowClasses = [
 ].join(' ');
 
 const toneClasses = {
-  neutral: 'text-slate-700 hover:bg-surface-sunken',
+  neutral: 'text-ink hover:bg-surface-sunken',
   danger: 'text-danger-700 hover:bg-danger-50',
 } as const;
 
@@ -56,7 +56,7 @@ export function MenuItem({
   const body = (
     <>
       {icon && (
-        <span aria-hidden="true" className="shrink-0 text-slate-400">
+        <span aria-hidden="true" className="shrink-0 text-ink-dim">
           {icon}
         </span>
       )}

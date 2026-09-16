@@ -40,7 +40,7 @@ export function RecoveryCodes({ codes, onDone }: RecoveryCodesProps) {
 
       <ol
         aria-label="Recovery codes"
-        className="grid grid-cols-1 gap-x-6 gap-y-1.5 rounded-md bg-surface-muted px-4 py-3 font-mono text-sm text-slate-900 sm:grid-cols-2"
+        className="grid grid-cols-1 gap-x-6 gap-y-1.5 rounded-md bg-surface-muted px-4 py-3 font-mono text-sm text-ink-strong sm:grid-cols-2"
       >
         {codes.map((code) => (
           <li key={code} className="tabular-nums">

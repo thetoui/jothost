@@ -45,8 +45,8 @@ export function SecurityCenterPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Security Center</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Security Center</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           What is exposed on this host, how it was found, and what to do about it.
         </p>
       </header>
@@ -130,13 +130,13 @@ function ScoreCard({ overview }: { overview: SecurityOverview }) {
         ) : (
           <>
             <div className="flex flex-wrap items-baseline gap-3">
-              <span className="text-4xl font-semibold text-slate-900">{score.value}</span>
-              <span className="text-sm font-medium uppercase tracking-wide text-slate-500">
+              <span className="text-4xl font-semibold text-ink-strong">{score.value}</span>
+              <span className="text-sm font-medium uppercase tracking-wide text-ink-muted">
                 {score.grade}
               </span>
               {/* The checks behind the number, always. A 100 from two checks is
                   not a 100, and this is the one place that can say so. */}
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-ink-muted">
                 from {score.checks_run} of {score.checks_total} checks
               </span>
             </div>
@@ -146,7 +146,7 @@ function ScoreCard({ overview }: { overview: SecurityOverview }) {
                 {score.summary}
               </AlertBanner>
             ) : (
-              <p className="mt-2 text-sm text-slate-600">{score.summary}</p>
+              <p className="mt-2 text-sm text-ink">{score.summary}</p>
             )}
 
             <dl className="mt-4 grid gap-4 sm:grid-cols-5">
@@ -176,15 +176,15 @@ function Stat({
 }) {
   const colour =
     value === 0
-      ? 'text-slate-400'
+      ? 'text-ink-dim'
       : tone === 'danger'
         ? 'text-danger-700'
         : tone === 'warn'
           ? 'text-warn-700'
-          : 'text-slate-900';
+          : 'text-ink-strong';
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+      <dt className="text-xs uppercase tracking-wide text-ink-muted">{label}</dt>
       <dd className={`mt-1 text-lg font-semibold ${colour}`}>{value}</dd>
     </div>
   );
@@ -195,8 +195,8 @@ function ScannerList({ scanners }: { scanners: ScannerOutcome[] }) {
   if (scanners.length === 0) return null;
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <div className="mt-5 border-t border-line pt-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
         Checks
       </h3>
       <ul className="mt-2 space-y-1.5">
@@ -213,8 +213,8 @@ function ScannerList({ scanners }: { scanners: ScannerOutcome[] }) {
                 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn-600"
               />
             )}
-            <span className="font-medium text-slate-700">{outcome.scanner}</span>
-            <span className="text-slate-500">
+            <span className="font-medium text-ink">{outcome.scanner}</span>
+            <span className="text-ink-muted">
               {outcome.ran
                 ? `${outcome.findings} finding(s)`
                 : `could not be run — ${outcome.reason ?? 'no reason was given'}`}
@@ -248,20 +248,20 @@ function Findings({ overview }: { overview: SecurityOverview }) {
           />
         </CardBody>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {findings.map((finding) => (
             <li key={finding.id} className="flex items-start gap-4 px-5 py-4">
               <SeverityBadge severity={finding.severity} />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900">{finding.title}</p>
-                <p className="mt-0.5 text-xs text-slate-600">{finding.description}</p>
+                <p className="text-sm font-medium text-ink-strong">{finding.title}</p>
+                <p className="mt-0.5 text-xs text-ink">{finding.description}</p>
                 {finding.remediation && (
-                  <p className="mt-1.5 text-xs text-slate-700">
+                  <p className="mt-1.5 text-xs text-ink">
                     <span className="font-medium">What to do: </span>
                     {finding.remediation}
                   </p>
                 )}
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-ink-dim">
                   Found by the {finding.scanner} check · first seen{' '}
                   {formatWhen(finding.first_seen_at)}
                 </p>
@@ -282,7 +282,7 @@ function Findings({ overview }: { overview: SecurityOverview }) {
 
       <CardBody>
         {/* Said out loud, where somebody is about to look for the button. */}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           There is no way to mark a finding as fixed. One disappears when a scan no longer
           finds it — whether a weakness still exists is the scanner&rsquo;s to decide.
           Accepting records that a risk is known and deliberate, and keeps it in view.
@@ -319,8 +319,8 @@ function AcceptDialog({
         )}
 
         <div>
-          <p className="text-sm font-medium text-slate-900">{finding.title}</p>
-          <p className="mt-1 text-xs text-slate-600">{finding.description}</p>
+          <p className="text-sm font-medium text-ink-strong">{finding.title}</p>
+          <p className="mt-1 text-xs text-ink">{finding.description}</p>
         </div>
 
         <TextField
@@ -332,7 +332,7 @@ function AcceptDialog({
         />
 
         {/* The two properties that make accepting safe to offer at all. */}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           It stays on this page under accepted risks, and it comes back on its own if the
           scan ever finds it worse than it is now.
         </p>
@@ -369,17 +369,17 @@ function AcceptedRisks({ overview }: { overview: SecurityOverview }) {
         title="Accepted risks"
         description="Known, deliberate, and still true."
       />
-      <ul className="divide-y divide-slate-100">
+      <ul className="divide-y divide-line">
         {accepted.map((finding) => (
           <li key={finding.id} className="flex items-start gap-4 px-5 py-4">
             <SeverityBadge severity={finding.severity} />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-slate-900">{finding.title}</p>
-              <p className="mt-1 text-xs text-slate-600">
+              <p className="text-sm font-medium text-ink-strong">{finding.title}</p>
+              <p className="mt-1 text-xs text-ink">
                 <span className="font-medium">Accepted: </span>
                 {finding.accepted_reason ?? 'no reason was recorded'}
               </p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-ink-dim">
                 {finding.accepted_at ? formatWhen(finding.accepted_at) : ''}
               </p>
             </div>
@@ -397,7 +397,7 @@ function AcceptedRisks({ overview }: { overview: SecurityOverview }) {
         ))}
       </ul>
       <CardBody>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           Accepted risks are never hidden. A score carried by accepted risk is a different
           thing from a clean one.
         </p>
@@ -411,8 +411,8 @@ function SeverityBadge({ severity }: { severity: FindingSeverity }) {
     critical: 'bg-danger-100 text-danger-800',
     high: 'bg-warn-100 text-warn-800',
     medium: 'bg-info-100 text-info-800',
-    low: 'bg-slate-100 text-slate-700',
-    info: 'bg-slate-100 text-slate-500',
+    low: 'bg-surface-sunken text-ink',
+    info: 'bg-surface-sunken text-ink-muted',
   };
   return (
     <span

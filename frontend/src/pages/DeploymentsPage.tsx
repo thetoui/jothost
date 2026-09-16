@@ -53,8 +53,8 @@ export function DeploymentsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Deployments</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Deployments</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Where each website&rsquo;s code comes from, and what happened last time it was
           deployed.
         </p>
@@ -96,7 +96,7 @@ export function DeploymentsPage() {
             />
           </CardBody>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-line">
             {repositories.map((repository) => (
               <RepositoryRow key={repository.id} repository={repository} />
             ))}
@@ -126,9 +126,9 @@ function RepositoryRow({ repository }: { repository: GitRepository }) {
     <li className="px-5 py-4">
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-900">
+          <p className="text-sm font-medium text-ink-strong">
             {repository.website}
-            <span className="ml-2 font-normal text-slate-500">
+            <span className="ml-2 font-normal text-ink-muted">
               {repository.branch}
             </span>
             {repository.auto_deploy && (
@@ -137,10 +137,10 @@ function RepositoryRow({ repository }: { repository: GitRepository }) {
               </span>
             )}
           </p>
-          <p className="mt-0.5 truncate text-xs text-slate-500">{repository.remote_url}</p>
+          <p className="mt-0.5 truncate text-xs text-ink-muted">{repository.remote_url}</p>
 
           {repository.current_commit && (
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-ink-muted">
               Running {repository.current_commit.slice(0, 8)}
               {status?.message ? ` · ${status.message}` : ''}
             </p>
@@ -231,14 +231,14 @@ function RepositoryDetail({ repository }: { repository: GitRepository }) {
     <div className="mt-4 space-y-4 rounded-md bg-surface-muted p-4">
       {repository.deploy_key_public && (
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
             Deploy key
           </h3>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-ink-muted">
             Add this to the repository&rsquo;s deploy keys. The private half is on the
             host and is not stored in this panel.
           </p>
-          <pre className="mt-1.5 overflow-x-auto rounded bg-white p-2 text-[11px] text-slate-700">
+          <pre className="mt-1.5 overflow-x-auto rounded bg-console p-2 text-[11px] text-ink">
             {repository.deploy_key_public}
           </pre>
         </div>
@@ -246,34 +246,34 @@ function RepositoryDetail({ repository }: { repository: GitRepository }) {
 
       {repository.webhook_url && (
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
             Webhook
           </h3>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-ink-muted">
             This URL is an address, not a secret. What authenticates a push is the
             signature, computed with the secret you set on both sides.
           </p>
-          <pre className="mt-1.5 overflow-x-auto rounded bg-white p-2 text-[11px] text-slate-700">
+          <pre className="mt-1.5 overflow-x-auto rounded bg-console p-2 text-[11px] text-ink">
             {repository.webhook_url}
           </pre>
         </div>
       )}
 
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
           Steps
         </h3>
         {(repository.actions ?? []).length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-ink-muted">
             None. A deployment checks the code out and does nothing else.
           </p>
         ) : (
-          <ol className="mt-1.5 space-y-1 text-sm text-slate-700">
+          <ol className="mt-1.5 space-y-1 text-sm text-ink">
             {(repository.actions ?? []).map((action, index) => (
               <li key={action.id}>
                 {index + 1}. {describeAction(action.kind)}
                 {!action.enabled && (
-                  <span className="ml-2 text-xs text-slate-500">· skipped</span>
+                  <span className="ml-2 text-xs text-ink-muted">· skipped</span>
                 )}
               </li>
             ))}
@@ -282,23 +282,23 @@ function RepositoryDetail({ repository }: { repository: GitRepository }) {
       </div>
 
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
           Recent deployments
         </h3>
         {(repository.recent ?? []).length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">Nothing has been deployed yet.</p>
+          <p className="mt-1 text-xs text-ink-muted">Nothing has been deployed yet.</p>
         ) : (
           <ul className="mt-1.5 space-y-2">
             {(repository.recent ?? []).map((deployment) => (
               <li key={deployment.id} className="text-sm">
                 <div className="flex items-center gap-2">
                   <DeploymentIcon status={deployment.status} />
-                  <span className="min-w-0 flex-1 truncate text-slate-900">
+                  <span className="min-w-0 flex-1 truncate text-ink-strong">
                     {deployment.commit_sha
                       ? `${deployment.commit_sha.slice(0, 8)} ${deployment.commit_message}`
                       : deployment.status}
                   </span>
-                  <span className="shrink-0 text-xs text-slate-500">
+                  <span className="shrink-0 text-xs text-ink-muted">
                     {deployment.trigger}
                   </span>
                   <RequirePermission permission={Permission.DeployManage}>
@@ -356,20 +356,20 @@ function DeploymentIcon({ status }: { status: Deployment['status'] }) {
   if (status === 'failed' || status === 'cancelled') {
     return <XCircle aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-danger-600" />;
   }
-  return <Play aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />;
+  return <Play aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink-dim" />;
 }
 
 function DeploymentLog({ id }: { id: string }) {
   const { data, isPending } = useDeploymentLog(id);
 
   if (isPending) {
-    return <p className="ml-6 mt-1 text-xs text-slate-500">Reading the log&hellip;</p>;
+    return <p className="ml-6 mt-1 text-xs text-ink-muted">Reading the log&hellip;</p>;
   }
   if (!data?.log) {
-    return <p className="ml-6 mt-1 text-xs text-slate-500">This deployment printed nothing.</p>;
+    return <p className="ml-6 mt-1 text-xs text-ink-muted">This deployment printed nothing.</p>;
   }
   return (
-    <pre className="ml-6 mt-1 max-h-80 overflow-auto rounded bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
+    <pre className="ml-6 mt-1 max-h-80 overflow-auto rounded bg-console p-3 text-[11px] leading-relaxed text-console">
       {data.truncated && '[earlier output was dropped]\n'}
       {data.log}
     </pre>

@@ -60,8 +60,8 @@ export function SSHPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">SSH</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">SSH</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           How this host accepts remote logins, and who may make them.
         </p>
       </header>
@@ -149,7 +149,7 @@ function Findings({ findings }: { findings: SSHFinding[] }) {
                   ? 'mt-0.5 text-danger-500'
                   : finding.severity === 'warn'
                     ? 'mt-0.5 text-warn-500'
-                    : 'mt-0.5 text-slate-400'
+                    : 'mt-0.5 text-ink-dim'
               }
             >
               {finding.severity === 'info' ? (
@@ -159,9 +159,9 @@ function Findings({ findings }: { findings: SSHFinding[] }) {
               )}
             </span>
             <div className="min-w-0">
-              <p className="font-medium text-slate-900">{finding.title}</p>
-              <p className="mt-0.5 text-sm text-slate-600">{finding.detail}</p>
-              <p className="mt-1 text-sm text-slate-500">{finding.action}</p>
+              <p className="font-medium text-ink-strong">{finding.title}</p>
+              <p className="mt-0.5 text-sm text-ink">{finding.detail}</p>
+              <p className="mt-1 text-sm text-ink-muted">{finding.action}</p>
             </div>
           </div>
         ))}
@@ -331,7 +331,7 @@ function Keys({
         )}
 
         {accounts.length === 0 ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             No account on this host can log in over SSH.
           </p>
         ) : (
@@ -352,7 +352,7 @@ function Keys({
             {isPending ? (
               <SkeletonRows rows={2} />
             ) : keys.length === 0 ? (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-ink-muted">
                 This account has no authorised keys, so it can only be logged into with
                 a password.
               </p>
@@ -360,15 +360,15 @@ function Keys({
               <ul className="divide-y divide-surface-border rounded-md border border-surface-border">
                 {keys.map((key) => (
                   <li key={key.fingerprint} className="flex items-center gap-3 px-4 py-3">
-                    <UserCog aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-400" />
+                    <UserCog aria-hidden="true" className="h-4 w-4 shrink-0 text-ink-dim" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-slate-900">
+                      <p className="truncate font-medium text-ink-strong">
                         {key.comment || 'No comment'}
                       </p>
-                      <p className="truncate font-mono text-xs text-slate-500">
+                      <p className="truncate font-mono text-xs text-ink-muted">
                         {key.fingerprint}
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-ink-dim">
                         {key.type}
                         {key.bits > 0 && <> · {key.bits} bits</>}
                       </p>

@@ -64,8 +64,8 @@ export function ServerPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Server</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <h1 className="text-xl font-semibold text-ink-strong">Server</h1>
+        <p className="mt-1 text-sm text-ink">
           What this machine is, what it is using, and what is running on it.
         </p>
       </header>
@@ -146,7 +146,7 @@ export function ServerPage() {
                 <Fact label="Uptime" value={formatUptime(system.uptime_seconds)} />
               </dl>
             ) : (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-ink-muted">
                 The host did not report its system information.
               </p>
             )}
@@ -170,14 +170,14 @@ function Resource({
 }) {
   return (
     <div className="rounded-md border border-surface-border bg-surface-muted p-3">
-      <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">
-        <span aria-hidden="true" className="text-slate-400">
+      <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted">
+        <span aria-hidden="true" className="text-ink-dim">
           {icon}
         </span>
         {label}
       </p>
-      <p className="mt-1 text-xl font-semibold text-slate-900">{value}</p>
-      {detail && <p className="mt-0.5 truncate text-xs text-slate-500">{detail}</p>}
+      <p className="mt-1 text-xl font-semibold text-ink-strong">{value}</p>
+      {detail && <p className="mt-0.5 truncate text-xs text-ink-muted">{detail}</p>}
     </div>
   );
 }
@@ -185,8 +185,8 @@ function Resource({
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="shrink-0 text-slate-500">{label}</dt>
-      <dd className="min-w-0 truncate text-right font-medium text-slate-800">{value}</dd>
+      <dt className="shrink-0 text-ink-muted">{label}</dt>
+      <dd className="min-w-0 truncate text-right font-medium text-ink-strong">{value}</dd>
     </div>
   );
 }
@@ -248,7 +248,7 @@ function ProcessTable({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[44rem] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-surface-border text-left text-xs uppercase tracking-wide text-ink-muted">
                 <th scope="col" className="px-5 py-2 font-medium">
                   Process
                 </th>
@@ -282,28 +282,28 @@ function ProcessRow({ process }: { process: HostProcess }) {
   return (
     <tr className="border-b border-surface-border last:border-0">
       <td className="max-w-0 px-5 py-2">
-        <p className="truncate font-medium text-slate-800">{process.name}</p>
+        <p className="truncate font-medium text-ink-strong">{process.name}</p>
         {/* The command line is host data returned verbatim. React escapes it,
             and it is truncated rather than wrapped: a process started with a
             very long argument list would otherwise push the table's own
             columns off the screen. */}
-        <p className="truncate font-mono text-xs text-slate-400" title={process.command}>
+        <p className="truncate font-mono text-xs text-ink-dim" title={process.command}>
           {process.command}
         </p>
       </td>
-      <td className="whitespace-nowrap px-3 py-2 text-slate-600">{process.user}</td>
-      <td className="whitespace-nowrap px-3 py-2 text-right text-slate-700">
+      <td className="whitespace-nowrap px-3 py-2 text-ink">{process.user}</td>
+      <td className="whitespace-nowrap px-3 py-2 text-right text-ink">
         {formatBytes(process.memory_rss_bytes)}
-        <span className="ml-1.5 text-xs text-slate-400">
+        <span className="ml-1.5 text-xs text-ink-dim">
           {formatPercent(process.memory_percent)}
         </span>
       </td>
       {/* Cumulative, not a rate, and labelled that way in the header. Showing
           it as a percentage would be inventing a second sample. */}
-      <td className="whitespace-nowrap px-3 py-2 text-right text-slate-600">
+      <td className="whitespace-nowrap px-3 py-2 text-right text-ink">
         {formatDuration(process.cpu_time_seconds)}
       </td>
-      <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-xs text-slate-500">
+      <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-xs text-ink-muted">
         {process.pid}
       </td>
     </tr>

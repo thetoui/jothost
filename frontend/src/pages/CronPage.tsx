@@ -92,8 +92,8 @@ export function CronPage() {
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Scheduled jobs</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-ink-strong">Scheduled jobs</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             Work the host runs on a schedule, as the website&rsquo;s own account.
           </p>
         </div>
@@ -245,25 +245,25 @@ function JobRow({
   return (
     <div className="px-5 py-3.5">
       <div className="flex flex-wrap items-start gap-3">
-        <span className="mt-0.5 text-slate-400">{icon}</span>
+        <span className="mt-0.5 text-ink-dim">{icon}</span>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-slate-900">{job.name}</span>
+            <span className="font-medium text-ink-strong">{job.name}</span>
             <StatusPill label={outcome.label} tone={outcome.tone} dot />
             {!job.enabled && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+              <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink">
                 Disabled
               </span>
             )}
           </div>
 
-          <p className="mt-0.5 font-mono text-xs text-slate-600">{job.command}</p>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <p className="mt-0.5 font-mono text-xs text-ink">{job.command}</p>
+          <p className="mt-0.5 text-xs text-ink-dim">
             {job.schedule} · {job.website_domain}
             {job.system_user && <> · runs as {job.system_user}</>}
           </p>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <p className="mt-0.5 text-xs text-ink-dim">
             {job.enabled && job.next_run_at ? (
               <>Next run {formatWhen(job.next_run_at)}</>
             ) : job.enabled ? (

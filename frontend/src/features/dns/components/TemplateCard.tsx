@@ -68,7 +68,7 @@ export function TemplateCard() {
         {isPending ? (
           <SkeletonRows rows={2} />
         ) : templates.length === 0 ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink">
             None. New zones will be created empty &mdash; the delegation and the SOA record, and
             nothing pointing anywhere.
           </p>
@@ -126,7 +126,7 @@ function TemplateRow({
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
       <div className="min-w-0">
-        <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
+        <p className="flex items-center gap-2 text-sm font-medium text-ink-strong">
           <span className="truncate">{template.name}</span>
           {template.is_default && (
             <span className="rounded bg-brand-50 px-1.5 py-0.5 text-xs font-normal text-brand-700">
@@ -134,17 +134,17 @@ function TemplateRow({
             </span>
           )}
           {template.builtin && (
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600">
+            <span className="rounded bg-surface-sunken px-1.5 py-0.5 text-xs font-normal text-ink">
               Built in
             </span>
           )}
         </p>
-        <p className="mt-0.5 text-xs text-slate-500">
+        <p className="mt-0.5 text-xs text-ink-muted">
           {records.length} {records.length === 1 ? 'record' : 'records'}
           {template.description ? ` · ${template.description}` : ''}
         </p>
         {records.length > 0 && (
-          <p className="mt-1 truncate font-mono text-xs text-slate-400">
+          <p className="mt-1 truncate font-mono text-xs text-ink-dim">
             {records
               .slice(0, 4)
               .map((record) => `${record.name} ${record.type}`)
@@ -280,7 +280,7 @@ function TemplateDialog({
         />
 
         {placeholders.length > 0 && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             {/* Listed from the API rather than written here: a form offering a
                 placeholder the panel cannot fill produces a zone containing
                 that literal text, weeks later and in every new domain. */}
@@ -288,7 +288,7 @@ function TemplateDialog({
             {placeholders.map((placeholder, index) => (
               <span key={placeholder.token}>
                 {index > 0 ? ', ' : ''}
-                <code className="font-mono text-slate-700">{placeholder.token}</code> for{' '}
+                <code className="font-mono text-ink">{placeholder.token}</code> for{' '}
                 {placeholder.means}
               </span>
             ))}
@@ -393,7 +393,7 @@ function TemplateDialog({
           </Button>
 
           {records.length === 0 && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-muted">
               With no records, a zone created from this template gets its delegation and its SOA
               and nothing else.
             </p>

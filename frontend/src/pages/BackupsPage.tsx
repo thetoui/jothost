@@ -69,8 +69,8 @@ export function BackupsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Backups</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Backups</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           What has been copied off this host, where it went, and whether the panel has read it
           back.
         </p>
@@ -134,7 +134,7 @@ function Capabilities({ overview }: { overview: BackupOverview }) {
 
         {/* Named rather than hidden: a destination kind that cannot work has to
             be visible before somebody configures one and finds out at 3am. */}
-        <p className="mt-4 text-xs text-slate-500">
+        <p className="mt-4 text-xs text-ink-muted">
           Destinations available here: local disk
           {capabilities.s3 ? ', S3-compatible storage' : ''}
           {capabilities.sftp ? ', SFTP' : ' (no sftp client is installed, so SFTP is unavailable)'}.
@@ -150,8 +150,8 @@ function Capabilities({ overview }: { overview: BackupOverview }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="mt-1 text-lg font-semibold text-slate-900">{value}</dd>
+      <dt className="text-xs uppercase tracking-wide text-ink-muted">{label}</dt>
+      <dd className="mt-1 text-lg font-semibold text-ink-strong">{value}</dd>
     </div>
   );
 }
@@ -194,12 +194,12 @@ function Destinations({ overview }: { overview: BackupOverview }) {
           />
         </CardBody>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {destinations.map((destination) => (
             <li key={destination.id} className="flex items-start gap-4 px-5 py-4">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900">{destination.name}</p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="text-sm font-medium text-ink-strong">{destination.name}</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
                   {describeDestination(destination)}
                 </p>
                 <p className="mt-1 text-xs">{describeCheck(destination)}</p>
@@ -230,7 +230,7 @@ function Destinations({ overview }: { overview: BackupOverview }) {
       <CardBody>
         {/* A destination that has never been reached is the most dangerous
             object on this page: it looks like protection and is not. */}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           Checking writes a small file and reads it back, so a destination that cannot work says
           so now rather than at the first scheduled backup.
         </p>
@@ -543,13 +543,13 @@ function Schedules({ overview }: { overview: BackupOverview }) {
           />
         </CardBody>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {schedules.map((schedule) => (
             <li key={schedule.id} className="flex items-start gap-4 px-5 py-4">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900">{schedule.name}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{describeSchedule(schedule)}</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="text-sm font-medium text-ink-strong">{schedule.name}</p>
+                <p className="mt-0.5 text-xs text-ink-muted">{describeSchedule(schedule)}</p>
+                <p className="mt-1 text-xs text-ink-muted">
                   {schedule.last_run_at
                     ? `Last run ${formatWhen(schedule.last_run_at)} — ${
                         schedule.last_status ?? 'unknown'
@@ -866,21 +866,21 @@ function Backups({ overview }: { overview: BackupOverview }) {
           />
         </CardBody>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-line">
           {backups.map((backup) => (
             <li key={backup.id} className="flex items-start gap-4 px-5 py-4">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900">
+                <p className="text-sm font-medium text-ink-strong">
                   {backup.subject}{' '}
-                  <span className="font-normal text-slate-500">({backup.type})</span>
+                  <span className="font-normal text-ink-muted">({backup.type})</span>
                 </p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-ink-muted">
                   {formatWhen(backup.created_at)} to {backup.destination}
                   {backup.size_bytes !== null ? ` — ${formatBytes(backup.size_bytes)}` : ''}
                 </p>
                 <p className="mt-1 text-xs">{describeBackup(backup)}</p>
                 {isPanelBackup(backup) && (
-                  <p className="mt-1 text-xs text-slate-500">{PANEL_RESTORE_HINT}</p>
+                  <p className="mt-1 text-xs text-ink-muted">{PANEL_RESTORE_HINT}</p>
                 )}
               </div>
               <RequirePermission
@@ -923,7 +923,7 @@ function Backups({ overview }: { overview: BackupOverview }) {
 
       <CardBody>
         {/* The rule the page exists to make visible. */}
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           Only a backup the panel has read back and confirmed can be restored. An archive that
           was written and could not be checked is listed as failed, because there is no basis
           for saying it would work.
@@ -979,7 +979,7 @@ function Backups({ overview }: { overview: BackupOverview }) {
 
 function describeBackup(backup: Backup): JSX.Element {
   if (backup.status === 'pending' || backup.status === 'running') {
-    return <span className="text-slate-500">Running…</span>;
+    return <span className="text-ink-muted">Running…</span>;
   }
   if (backup.status === 'failed') {
     return (

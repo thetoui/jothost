@@ -200,8 +200,8 @@ export function FilesPage() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Files</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-ink-strong">Files</h1>
+          <p className="text-sm text-ink-muted">
             Browse and manage the files under {ROOT}.
           </p>
         </div>
@@ -251,7 +251,7 @@ export function FilesPage() {
               {crumbs.map((crumb, index) => (
                 <span key={crumb.path} className="flex items-center gap-1">
                   {index > 0 && (
-                    <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-slate-300" />
+                    <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-ink-dim" />
                   )}
                   <button
                     type="button"
@@ -259,8 +259,8 @@ export function FilesPage() {
                     aria-current={index === crumbs.length - 1 ? 'page' : undefined}
                     className={`rounded-sm underline-offset-2 ${focusRingTight} ${
                       index === crumbs.length - 1
-                        ? 'font-medium text-slate-900'
-                        : 'text-slate-500 hover:text-brand-700 hover:underline'
+                        ? 'font-medium text-ink-strong'
+                        : 'text-ink-muted hover:text-brand-700 hover:underline'
                     }`}
                   >
                     {crumb.name}
@@ -298,7 +298,7 @@ export function FilesPage() {
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Part of a file name"
-                adornment={<Search aria-hidden="true" className="h-4 w-4 text-slate-400" />}
+                adornment={<Search aria-hidden="true" className="h-4 w-4 text-ink-dim" />}
               />
             </div>
             <Button type="submit" disabled={searchTerm.trim() === ''}>
@@ -363,7 +363,7 @@ export function FilesPage() {
               />
 
               {listing.data && listing.data.total > PAGE_SIZE && (
-                <div className="flex items-center justify-between border-t border-surface-border pt-3 text-sm text-slate-600">
+                <div className="flex items-center justify-between border-t border-surface-border pt-3 text-sm text-ink">
                   <span>
                     {offset + 1}–{offset + entries.length} of {listing.data.total}
                   </span>
@@ -456,7 +456,7 @@ function RowDeleteDialog({ entry, onClose, onError }: RowDeleteDialogProps) {
         );
       }}
     >
-      <p className="mt-2 font-mono text-xs text-slate-600">{entry?.path}</p>
+      <p className="mt-2 font-mono text-xs text-ink">{entry?.path}</p>
     </ConfirmDialog>
   );
 }
@@ -590,7 +590,7 @@ function FileToolbar({ path, selected, onError, onDone }: FileToolbarProps) {
         </Button>
 
         {selected.length > 0 && (
-          <span className="ml-auto text-xs text-slate-500">{selected.length} selected</span>
+          <span className="ml-auto text-xs text-ink-muted">{selected.length} selected</span>
         )}
       </div>
 
@@ -628,7 +628,7 @@ function FileToolbar({ path, selected, onError, onDone }: FileToolbarProps) {
           );
         }}
       >
-        <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm text-slate-600">
+        <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-sm text-ink">
           {selected.map((entry) => (
             <li key={entry.path} className="font-mono text-xs">
               {entry.path}
@@ -677,12 +677,12 @@ function SearchResults({ loading, error, result, onOpen }: SearchResultsProps) {
             <button
               type="button"
               onClick={() => onOpen(match.entry)}
-              className={`rounded-sm text-left text-sm font-medium text-slate-800 underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
+              className={`rounded-sm text-left text-sm font-medium text-ink-strong underline-offset-2 hover:text-brand-700 hover:underline ${focusRingTight}`}
             >
               {match.entry.path}
             </button>
             {match.line && (
-              <p className="mt-0.5 truncate font-mono text-xs text-slate-500">
+              <p className="mt-0.5 truncate font-mono text-xs text-ink-muted">
                 {match.line_number}: {match.line}
               </p>
             )}

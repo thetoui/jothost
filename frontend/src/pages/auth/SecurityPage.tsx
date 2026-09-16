@@ -30,8 +30,8 @@ export function SecurityPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Account security</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <h1 className="text-xl font-semibold text-ink-strong">Account security</h1>
+        <p className="mt-1 text-sm text-ink">
           Protect your panel account with a second factor.
         </p>
       </div>
@@ -41,7 +41,7 @@ export function SecurityPage() {
         className="rounded-lg border border-surface-border bg-surface p-5"
       >
         <div className="flex items-center justify-between">
-          <h2 id="two-factor-heading" className="text-sm font-semibold text-slate-900">
+          <h2 id="two-factor-heading" className="text-sm font-semibold text-ink-strong">
             Two-factor authentication
           </h2>
           {isPending ? (
@@ -86,7 +86,7 @@ function EnableTwoFactor({ onEnabled }: { onEnabled: (codes: string[]) => void }
   if (!setup.data) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-ink">
           An authenticator app generates a 6-digit code that changes every 30 seconds.
         </p>
         {setup.isError && (
@@ -108,13 +108,13 @@ function EnableTwoFactor({ onEnabled }: { onEnabled: (codes: string[]) => void }
 
   return (
     <form onSubmit={handleEnable} className="space-y-4">
-      <ol className="list-decimal space-y-3 pl-5 text-sm text-slate-600">
+      <ol className="list-decimal space-y-3 pl-5 text-sm text-ink">
         <li>Open your authenticator app and add a new account.</li>
         <li>
           Enter this setup key:
           {/* The secret is shown once, here, and is never logged or stored by
               the client. */}
-          <code className="mt-1 block break-all rounded bg-surface-muted px-3 py-2 font-mono text-xs text-slate-900">
+          <code className="mt-1 block break-all rounded bg-surface-muted px-3 py-2 font-mono text-xs text-ink-strong">
             {setup.data.secret}
           </code>
         </li>
@@ -122,7 +122,7 @@ function EnableTwoFactor({ onEnabled }: { onEnabled: (codes: string[]) => void }
       </ol>
 
       <div className="space-y-1">
-        <label htmlFor="totp-code" className="block text-xs font-medium text-slate-700">
+        <label htmlFor="totp-code" className="block text-xs font-medium text-ink">
           Verification code
         </label>
         <input
@@ -181,8 +181,8 @@ function RecoveryCodesSection({
   return (
     <form onSubmit={handleRegenerate} className="space-y-4">
       <div>
-        <h3 className="text-sm font-medium text-slate-900">Recovery codes</h3>
-        <p className={`mt-1 text-sm ${low ? 'text-danger-700' : 'text-slate-600'}`}>
+        <h3 className="text-sm font-medium text-ink-strong">Recovery codes</h3>
+        <p className={`mt-1 text-sm ${low ? 'text-danger-700' : 'text-ink'}`}>
           {remaining === 1 ? '1 unused code left.' : `${remaining} unused codes left.`}{' '}
           {low
             ? 'Replace them before you run out, or a lost authenticator will lock you out.'
@@ -191,7 +191,7 @@ function RecoveryCodesSection({
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="recovery-password" className="block text-xs font-medium text-slate-700">
+        <label htmlFor="recovery-password" className="block text-xs font-medium text-ink">
           Password to replace them
         </label>
         <input
@@ -234,13 +234,13 @@ function DisableTwoFactor() {
 
   return (
     <form onSubmit={handleDisable} className="space-y-4">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink">
         Two-factor authentication is protecting this account. Confirm your password to turn it
         off.
       </p>
 
       <div className="space-y-1">
-        <label htmlFor="confirm-password" className="block text-xs font-medium text-slate-700">
+        <label htmlFor="confirm-password" className="block text-xs font-medium text-ink">
           Current password
         </label>
         <input

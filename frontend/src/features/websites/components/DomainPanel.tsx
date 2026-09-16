@@ -196,7 +196,7 @@ export function DomainPanel({ site }: DomainPanelProps) {
       {/* The footer strip Plesk puts under a domain: where the site actually
           lives, and who owns it. It answers "what is the path for this domain"
           without making anyone open a settings page. */}
-      <dl className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-surface-border pt-3 text-xs text-slate-500">
+      <dl className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-surface-border pt-3 text-xs text-ink-muted">
         <div className="flex gap-1.5">
           <dt>Website at</dt>
           <dd className="flex items-center gap-1.5">
@@ -215,11 +215,11 @@ export function DomainPanel({ site }: DomainPanelProps) {
         </div>
         <div className="flex gap-1.5">
           <dt>System user</dt>
-          <dd className="font-mono text-slate-700">{site.system_user}</dd>
+          <dd className="font-mono text-ink">{site.system_user}</dd>
         </div>
         <div className="flex gap-1.5">
           <dt>Logs at</dt>
-          <dd className="font-mono text-slate-700">{logsDirFor(site.primary_domain)}</dd>
+          <dd className="font-mono text-ink">{logsDirFor(site.primary_domain)}</dd>
         </div>
       </dl>
 
@@ -239,7 +239,7 @@ function DomainSummary({ site }: { site: Website }) {
     <div className="space-y-3">
       <div className="rounded-card border border-surface-border bg-surface p-3">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold text-slate-900">At a glance</h4>
+          <h4 className="text-sm font-semibold text-ink-strong">At a glance</h4>
           <TextLink href={`http://${site.primary_domain}`} size="xs" className="inline-flex items-center gap-1">
             Open in web
             <ExternalLink aria-hidden="true" className="h-3 w-3" />
@@ -268,8 +268,8 @@ function DomainSummary({ site }: { site: Website }) {
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="truncate font-medium text-slate-800">{value}</dd>
+      <dt className="text-ink-muted">{label}</dt>
+      <dd className="truncate font-medium text-ink-strong">{value}</dd>
     </div>
   );
 }
@@ -293,7 +293,7 @@ function HostingFacts({ site }: { site: Website }) {
         <Fact label="Status" value={site.status} />
       </dl>
 
-      <p className="flex items-center gap-1.5 rounded-md bg-surface-sunken px-3 py-2 text-xs text-slate-500">
+      <p className="flex items-center gap-1.5 rounded-md bg-surface-sunken px-3 py-2 text-xs text-ink-muted">
         <FileText aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
         DNS records for this site are managed from its settings page, and the host's zones
         under DNS.
@@ -305,8 +305,8 @@ function HostingFacts({ site }: { site: Website }) {
 function Fact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className={['truncate text-slate-800', mono ? 'font-mono text-xs' : ''].join(' ')}>
+      <dt className="text-xs text-ink-muted">{label}</dt>
+      <dd className={['truncate text-ink-strong', mono ? 'font-mono text-xs' : ''].join(' ')}>
         {value}
       </dd>
     </div>
@@ -382,11 +382,11 @@ function DocumentRootDialog({
           // adornment, not prefix: "prefix" is a real HTML attribute, so
           // TypeScript accepts it, React passes it to the input, and it
           // renders nothing at all.
-          adornment={<span className="font-mono text-xs text-slate-500">{base}/</span>}
+          adornment={<span className="font-mono text-xs text-ink-muted">{base}/</span>}
           hint="A path inside the site, such as public or public/dist. Leave it empty to serve the site's own directory. It is created if it does not exist yet."
         />
 
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-ink-muted">
           The site&rsquo;s logs stay where they are, beside the site rather than inside what is
           served — an access log under the document root would be a file anybody could fetch.
         </p>

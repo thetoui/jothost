@@ -35,8 +35,8 @@ export function CardHeader({ title, description, action, icon }: CardHeaderProps
       <div className="flex min-w-0 items-start gap-3">
         {icon}
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold text-slate-900">{title}</h2>
-          {description && <p className="mt-0.5 text-xs text-slate-500">{description}</p>}
+          <h2 className="truncate text-sm font-semibold text-ink-strong">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-ink-muted">{description}</p>}
         </div>
       </div>
       {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
@@ -70,7 +70,7 @@ const tintClasses: Record<NonNullable<TintedIconProps['tone']>, string> = {
   ok: 'bg-ok-50 text-ok-600',
   warn: 'bg-warn-50 text-warn-600',
   danger: 'bg-danger-50 text-danger-600',
-  neutral: 'bg-surface-sunken text-slate-500',
+  neutral: 'bg-surface-sunken text-ink-muted',
 };
 
 /** TintedIcon is the small coloured square that fronts a card or list row. */

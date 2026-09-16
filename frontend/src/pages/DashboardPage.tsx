@@ -28,15 +28,18 @@ const RANGES: MetricRange[] = ['1h', '24h', '7d', '30d'];
 
 // Chart colours are fixed hex values rather than Tailwind classes because they
 // are passed to SVG stroke attributes, which do not read class names.
+// Series colours track the dark redesign's accent set (green/violet/amber for
+// resources, green/sky for network) rather than the old light-theme blues, so
+// the charts read as part of the same palette as everything around them.
 const RESOURCE_SERIES: ChartSeries[] = [
-  { label: 'CPU', color: '#3b6ef6', value: (p: MetricPoint) => p.cpu_percent },
-  { label: 'Memory', color: '#8b5cf6', value: (p: MetricPoint) => p.memory_percent },
-  { label: 'Disk', color: '#f59e0b', value: (p: MetricPoint) => p.disk_percent },
+  { label: 'CPU', color: '#34d399', value: (p: MetricPoint) => p.cpu_percent },
+  { label: 'Memory', color: '#a78bfa', value: (p: MetricPoint) => p.memory_percent },
+  { label: 'Disk', color: '#fbbf24', value: (p: MetricPoint) => p.disk_percent },
 ];
 
 const NETWORK_SERIES: ChartSeries[] = [
-  { label: 'Received', color: '#10b981', value: (p: MetricPoint) => p.network_rx_per_second },
-  { label: 'Sent', color: '#3b6ef6', value: (p: MetricPoint) => p.network_tx_per_second },
+  { label: 'Received', color: '#34d399', value: (p: MetricPoint) => p.network_rx_per_second },
+  { label: 'Sent', color: '#38bdf8', value: (p: MetricPoint) => p.network_tx_per_second },
 ];
 
 export function DashboardPage() {
@@ -51,7 +54,7 @@ export function DashboardPage() {
   if (isError || !snapshot) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
+        <h1 className="text-xl font-semibold text-ink-strong">Dashboard</h1>
         <Alert tone="danger" title="The dashboard could not be loaded">
           {errorMessage(error, 'Try again in a moment.')}
         </Alert>
@@ -62,11 +65,11 @@ export function DashboardPage() {
   const { server } = snapshot;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">{server.hostname}</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-ink-strong">{server.hostname}</h1>
+          <p className="mt-1 text-sm text-ink-muted">
             Updated {formatDateTime(snapshot.generated_at)}
           </p>
         </div>
@@ -150,7 +153,73 @@ export function DashboardPage() {
         {(alerts) => <AlertList alerts={alerts} />}
       </WidgetCard>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      {/* Trends come before the per-resource breakdown: on an operations
+          dashboard the shape of the last hour answers "is this normal?" faster
+          than any single current reading, so it earns the space above the fold
+          rather than the bottom of the page. */}
+      <section aria-labelledby="dash-trends" className="space-y-3">
+        <h2 id="dash-trends" className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-ink-dim">
+          Trends
+        </h2>
+        <WidgetCard
+          title="History"
+          widget={{ available: true, data: history.data?.points ?? [] }}
+          action={
+            <div className="flex gap-1" role="group" aria-label="History range">
+              {RANGES.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setRange(option)}
+                  aria-pressed={range === option}
+                  className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${focusRingTight} ${
+                    range === option
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-ink-muted hover:bg-surface-muted hover:text-ink-strong'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          {(points) => (
+            <div className="grid gap-6 xl:grid-cols-2">
+              <div>
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
+                  Resource usage
+                </h3>
+                <MetricChart
+                  points={points}
+                  series={RESOURCE_SERIES}
+                  max={100}
+                  formatValue={(value) => `${value.toFixed(0)}%`}
+                />
+              </div>
+
+              <div>
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
+                  Network throughput
+                </h3>
+                <MetricChart
+                  points={points}
+                  series={NETWORK_SERIES}
+                  formatValue={(value) => formatBytes(value, 0)}
+                />
+              </div>
+            </div>
+          )}
+        </WidgetCard>
+      </section>
+
+      {/* The per-resource detail, three across on wide screens so the compact
+          panels (Services, Server, Network) stop leaving half the row empty. */}
+      <section aria-labelledby="dash-resources" className="space-y-3">
+        <h2 id="dash-resources" className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-ink-dim">
+          Resources
+        </h2>
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <WidgetCard title="CPU" widget={snapshot.cpu}>
           {(cpu) => (
             <div className="space-y-4">
@@ -195,7 +264,7 @@ export function DashboardPage() {
           {(disk) => (
             <div className="space-y-4">
               {disk.filesystems.length === 0 ? (
-                <p className="text-sm text-slate-500">No filesystems reported.</p>
+                <p className="text-sm text-ink-muted">No filesystems reported.</p>
               ) : (
                 disk.filesystems.map((fs) => (
                   <UsageBar
@@ -214,13 +283,13 @@ export function DashboardPage() {
           {(network) => (
             <div className="space-y-3">
               {network.interfaces.length === 0 ? (
-                <p className="text-sm text-slate-500">No interfaces reported.</p>
+                <p className="text-sm text-ink-muted">No interfaces reported.</p>
               ) : (
                 <ul className="divide-y divide-surface-border">
                   {network.interfaces.map((iface) => (
                     <li key={iface.name} className="flex items-center justify-between py-2 text-sm">
-                      <span className="font-medium text-slate-800">{iface.name}</span>
-                      <span className="tabular-nums text-xs text-slate-600">
+                      <span className="font-medium text-ink-strong">{iface.name}</span>
+                      <span className="tabular-nums text-xs text-ink">
                         ↓ {formatBytesPerSecond(iface.rx_bytes_per_second)} · ↑{' '}
                         {formatBytesPerSecond(iface.tx_bytes_per_second)}
                       </span>
@@ -261,58 +330,8 @@ export function DashboardPage() {
             </dl>
           )}
         </WidgetCard>
-      </div>
-
-      <WidgetCard
-        title="History"
-        widget={{ available: true, data: history.data?.points ?? [] }}
-        action={
-          <div className="flex gap-1" role="group" aria-label="History range">
-            {RANGES.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setRange(option)}
-                aria-pressed={range === option}
-                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${focusRingTight} ${
-                  range === option
-                    ? 'bg-brand-50 text-brand-700'
-                    : 'text-slate-500 hover:bg-surface-muted hover:text-slate-800'
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        }
-      >
-        {(points) => (
-          <div className="space-y-6">
-            <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                Resource usage
-              </h3>
-              <MetricChart
-                points={points}
-                series={RESOURCE_SERIES}
-                max={100}
-                formatValue={(value) => `${value.toFixed(0)}%`}
-              />
-            </div>
-
-            <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                Network throughput
-              </h3>
-              <MetricChart
-                points={points}
-                series={NETWORK_SERIES}
-                formatValue={(value) => formatBytes(value, 0)}
-              />
-            </div>
-          </div>
-        )}
-      </WidgetCard>
+        </div>
+      </section>
     </div>
   );
 }
@@ -320,8 +339,8 @@ export function DashboardPage() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="font-medium uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="mt-0.5 text-slate-900">{value}</dd>
+      <dt className="font-medium uppercase tracking-wide text-ink-muted">{label}</dt>
+      <dd className="mt-0.5 text-ink-strong">{value}</dd>
     </div>
   );
 }

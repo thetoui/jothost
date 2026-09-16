@@ -47,10 +47,10 @@ export function ServicesPage() {
   const controllable = data?.controllable ?? false;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">Services</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">Services</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           The daemons this host runs, and whether they start at boot.
         </p>
       </header>
@@ -81,25 +81,31 @@ export function ServicesPage() {
           />
         </Card>
       ) : (
-        sections
-          .map((section) => ({
-            ...section,
-            entries: services.filter((service) => service.role === section.role),
-          }))
-          .filter((section) => section.entries.length > 0)
-          .map((section) => (
-            <Card key={section.role}>
-              <CardHeader
-                title={section.title}
-                icon={<TintedIcon tone="brand" icon={section.icon} />}
-              />
-              <CardBody className="divide-y divide-surface-border p-0">
-                {section.entries.map((service) => (
-                  <ServiceRow key={service.key} service={service} />
-                ))}
-              </CardBody>
-            </Card>
-          ))
+        // Two across on wide screens: a host runs several service roles and a
+        // single column left the right half of the page empty while pushing the
+        // lower roles below the fold. items-start so a role with one daemon does
+        // not stretch to match a taller neighbour.
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          {sections
+            .map((section) => ({
+              ...section,
+              entries: services.filter((service) => service.role === section.role),
+            }))
+            .filter((section) => section.entries.length > 0)
+            .map((section) => (
+              <Card key={section.role}>
+                <CardHeader
+                  title={section.title}
+                  icon={<TintedIcon tone="brand" icon={section.icon} />}
+                />
+                <CardBody className="divide-y divide-surface-border p-0">
+                  {section.entries.map((service) => (
+                    <ServiceRow key={service.key} service={service} />
+                  ))}
+                </CardBody>
+              </Card>
+            ))}
+        </div>
       )}
     </div>
   );
@@ -133,16 +139,16 @@ function ServiceRow({ service }: { service: HostService }) {
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-slate-900">{service.label}</span>
+            <span className="font-medium text-ink-strong">{service.label}</span>
             <StatusPill label={pill.label} tone={pill.tone} dot />
             {service.protected && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+              <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink">
                 Protected
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-sm text-slate-500">{service.summary}</p>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <p className="mt-0.5 text-sm text-ink-muted">{service.summary}</p>
+          <p className="mt-0.5 text-xs text-ink-dim">
             {service.unit || service.units[0]}
             {service.pid > 0 && <> · pid {service.pid}</>}
           </p>
@@ -151,7 +157,7 @@ function ServiceRow({ service }: { service: HostService }) {
         <RequirePermission permission={Permission.ServerManage}>
           <div className="flex shrink-0 items-center gap-2">
             {service.self_managed ? (
-              <p className="max-w-xs text-right text-xs text-slate-500">
+              <p className="max-w-xs text-right text-xs text-ink-muted">
                 Started and stopped by {service.self_managed_by || 'the panel'}, not from
                 here.
               </p>
@@ -159,7 +165,7 @@ function ServiceRow({ service }: { service: HostService }) {
               // Installed, and its state above is read from the process table,
               // but the init system has no service for it — so there is nothing
               // here to start, and a button would only fail.
-              <p className="max-w-xs text-right text-xs text-slate-500">
+              <p className="max-w-xs text-right text-xs text-ink-muted">
                 This host&rsquo;s init system does not know about it, so it cannot be
                 started or stopped here.
               </p>
@@ -213,7 +219,7 @@ function ServiceRow({ service }: { service: HostService }) {
               onChange={(checked) => run(checked ? 'enable' : 'disable')}
             />
             {service.enabled === null && service.controllable && (
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-ink-muted">
                 This host cannot say whether it starts at boot.
               </p>
             )}

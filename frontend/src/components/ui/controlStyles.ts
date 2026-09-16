@@ -27,11 +27,13 @@ export type ControlSize = 'sm' | 'md';
 export type ControlTone = 'brand' | 'danger' | 'neutral';
 
 const variantClasses: Record<ControlVariant, string> = {
+  // On the inverted dark ramp the vivid hue lives at 500; 600+ are light text
+  // shades. Dark ink on green reads better than white and clears 4.5:1.
   primary:
-    'bg-brand-600 text-white shadow-card hover:bg-brand-700 active:bg-brand-800 disabled:hover:bg-brand-600',
+    'bg-brand-500 text-[#04140a] shadow-card hover:bg-brand-400 active:bg-brand-300 disabled:hover:bg-brand-500',
   secondary:
-    'border border-surface-border bg-surface text-slate-700 shadow-card hover:bg-surface-muted hover:text-slate-900 disabled:hover:bg-surface',
-  ghost: 'text-slate-600 hover:bg-surface-sunken hover:text-slate-900',
+    'border border-surface-border bg-surface text-ink shadow-card hover:bg-surface-muted hover:text-ink-strong disabled:hover:bg-surface',
+  ghost: 'text-ink hover:bg-surface-sunken hover:text-ink-strong',
   // `danger` is the outlined form: an action that is destructive but sits
   // among ordinary ones, so it must not shout from a toolbar.
   danger:
@@ -42,7 +44,7 @@ const variantClasses: Record<ControlVariant, string> = {
   // which is what ConfirmDialog did and what made a red primary button and a
   // red danger button two different reds.
   destructive:
-    'bg-danger-600 text-white shadow-card hover:bg-danger-700 active:bg-danger-800 disabled:hover:bg-danger-600',
+    'bg-danger-500 text-white shadow-card hover:bg-danger-400 active:bg-danger-300 disabled:hover:bg-danger-500',
   subtle: 'bg-brand-50 text-brand-700 hover:bg-brand-100',
 };
 
@@ -63,8 +65,8 @@ export function controlClasses(variant: ControlVariant, size: ControlSize): stri
 }
 
 const iconToneClasses: Record<'neutral' | 'danger', string> = {
-  neutral: 'text-slate-400 hover:bg-surface-sunken hover:text-slate-700',
-  danger: 'text-slate-400 hover:bg-danger-50 hover:text-danger-600',
+  neutral: 'text-ink-dim hover:bg-surface-sunken hover:text-ink',
+  danger: 'text-ink-dim hover:bg-danger-50 hover:text-danger-600',
 };
 
 const iconSizeClasses: Record<ControlSize, string> = {
@@ -94,7 +96,7 @@ export function iconControlClasses(
 const textToneClasses: Record<ControlTone, string> = {
   brand: 'text-brand-700 hover:text-brand-800',
   danger: 'text-danger-700 hover:text-danger-800',
-  neutral: 'text-slate-600 hover:text-slate-900',
+  neutral: 'text-ink hover:text-ink-strong',
 };
 
 /** An action or destination that reads as running text: `<TextButton>`, `<TextLink>`. */

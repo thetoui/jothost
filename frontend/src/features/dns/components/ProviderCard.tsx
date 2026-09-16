@@ -62,7 +62,7 @@ export function ProviderCard({ overview }: { overview: DNSOverview }) {
         )}
 
         {providers.length === 0 ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink">
             None connected. The panel serves these zones itself; a provider is only needed to
             keep somebody else&rsquo;s copy of them in step.
           </p>
@@ -99,8 +99,8 @@ function ProviderRow({
   return (
     <li className="flex items-center justify-between gap-3 px-3 py-2">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-slate-900">{label}</p>
-        <p className="mt-0.5 text-xs text-slate-500">
+        <p className="truncate text-sm font-medium text-ink-strong">{label}</p>
+        <p className="mt-0.5 text-xs text-ink-muted">
           {provider.kind}
           {provider.account_id ? ` · account ${provider.account_id}` : ''}
           {/* The last attempt, not just the last success: a provider that has

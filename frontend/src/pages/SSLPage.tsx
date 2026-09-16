@@ -26,10 +26,10 @@ export function SSLPage() {
   const needingAttention = data?.needing_attention ?? 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header>
-        <h1 className="text-xl font-semibold text-slate-900">SSL certificates</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-ink-strong">SSL certificates</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Certificates for the sites on this server. Renewal is automatic; what is listed
           first is what runs out first.
         </p>
@@ -107,11 +107,11 @@ function CertificateRow({ certificate }: { certificate: SSLCertificate }) {
           <div className="min-w-0">
             <Link
               to={`/websites/${certificate.website_id}`}
-              className={`truncate rounded-sm text-sm font-semibold text-slate-900 hover:text-brand-700 ${focusRingTight}`}
+              className={`truncate rounded-sm text-sm font-semibold text-ink-strong hover:text-brand-700 ${focusRingTight}`}
             >
               {certificate.primary_domain}
             </Link>
-            <p className="mt-0.5 truncate text-xs text-slate-500">
+            <p className="mt-0.5 truncate text-xs text-ink-muted">
               {providerLabel(certificate.provider)}
               {certificate.domains.length > 1 && ` · ${certificate.domains.length} names`}
               {!certificate.auto_renew && ' · auto-renewal off'}
@@ -126,7 +126,7 @@ function CertificateRow({ certificate }: { certificate: SSLCertificate }) {
                 ? 'text-danger-600'
                 : tone === 'warn'
                   ? 'text-warn-700'
-                  : 'text-slate-500'
+                  : 'text-ink-muted'
             }`}
           >
             {expiryLabel(certificate.days_remaining)}

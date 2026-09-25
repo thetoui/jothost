@@ -1089,8 +1089,42 @@ EOF
     add_header X-Frame-Options "DENY" always;
     add_header Referrer-Policy "no-referrer" always;
 
+    # Database imports: the one API route that may carry more than the 512m
+    # above. The panel, the API and the Agent all accept a dump of up to 2 GiB,
+    # and this server refusing it with a bare 413 page was the only thing
+    # standing between an operator and a restore the interface had offered.
+    #
+    # Only this route, and unbuffered: raising the limit for all of /api/
+    # would let anybody - signed in or not - make this server spool two
+    # gigabytes to disk before the API had looked at a single header. Streamed
+    # straight through instead, the API checks the session and the permission
+    # before it reads a byte of the body, and closes the connection on
+    # anybody who has neither.
+    location ~ ^/api/v1/databases/[0-9a-fA-F-]+/import\$ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        client_max_body_size 2g;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
     # The API. 127.0.0.1 because that is all it listens on: the panel's own
     # process is not reachable from the network except through this server.
+    #
+    # The upstream timeouts are an hour because the API's own handlers are:
+    # an export builds its dump before sending a byte, a backup verify can run
+    # for sixty minutes, an update or an install for twenty or thirty. At the
+    # old 300s this server answered 504 while the work carried on behind it,
+    # and the operator was told a successful install had failed. The limit
+    # that protects the API from a slow client is on the client side of this
+    # server and in the API itself; these only bound how long this server
+    # waits on the panel's own process, which enforces its own budgets.
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -1098,7 +1132,8 @@ EOF
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 300s;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
         proxy_buffering off;
     }
 

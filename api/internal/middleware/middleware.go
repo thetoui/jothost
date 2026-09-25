@@ -68,6 +68,16 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Unwrap exposes the underlying ResponseWriter to http.ResponseController.
+//
+// Without it the controller cannot reach the connection through this wrapper,
+// and every call to extend a deadline or flush fails with ErrNotSupported —
+// which is how every long-running handler ended up capped at the server's
+// short write timeout (see httpx.LongRequest).
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
+
 // Logger emits one structured line per request and puts a request-scoped
 // logger on the context for downstream layers.
 func Logger(base *slog.Logger) Middleware {

@@ -101,7 +101,7 @@ func (h *Handler) setMode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) installApache(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, installTimeout)
 	defer cancel()
 
 	status, err := h.service.InstallApache(ctx, httpx.RequestIDFromContext(r.Context()),

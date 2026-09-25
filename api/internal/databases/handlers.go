@@ -638,7 +638,7 @@ const maxImportBytes int64 = 2 << 30
 
 // export sends one database as a .sql file.
 func (h *Handler) export(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), exportTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, exportTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 
@@ -681,7 +681,7 @@ func (h *Handler) export(w http.ResponseWriter, r *http.Request) {
 
 // importDump loads a .sql file into one database.
 func (h *Handler) importDump(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), exportTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, exportTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 

@@ -117,7 +117,7 @@ func (h *Handler) jails(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) install(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, installTimeout)
 	defer cancel()
 
 	status, err := h.service.Install(ctx, httpx.RequestIDFromContext(ctx), actorFrom(r))

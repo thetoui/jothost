@@ -181,7 +181,7 @@ func (h *Handler) run(w http.ResponseWriter, r *http.Request) {
 	// A manual run holds the request open until the job finishes, which is the
 	// point: an operator pressing "run now" is asking what happens, and a
 	// response that said "started" would answer a different question.
-	ctx, cancel := context.WithTimeout(r.Context(), runTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, runTimeout)
 	defer cancel()
 
 	result, err := h.service.Run(ctx, httpx.RequestIDFromContext(ctx),

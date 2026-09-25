@@ -105,7 +105,7 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) install(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, installTimeout)
 	defer cancel()
 
 	status, err := h.service.Install(ctx, actorFrom(r), httpx.RequestIDFromContext(ctx))
@@ -122,7 +122,7 @@ func (h *Handler) install(w http.ResponseWriter, r *http.Request) {
 // panel's zones means every zone is written to disk and served by nobody - and
 // this is the control that answer belongs to.
 func (h *Handler) repair(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, installTimeout)
 	defer cancel()
 
 	if err := h.service.Repair(ctx, actorFrom(r), httpx.RequestIDFromContext(ctx)); err != nil {
@@ -449,7 +449,7 @@ type syncBody struct {
 }
 
 func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), syncTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, syncTimeout)
 	defer cancel()
 
 	var body syncBody
@@ -482,7 +482,7 @@ type importBody struct {
 func (h *Handler) importZone(w http.ResponseWriter, r *http.Request) {
 	// The same bound as a sync: this is one call to somebody else's API and
 	// then a write per record.
-	ctx, cancel := context.WithTimeout(r.Context(), syncTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, syncTimeout)
 	defer cancel()
 
 	var body importBody

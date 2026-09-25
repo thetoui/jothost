@@ -109,7 +109,7 @@ func (h *Handler) settings(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	saved, err := h.service.Configure(ctx, h.actor(r), httpx.RequestIDFromContext(ctx), body)
@@ -166,7 +166,7 @@ func (h *Handler) createDomain(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	domain, err := h.service.CreateDomain(ctx, h.actor(r), httpx.RequestIDFromContext(ctx), body)
@@ -182,7 +182,7 @@ func (h *Handler) updateDomain(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	domain, err := h.service.UpdateDomain(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -195,7 +195,7 @@ func (h *Handler) updateDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteDomain(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	if err := h.service.DeleteDomain(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -207,7 +207,7 @@ func (h *Handler) deleteDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) rotateDKIM(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	domain, err := h.service.RotateDKIM(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -237,7 +237,7 @@ func (h *Handler) createMailbox(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	box, err := h.service.CreateMailbox(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -254,7 +254,7 @@ func (h *Handler) updateMailbox(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	box, err := h.service.UpdateMailbox(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -267,7 +267,7 @@ func (h *Handler) updateMailbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteMailbox(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	if err := h.service.DeleteMailbox(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -285,7 +285,7 @@ func (h *Handler) setPassword(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	if err := h.service.SetPassword(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -304,7 +304,7 @@ func (h *Handler) setResponder(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	responder, err := h.service.SetAutoresponder(ctx, h.actor(r),
@@ -317,7 +317,7 @@ func (h *Handler) setResponder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) clearResponder(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	if err := h.service.ClearAutoresponder(ctx, h.actor(r),
@@ -345,7 +345,7 @@ func (h *Handler) createAlias(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	alias, err := h.service.CreateAlias(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -358,7 +358,7 @@ func (h *Handler) createAlias(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteAlias(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	if err := h.service.DeleteAlias(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -376,7 +376,7 @@ func (h *Handler) installWebmail(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, installTimeout)
 	defer cancel()
 
 	result, err := h.service.InstallWebmail(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -389,7 +389,7 @@ func (h *Handler) installWebmail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) removeWebmail(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	if err := h.service.RemoveWebmail(ctx, h.actor(r),

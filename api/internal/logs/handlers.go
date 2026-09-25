@@ -207,7 +207,7 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 // difference between sending it as octet-stream and sending it as anything a
 // browser renders is stored cross-site scripting on the panel's own origin.
 func (h *Handler) sendLog(w http.ResponseWriter, r *http.Request, key string) {
-	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, downloadTimeout)
 	defer cancel()
 
 	requestID := httpx.RequestIDFromContext(ctx)

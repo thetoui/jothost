@@ -176,7 +176,7 @@ func (h *Handler) deleteChannel(w http.ResponseWriter, r *http.Request) {
 // is the answer, and it belongs on the channel where the page shows it. An error
 // envelope would have nowhere to put the detail, and the detail is the point.
 func (h *Handler) testChannel(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), testTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, testTimeout)
 	defer cancel()
 
 	channel, err := h.service.Test(ctx, r.PathValue("id"), actorFrom(r))

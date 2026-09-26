@@ -112,34 +112,38 @@ docker compose up -d --build
 ## Installing on a server
 
 Everything above is the development stack. To put the panel on a real Linux
-machine, build a release and run the installer on the target host:
+machine (Ubuntu 22.04 / 24.04 or Debian 12, amd64 — see
+[docs/SUPPORT.md](docs/SUPPORT.md)), install a published release:
 
 ```bash
-make release
+curl -fsSL https://github.com/thetoui/jothost/releases/latest/download/get-jothost.sh \
+  | sudo sh -s -- install --domain panel.example.com --email you@example.com
 ```
 
-That produces a versioned archive and a checksum:
+`get-jothost.sh` downloads the release, checks its SHA-256, and checks its
+[Sigstore](https://www.sigstore.dev/) signature — which must have been made by
+this repository's release workflow for that exact tag — before it runs
+anything. A damaged download, an unsigned archive, or one signed by anybody
+else is refused and nothing is run. Pin a version with `--version 1.2.3`; check
+without installing with `--verify-only`.
 
-```text
-release/jothost-0.1.0-linux-amd64.tar.gz
-release/jothost-0.1.0-linux-amd64.tar.gz.sha256
-```
-
-Copy both to the server and check the archive before running anything as root
-— it is the only check available at that point:
+To check a release by hand instead, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/):
 
 ```bash
-sha256sum -c jothost-0.1.0-linux-amd64.tar.gz.sha256
-tar -xzf jothost-0.1.0-linux-amd64.tar.gz
-cd jothost-0.1.0-linux-amd64
-./bin/jothost-api version      # what you are about to install
+v=1.2.3   # the version you downloaded
+sha256sum -c jothost-$v-linux-amd64.tar.gz.sha256
+cosign verify-blob \
+  --bundle jothost-$v-linux-amd64.tar.gz.sigstore.json \
+  --certificate-identity "https://github.com/thetoui/jothost/.github/workflows/release.yml@refs/tags/v$v" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  jothost-$v-linux-amd64.tar.gz
+tar -xzf jothost-$v-linux-amd64.tar.gz
+sudo ./jothost-$v-linux-amd64/install.sh install --domain panel.example.com --email you@example.com
 ```
 
-Then:
-
-```bash
-sudo ./install.sh install --domain panel.example.com --email you@example.com
-```
+To build an unsigned archive from source instead, `make release` writes one and
+its checksum to `release/`; releases are published by pushing a `v*` tag that
+matches `VERSION` (see [.github/workflows/release.yml](.github/workflows/release.yml)).
 
 That is the whole of it. The installer detects the distribution, installs
 nginx, PostgreSQL, Redis, certbot and PHP, creates the panel's accounts and

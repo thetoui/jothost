@@ -1,0 +1,172 @@
+name: Release
+
+# Publishes a release when a version tag is pushed: builds the archive, checks
+# it against itself, signs it, publishes it, and then installs it back from the
+# public URL on every supported operating system, verifying the signature on
+# the way in — the same path an operator takes.
+#
+# Signing is Sigstore "keyless": the signature is bound to this workflow's
+# GitHub OIDC identity for the tag being released. There is no private key for
+# anybody to hold, rotate or leak, and get-jothost.sh refuses a file signed by
+# any other workflow, repository or tag.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Pinned, and checked against the SHA-256 Sigstore publishes for it. Kept in
+  # step with scripts/get-jothost.sh, which pins the same binary.
+  COSIGN_VERSION: v3.1.3
+  COSIGN_SHA256: 4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+
+jobs:
+  publish:
+    name: Build, sign and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+      id-token: write # the OIDC token the signature is bound to
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The tag and VERSION agree
+        # The archive is named from VERSION and the binaries are stamped with
+        # it. A tag that says something else would publish one version under
+        # another's name.
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match VERSION ($version)"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "NAME=jothost-$version-linux-amd64" >> "$GITHUB_ENV"
+
+      - name: Build the release archive
+        run: make release
+
+      - name: Check the archive against what it claims to be
+        run: make release-verify
+
+      - name: Install cosign
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cosign" \
+            "https://github.com/sigstore/cosign/releases/download/$COSIGN_VERSION/cosign-linux-amd64"
+          echo "$COSIGN_SHA256  $RUNNER_TEMP/cosign" | sha256sum -c -
+          chmod 0755 "$RUNNER_TEMP/cosign"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Sign
+        run: cosign sign-blob --yes --bundle "release/$NAME.tar.gz.sigstore.json" "release/$NAME.tar.gz"
+
+      - name: Verify the signature just made
+        # Exactly the check get-jothost.sh makes, so a bundle that would be
+        # refused in the field is refused here instead of published.
+        run: |
+          cosign verify-blob \
+            --bundle "release/$NAME.tar.gz.sigstore.json" \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "release/$NAME.tar.gz"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp scripts/get-jothost.sh release/get-jothost.sh
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          notes="$RUNNER_TEMP/notes.md"
+          {
+            echo "Install or update on Ubuntu 22.04 / 24.04 or Debian 12 (amd64):"
+            echo
+            echo '```sh'
+            echo "curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/get-jothost.sh | sudo sh -s -- --version ${VERSION} install --domain panel.example.com --email you@example.com"
+            echo '```'
+            echo
+            echo "get-jothost.sh checks the SHA-256 and the Sigstore signature (signed by this repository's release workflow for ${GITHUB_REF_NAME}) before running anything."
+            echo "See CHANGELOG.md for what changed."
+          } > "$notes"
+          gh release create "$GITHUB_REF_NAME" --verify-tag $prerelease \
+            --title "JotHost Panel $VERSION" --notes-file "$notes" \
+            "release/$NAME.tar.gz" \
+            "release/$NAME.tar.gz.sha256" \
+            "release/$NAME.tar.gz.sigstore.json" \
+            "release/get-jothost.sh"
+
+  install-from-url:
+    # The roadmap's gate: the published release installs from its public URL
+    # on every supported operating system, signature checked on the way in.
+    name: Install from the published URL (${{ matrix.host }})
+    needs: publish
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        host: [installer-host-debian, installer-host-ubuntu-2204, installer-host-ubuntu-2404]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: A tampered archive is refused
+        # A control first: prove the check can fail. Same URL, same bundle,
+        # one byte changed.
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          name="jothost-$version-linux-amd64"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          mkdir -p "$RUNNER_TEMP/t" && cd "$RUNNER_TEMP/t"
+          curl -fsSL -O "$base/$name.tar.gz" -O "$base/$name.tar.gz.sigstore.json"
+          printf 'x' >> "$name.tar.gz"
+          curl -fsSL -o cosign "https://github.com/sigstore/cosign/releases/download/$COSIGN_VERSION/cosign-linux-amd64"
+          echo "$COSIGN_SHA256  cosign" | sha256sum -c - && chmod +x cosign
+          if ./cosign verify-blob --bundle "$name.tar.gz.sigstore.json" \
+               --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
+               --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+               "$name.tar.gz"; then
+            echo "::error::a modified archive passed signature verification"
+            exit 1
+          fi
+          echo "a modified archive is refused, as it must be"
+
+      - name: Start a clean ${{ matrix.host }}
+        run: |
+          docker compose -f docker-compose.test.yml up -d --build ${{ matrix.host }}
+          for _ in $(seq 1 60); do
+            state=$(docker compose -f docker-compose.test.yml exec -T ${{ matrix.host }} systemctl is-system-running 2>/dev/null || true)
+            case "$state" in running|degraded) echo "systemd is $state"; exit 0 ;; esac
+            sleep 2
+          done
+          echo "::error::systemd did not settle"; exit 1
+
+      - name: Install through get-jothost.sh from the release page
+        run: |
+          docker compose -f docker-compose.test.yml exec -T ${{ matrix.host }} sh -euc "
+            curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/get-jothost.sh -o /tmp/get-jothost.sh
+            sh /tmp/get-jothost.sh --version ${GITHUB_REF_NAME#v} install \
+              --domain panel.installer.test --admin-user admin --self-signed \
+              --health-host 127.0.0.1 --no-firewall --yes
+            /opt/jothost/bin/jothost-api version
+            sh /tmp/get-jothost.sh --version ${GITHUB_REF_NAME#v} --verify-only >/dev/null
+          "
+
+      - name: The installed panel is ready and serving
+        # /readyz on the API itself, which checks PostgreSQL, Redis and the
+        # Agent. Not /healthz through nginx: that path is not under /api/, so it
+        # falls through to the application's index.html and answers 200 with
+        # the API down.
+        run: |
+          docker compose -f docker-compose.test.yml exec -T ${{ matrix.host }} sh -euc '
+            ready=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/readyz || true)
+            page=$(curl -sk -o /dev/null -w "%{http_code}" --resolve panel.installer.test:443:127.0.0.1 https://panel.installer.test/ || true)
+            echo "readyz: $ready, panel over HTTPS: $page"
+            [ "$ready" = 200 ] && [ "$page" = 200 ]
+          '

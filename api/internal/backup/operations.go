@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jothost/panel/api/internal/agentclient"
+	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/validate"
@@ -24,6 +25,9 @@ import (
 // the night one of them says the opposite.
 type Notifier interface {
 	BackupFailed(ctx context.Context, backupID, subject, reason string)
+	// BackupUnverifiable reports a backup that verified once and no longer
+	// does: found damaged or missing when checked again later.
+	BackupUnverifiable(ctx context.Context, backupID, subject, detail string)
 }
 
 // RestoreRequest asks for a backup to be put back.
@@ -222,6 +226,13 @@ func (s *Service) Verify(ctx context.Context, id string, requestID string, actor
 	if err := requirePanelAuthority(actor, item.Type); err != nil {
 		return agentclient.BackupVerifyResult{}, err
 	}
+	return s.verify(ctx, item, requestID, actor)
+}
+
+// verify reads one backup back and records the result. Callers check authority.
+func (s *Service) verify(ctx context.Context, item Backup, requestID string, actor Actor) (
+	agentclient.BackupVerifyResult, error,
+) {
 	if item.DestinationID == nil || item.Path == nil {
 		return agentclient.BackupVerifyResult{}, fmt.Errorf(
 			"%w: this backup never reached a destination", ErrNotRestorable)
@@ -258,6 +269,25 @@ func (s *Service) Verify(ctx context.Context, id string, requestID string, actor
 		"subject": item.Subject,
 	})
 	return result, nil
+}
+
+// reverify checks a stored backup again on the panel's own schedule.
+//
+// A check that could not run — the destination unreachable, the Agent busy —
+// changes nothing and is tried again on a later sweep: the backup may be fine,
+// and saying otherwise would be a false alarm. A check that ran and found the
+// archive damaged or gone clears its verified mark (verify does that) and is
+// reported once. That report is the point of the whole sweep: without it the
+// first anybody hears of a rotted backup is the restore that fails.
+func (s *Service) reverify(ctx context.Context, item Backup) error {
+	result, err := s.verify(ctx, item, httpx.NewRequestID(), Actor{})
+	if err != nil {
+		return err
+	}
+	if !result.OK && s.notifier != nil {
+		s.notifier.BackupUnverifiable(ctx, item.ID, item.Subject, result.Detail)
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------- delete

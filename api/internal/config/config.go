@@ -64,6 +64,11 @@ type Config struct {
 	Auth AuthConfig
 	// Dashboard holds the Phase 3 monitoring settings.
 	Dashboard DashboardConfig
+
+	// BackupVerifyInterval is how long a verified backup goes before it is
+	// read back from its destination and checked again. Zero turns the
+	// re-verification off.
+	BackupVerifyInterval time.Duration
 }
 
 // DashboardConfig groups the monitoring settings.
@@ -128,6 +133,10 @@ func Load() (Config, error) {
 		AgentSocket:     getString("AGENT_SOCKET", "/run/jothost/agent.sock"),
 		AgentTimeout:    getDuration("AGENT_TIMEOUT", 30*time.Second),
 		AgentToken:      getString("AGENT_TOKEN", ""),
+		// A week: long enough that re-reading every archive is not a steady
+		// drain on the destination's egress, short enough that rot is found
+		// well inside any sensible retention window.
+		BackupVerifyInterval: getDuration("BACKUP_VERIFY_INTERVAL", 7*24*time.Hour),
 		Dashboard: DashboardConfig{
 			SampleInterval:    getDuration("METRIC_SAMPLE_INTERVAL", 30*time.Second),
 			MetricRetention:   getDuration("METRIC_RETENTION", 30*24*time.Hour),
@@ -170,6 +179,12 @@ func Load() (Config, error) {
 	}
 	if !strings.HasPrefix(cfg.AgentSocket, "/") {
 		problems = append(problems, "AGENT_SOCKET must be an absolute path")
+	}
+	// Each check downloads a whole archive, so a small interval is a steady
+	// drain on the destination rather than a safety feature.
+	if cfg.BackupVerifyInterval < 0 ||
+		(cfg.BackupVerifyInterval > 0 && cfg.BackupVerifyInterval < time.Hour) {
+		problems = append(problems, "BACKUP_VERIFY_INTERVAL must be 0 (off) or at least 1h")
 	}
 	if cfg.AgentTimeout <= 0 {
 		problems = append(problems, "AGENT_TIMEOUT must be greater than zero")

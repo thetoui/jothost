@@ -226,6 +226,23 @@ A schedule is marked as run *before* the work is queued. The loop ticks every
 minute and queueing takes longer than that on a busy host, so waiting until the
 job finished would start the same backup sixty times in an hour.
 
+**Stored backups are read back again on a schedule.** Taking a backup proves it
+could be written; only reading it later proves it is still there. Bit rot, a
+bucket somebody emptied, a lifecycle rule on the provider's side — each leaves
+the panel's record saying "verified" from the day it was written, until a
+restore that fails says otherwise. So once an hour the same loop takes the
+completed backups whose last successful check is older than
+`BACKUP_VERIFY_INTERVAL` (a week by default; 0 turns it off), oldest first and
+five at a time, and verifies each exactly as the Verify button does.
+
+A check that could not run — the destination unreachable, the Agent busy —
+changes nothing and is tried again later; the backup may be fine. A check that
+ran and found the archive damaged or gone clears its verified mark and raises
+one "Backup no longer verifies" notification, on the same event as a failed
+backup so every channel already listening hears it. A backup that failed its
+last check is not read again by the sweep: it has been reported and is waiting
+on a person.
+
 ---
 
 ## 9. What the panel refuses
@@ -369,6 +386,6 @@ make docker-test-backup
 - **The panel's own database is not backed up.** It is not on this host — it is
   the control plane — and backing up the thing that records the backups from
   inside itself is a circularity better solved by the installer.
-- **No verification schedule.** A stored backup is checked when it is written
-  and whenever somebody asks. Bit rot found six months later is found by a
-  person pressing a button.
+- **Re-verification reads the whole archive back.** That is what makes it a
+  real check, and on S3 it is billed egress: `BACKUP_VERIFY_INTERVAL` trades
+  how quickly rot is found against that cost, and 0 turns it off.

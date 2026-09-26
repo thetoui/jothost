@@ -548,3 +548,65 @@ func TestStatsSeparateVerifiedFromCompleted(t *testing.T) {
 		t.Errorf("failed = %d, want 1", stats.Failed)
 	}
 }
+
+func TestDueForReverificationTakesOnlyStaleVerifiedBackups(t *testing.T) {
+	repo, serverID, ctx := setup(t)
+	dest := localDestination(t, repo, ctx, serverID, "disk")
+	now := time.Now().UTC()
+
+	verifiedAt := func(item Backup, at time.Time) {
+		t.Helper()
+		if _, err := repo.pool.Exec(ctx,
+			`UPDATE backups SET verified_at = $2 WHERE id = $1::uuid`, item.ID, at); err != nil {
+			t.Fatalf("backdate verified_at: %v", err)
+		}
+	}
+
+	stale := completedBackup(t, repo, ctx, serverID, dest, "stale.example", now)
+	verifiedAt(stale, now.Add(-10*24*time.Hour))
+	older := completedBackup(t, repo, ctx, serverID, dest, "older.example", now)
+	verifiedAt(older, now.Add(-20*24*time.Hour))
+	fresh := completedBackup(t, repo, ctx, serverID, dest, "fresh.example", now)
+
+	// Failed its last check: already reported and waiting on a person, so
+	// not read again every sweep.
+	broken := completedBackup(t, repo, ctx, serverID, dest, "broken.example", now)
+	verifiedAt(broken, now.Add(-30*24*time.Hour))
+	if err := repo.RecordVerification(ctx, broken.ID, false, "checksum mismatch"); err != nil {
+		t.Fatalf("record failed verification: %v", err)
+	}
+
+	// Another server's backup is that server's panel's business.
+	other, err := servers.NewRepository(repo.pool).Register(ctx, servers.RegisterParams{
+		Hostname: "another-host",
+	})
+	if err != nil {
+		t.Fatalf("register another server: %v", err)
+	}
+	otherDest := localDestination(t, repo, ctx, other.ID, "their-disk")
+	theirs := completedBackup(t, repo, ctx, other.ID, otherDest, "theirs.example", now)
+	verifiedAt(theirs, now.Add(-40*24*time.Hour))
+
+	cutoff := now.Add(-7 * 24 * time.Hour)
+	due, err := repo.DueForReverification(ctx, serverID, cutoff, 10)
+	if err != nil {
+		t.Fatalf("DueForReverification: %v", err)
+	}
+	var subjects []string
+	for _, item := range due {
+		subjects = append(subjects, item.Subject)
+	}
+	// The longest-unchecked first; fresh, broken and another server's are out.
+	if len(subjects) != 2 || subjects[0] != "older.example" || subjects[1] != "stale.example" {
+		t.Fatalf("due = %v, want [older.example stale.example]", subjects)
+	}
+	_ = fresh
+
+	limited, err := repo.DueForReverification(ctx, serverID, cutoff, 1)
+	if err != nil {
+		t.Fatalf("DueForReverification with a limit: %v", err)
+	}
+	if len(limited) != 1 || limited[0].Subject != "older.example" {
+		t.Fatalf("the batch limit was not applied oldest-first: %+v", limited)
+	}
+}

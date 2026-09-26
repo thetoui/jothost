@@ -752,10 +752,11 @@ func New(opts Options) (*Server, error) {
 
 	if opts.LocalServerID != "" {
 		s.backupScheduler = backuppkg.NewScheduler(backuppkg.SchedulerOptions{
-			Service:  backupService,
-			Repo:     backupRepo,
-			Log:      log,
-			ServerID: opts.LocalServerID,
+			Service:       backupService,
+			Repo:          backupRepo,
+			Log:           log,
+			ServerID:      opts.LocalServerID,
+			ReverifyEvery: cfg.BackupVerifyInterval,
 		})
 	}
 

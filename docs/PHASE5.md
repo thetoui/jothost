@@ -174,6 +174,19 @@ explicit argument vector, bounded by a 10-minute timeout, and audited — but it
 needs a network and a distro-specific package name, so CI does not exercise it.
 The integration test uses versions already present in the image.
 
+**A version is installed with its extensions**, in the same package-manager
+transaction as FPM: the set the installer gives the host's default PHP (PDO for
+MySQL, PostgreSQL and SQLite, mysqli, XML/DOM, mbstring, intl, gd, zip, curl,
+OPcache and the rest). It used to be the FPM package alone, an interpreter
+WordPress fails on at its first database call and webmail answers every request
+with a 500 on. The lists were checked against Alpine 3.21 (8.2 to 8.4) and Debian
+12 with the Sury repository (7.4 to 8.5). OPcache is left out from 8.5, where it
+is part of PHP and the package no longer exists, and 7.x gets its separate JSON
+package. Installing a version that is already present tops up whatever of the
+set is missing, which is the repair for a version an earlier Agent installed; if
+the package manager cannot do that (a PHP built by hand), the version is still
+reported present, as before.
+
 ### 3.4 Extensions come from the FPM binary
 
 `php.extensions` asks the FPM binary (`php-fpm -m`) rather than a PHP CLI. The
@@ -307,8 +320,10 @@ make docker-test-php
 
 ## 6. Known limitations
 
-1. **No extension installation.** Extensions are listed, not installed. Adding
-   one is another package-manager operation, and the UI does not expose it.
+1. **No choice of extensions.** Every version gets the fixed set in §3.3; one
+   outside it (redis, imagick) is another package-manager operation the UI does
+   not expose. Removing a version removes its FPM package only; its CLI and
+   extension packages stay on the host, and the panel no longer lists it.
 2. **Installation is untested in CI.** See §3.3.
 3. **`max_children` is per-site and unbounded in aggregate.** Each site's pool
    is capped, but nothing caps the sum across sites, so many sites at a high

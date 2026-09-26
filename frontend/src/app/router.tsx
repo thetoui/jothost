@@ -4,7 +4,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import { Spinner } from '@/components/ui/Loading';
 import { RequireAuth } from '@/features/auth/components/RequireAuth';
 import { AppLayout } from '@/layouts/AppLayout';
-import { DashboardPage } from '@/pages/DashboardPage';
+import { HomePage } from '@/pages/HomePage';
 import { DatabasesPage } from '@/pages/DatabasesPage';
 import { FilesPage } from '@/pages/FilesPage';
 import { NodePage } from '@/pages/NodePage';
@@ -80,7 +80,7 @@ export const router = createBrowserRouter(
           path: '/',
           element: <AppLayout />,
           children: [
-            { index: true, element: <DashboardPage /> },
+            { index: true, element: <HomePage /> },
             { path: 'websites', element: <WebsitesPage /> },
             { path: 'websites/:id', element: <WebsiteDetailPage /> },
             { path: 'files', element: <FilesPage /> },

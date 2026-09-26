@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { screen, waitFor, within } from '@testing-library/react';
 
 import { Sidebar } from '@/components/Sidebar';
-import { renderWithProviders } from '@/test/utils';
+import { clearTokens, setAccessToken, setRefreshToken } from '@/features/auth/tokenStorage';
+import { envelopeResponse, renderWithProviders } from '@/test/utils';
+import { useAuthStore } from '@/stores/authStore';
 import { useUiStore } from '@/stores/uiStore';
 
 describe('Sidebar', () => {
@@ -70,5 +72,47 @@ describe('Sidebar', () => {
     renderWithProviders(<Sidebar />);
 
     expect(screen.queryByText('JotHost Panel')).not.toBeInTheDocument();
+  });
+
+  describe('for a signed-in person', () => {
+    beforeEach(() => {
+      clearTokens();
+      setRefreshToken('refresh-test');
+      setAccessToken('access-test');
+      useAuthStore.setState({ status: 'authenticated' });
+    });
+    afterEach(() => {
+      clearTokens();
+      useAuthStore.setState({ status: 'anonymous' });
+      vi.restoreAllMocks();
+    });
+
+    it('shows only the pages their permissions open', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        envelopeResponse({
+          id: 'user-1',
+          username: 'customer',
+          email: null,
+          status: 'active',
+          two_factor_enabled: false,
+          recovery_codes_remaining: 0,
+          roles: ['customer'],
+          permissions: ['website.view', 'file.read'],
+          created_at: '2026-01-01T00:00:00Z',
+          last_login_at: null,
+        }),
+      );
+      renderWithProviders(<Sidebar />);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('link', { name: 'Databases' })).not.toBeInTheDocument();
+      });
+      expect(screen.getByRole('link', { name: 'Websites & Domains' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Tools & Settings' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Monitoring' })).not.toBeInTheDocument();
+      // Server Management keeps its heading only while something is under it.
+      expect(screen.getByText('Server Management')).toBeInTheDocument();
+    });
   });
 });

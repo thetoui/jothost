@@ -323,6 +323,16 @@ webmail request with a 500 and `Class "PDO" not found` in the site's PHP log.
 `tests/integration/webmail_serving.sh` installs webmail into a live site, loads the
 login page, and checks from outside that nothing but the published paths is served.
 
+**The Mail page's Webmail card** is where an operator installs it. TASKS.md had
+this ticked while no page used the hooks, so webmail could only be installed by
+calling the API. The card picks a top-level active site and says before anything
+is sent that installing replaces the site's document root (a reinstall keeps
+people's contacts and preferences). It follows the install job's progress, and
+says why a failed install failed. For the site webmail is on, it names the two
+things that make "installed" useless or dangerous: **PHP switched off**, and **no
+certificate**, which would send every mailbox password in the clear. Neither
+blocks the install, because both can be fixed afterwards.
+
 ---
 
 ## 10. What running it found

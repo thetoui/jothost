@@ -21,6 +21,7 @@ import { EmptyState, SkeletonRows } from '@/components/ui/Loading';
 import { Modal } from '@/components/ui/Modal';
 import { TextButton } from '@/components/ui/TextButton';
 import { RequirePermission } from '@/features/auth/components/RequirePermission';
+import { WebmailCard } from '@/features/mail/components/WebmailCard';
 import { Permission } from '@/features/auth/permissions';
 import { useAliases, useCreateAlias, useCreateMailDomain, useCreateMailbox, useDeleteAlias, useDeleteMailDomain, useDeleteMailbox, useInstallMail, useMailOverview, useMailboxes, useRotateDKIM, useSaveMailSettings, useSetMailboxPassword } from '@/features/mail/hooks';
 import { ApiError } from '@/services/apiClient';
@@ -80,6 +81,7 @@ export function MailPage() {
           <Health overview={data} onInstalling={setInstalling} />
           <ServerSettings overview={data} />
           <Domains overview={data} />
+          {data.status.available && <WebmailCard overview={data} />}
         </>
       )}
     </div>

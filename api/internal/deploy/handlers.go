@@ -119,7 +119,7 @@ func (h *Handler) configure(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	repository, err := h.service.Configure(ctx, h.actor(r),
@@ -132,7 +132,7 @@ func (h *Handler) configure(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	if err := h.service.Remove(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -150,7 +150,7 @@ func (h *Handler) setActions(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	actions, err := h.service.SetActions(ctx, h.actor(r),
@@ -163,7 +163,7 @@ func (h *Handler) setActions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) generateKey(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	repository, err := h.service.GenerateKey(ctx, h.actor(r),
@@ -182,7 +182,7 @@ func (h *Handler) deploy(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength > 0 && !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	deployment, err := h.service.Deploy(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -209,7 +209,7 @@ func (h *Handler) rollback(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	deployment, err := h.service.Deploy(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
@@ -266,7 +266,7 @@ func (h *Handler) log(w http.ResponseWriter, r *http.Request) {
 //     token exists, not which repository it names, not what branch it deploys.
 //   - The reply never carries a repository, a website, or a path.
 func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), changeTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, changeTimeout)
 	defer cancel()
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, MaxWebhookBody+1))

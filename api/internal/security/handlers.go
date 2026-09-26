@@ -129,7 +129,7 @@ func (h *Handler) findings(w http.ResponseWriter, r *http.Request) {
 // "scan" wants the answer rather than a job to follow. The timeout is generous
 // because the filesystem walk is proportional to how many files a customer has.
 func (h *Handler) scan(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), scanTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, scanTimeout)
 	defer cancel()
 
 	scan, err := h.service.Scan(ctx, httpx.RequestIDFromContext(ctx), actorFrom(r))

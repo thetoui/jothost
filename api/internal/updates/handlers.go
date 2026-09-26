@@ -86,7 +86,7 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 // host's package index. A GET that did that would be re-run by every retry,
 // every prefetch and every refresh of the page.
 func (h *Handler) check(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), checkTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, checkTimeout)
 	defer cancel()
 
 	result, err := h.service.CheckNow(ctx, httpx.RequestIDFromContext(ctx))
@@ -106,7 +106,7 @@ type applyBody struct {
 }
 
 func (h *Handler) apply(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), applyTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, applyTimeout)
 	defer cancel()
 
 	var body applyBody
@@ -151,7 +151,7 @@ type revertBody struct {
 }
 
 func (h *Handler) revert(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), applyTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, applyTimeout)
 	defer cancel()
 
 	var body revertBody

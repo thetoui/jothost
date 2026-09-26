@@ -136,7 +136,7 @@ func (h *Handler) websiteLogTail(w http.ResponseWriter, r *http.Request) {
 
 // websiteLogDownload sends one of a site's logs as a file.
 func (h *Handler) websiteLogDownload(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, downloadTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 

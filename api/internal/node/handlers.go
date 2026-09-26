@@ -112,7 +112,7 @@ type installBody struct {
 
 func (h *Handler) install(w http.ResponseWriter, r *http.Request) {
 	// Installing downloads and unpacks a runtime, so it gets the long timeout.
-	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, installTimeout)
 	defer cancel()
 
 	var body installBody
@@ -131,7 +131,7 @@ func (h *Handler) install(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) uninstall(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, installTimeout)
 	defer cancel()
 
 	pkg := r.PathValue("package")
@@ -301,7 +301,7 @@ func (h *Handler) logs(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) installDependencies(w http.ResponseWriter, r *http.Request) {
 	// Its own timeout: npm downloads a dependency tree, and the request holds
 	// until it finishes so the response says whether it worked.
-	ctx, cancel := context.WithTimeout(r.Context(), installTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, installTimeout)
 	defer cancel()
 
 	id, ok := pathUUID(w, r, "id")

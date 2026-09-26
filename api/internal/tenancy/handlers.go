@@ -116,7 +116,7 @@ func (h *Handler) actor(w http.ResponseWriter, r *http.Request) (Actor, bool) {
 
 // overview is what the page opens with.
 func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), hostTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, hostTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 
@@ -297,7 +297,7 @@ func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updatePlan(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), hostTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, hostTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 
@@ -370,7 +370,7 @@ func (h *Handler) getSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createSubscription(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), hostTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, hostTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 
@@ -391,7 +391,7 @@ func (h *Handler) createSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateSubscription(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), hostTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, hostTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 
@@ -412,7 +412,7 @@ func (h *Handler) updateSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteSubscription(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), hostTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, hostTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 
@@ -538,7 +538,7 @@ func (h *Handler) releaseWebsite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) measure(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), hostTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, hostTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 
@@ -555,7 +555,7 @@ func (h *Handler) measure(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) applyIsolation(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), hostTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, hostTimeout)
 	defer cancel()
 	r = r.WithContext(ctx)
 

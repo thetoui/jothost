@@ -47,14 +47,29 @@ pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 
 cleanup() {
+  # A fresh session, not the one the run started with. That one lasts
+  # ACCESS_TOKEN_TTL, and a run slowed down by a loaded host outlived it:
+  # every delete below then failed with a 401 that nobody saw, and the next
+  # run inherited this run's channel and rule - after which one alert sent
+  # two messages and the deduplication check failed for a reason that had
+  # nothing to do with deduplication.
+  [ -n "$created_rules$created_channels" ] && login
   for id in $created_rules; do
-    curl -s -o /dev/null -X DELETE "$API_BASE_URL/api/v1/monitoring/rules/$id" \
-      -H "Authorization: Bearer ${token:-}" 2>/dev/null || true
+    remove "alert rule" "/api/v1/monitoring/rules/$id"
   done
   for id in $created_channels; do
-    curl -s -o /dev/null -X DELETE "$API_BASE_URL/api/v1/notification-channels/$id" \
-      -H "Authorization: Bearer ${token:-}" 2>/dev/null || true
+    remove "notification channel" "/api/v1/notification-channels/$id"
   done
+}
+
+# remove deletes one thing this run created, and says so if it could not.
+remove() {
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X DELETE \
+    "$API_BASE_URL$2" -H "Authorization: Bearer ${token:-}" 2>/dev/null || true)"
+  case "$code" in
+    200|204|404) ;;
+    *) log "  cleanup: could not delete $1 $2 (HTTP ${code:-none}); the next run will trip over it" ;;
+  esac
 }
 trap cleanup EXIT
 
@@ -273,12 +288,18 @@ else
   # The monitor re-reads the same open alert every minute. If that produced a
   # message each time, a full disk would be ten thousand emails — so this is the
   # single most important assertion in the file.
-  before="$(mail_count "notify-test-$STAMP")"
+  #
+  # Counted for this run's own recipient. An alert is delivered once to every
+  # channel, so any other email channel on the panel - a leftover from an
+  # earlier run, or one somebody configured - is a second correct message, not
+  # a duplicate. Two messages to this address still fails, which is the bug.
+  ours="to:$RECIPIENT%20notify-test-$STAMP"
+  before="$(mail_count "$ours")"
   if [ "$before" != "1" ]; then
-    fail "one alert produced $before messages before waiting at all"
+    fail "one alert produced $before messages to one channel before waiting at all"
   fi
   sleep 70
-  after="$(mail_count "notify-test-$STAMP")"
+  after="$(mail_count "$ours")"
   if [ "$before" = "$after" ]; then
     pass "an alert that stays open sends one message, not one a minute ($after after 70s)"
   else

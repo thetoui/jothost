@@ -152,7 +152,7 @@ func (h *Handler) search(w http.ResponseWriter, r *http.Request) {
 // therefore not set from a buffer: it comes from a stat before the transfer
 // begins, and the transfer is what proves it.
 func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, transferTimeout)
 	defer cancel()
 
 	target, err := ValidatePath(r.URL.Query().Get("path"))
@@ -206,7 +206,7 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 const maxContentBodyBytes = 8 << 20
 
 func (h *Handler) readContent(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, transferTimeout)
 	defer cancel()
 
 	target, err := ValidatePath(r.URL.Query().Get("path"))
@@ -235,7 +235,7 @@ type writeContentRequest struct {
 }
 
 func (h *Handler) writeContent(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, transferTimeout)
 	defer cancel()
 
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxContentBodyBytes))
@@ -289,7 +289,7 @@ func contentError(err error) error {
 // ----------------------------------------------------------------- writing
 
 func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, transferTimeout)
 	defer cancel()
 
 	directory, err := ValidatePath(r.URL.Query().Get("path"))
@@ -396,7 +396,7 @@ func (h *Handler) move(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) transfer(w http.ResponseWriter, r *http.Request, action string) {
-	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, transferTimeout)
 	defer cancel()
 
 	var body transferRequest
@@ -500,7 +500,7 @@ func (h *Handler) patch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, transferTimeout)
 	defer cancel()
 
 	target, err := ValidatePath(r.URL.Query().Get("path"))
@@ -527,7 +527,7 @@ type zipRequest struct {
 }
 
 func (h *Handler) zip(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, transferTimeout)
 	defer cancel()
 
 	var body zipRequest
@@ -574,7 +574,7 @@ type unzipRequest struct {
 }
 
 func (h *Handler) unzip(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), transferTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, transferTimeout)
 	defer cancel()
 
 	var body unzipRequest

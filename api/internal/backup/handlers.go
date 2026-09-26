@@ -149,7 +149,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), checkTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, checkTimeout)
 	defer cancel()
 
 	err := h.service.Delete(ctx, r.PathValue("id"),
@@ -202,7 +202,7 @@ func (h *Handler) restore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) verify(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), verifyTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, verifyTimeout)
 	defer cancel()
 
 	result, err := h.service.Verify(ctx, r.PathValue("id"),
@@ -289,7 +289,7 @@ func (h *Handler) deleteDestination(w http.ResponseWriter, r *http.Request) {
 // the check passed: "we could not reach it, and here is what the storage said"
 // is the answer, and it belongs on the destination where the page shows it.
 func (h *Handler) checkDestination(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), checkTimeout)
+	ctx, cancel := httpx.LongRequest(w, r, checkTimeout)
 	defer cancel()
 
 	dest, err := h.service.CheckDestination(ctx, r.PathValue("id"),

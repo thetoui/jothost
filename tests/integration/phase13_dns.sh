@@ -53,12 +53,26 @@ pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
 
 cleanup() {
-  # The second named is this test's own; stop it however it started.
+  # The suite's verdict, kept whatever cleanup runs into. Under set -e a
+  # failing command in this trap replaced it: the run that had just printed
+  # "All Phase 13 checks passed" exited 1, with no failing check to show why.
+  status=$?
+
+  # The second named is this test's own; stop it however it started, then
+  # wait for it to be gone. It deletes files of its own on the way out, and
+  # removing the directory while it did raced with that - rm met a file that
+  # had vanished under it (_bind.nta) and failed, one run in several.
   if [ -f "$work/replica.pid" ]; then
     kill "$(cat "$work/replica.pid")" 2>/dev/null || true
   fi
   pkill -f "named -c $work/replica.conf" 2>/dev/null || true
-  rm -rf "$work"
+  waited=0
+  while pgrep -f "named -c $work/replica.conf" >/dev/null 2>&1 && [ "$waited" -lt 50 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  rm -rf "$work" 2>/dev/null || true
+  exit "$status"
 }
 
 for tool in curl dig; do

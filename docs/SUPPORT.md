@@ -64,5 +64,10 @@ running anything; the README shows how to check them by hand.
 
 ## Security
 
-How to report a vulnerability is in [SECURITY.md](SECURITY.md). Security fixes
-are released as patch versions.
+Report a vulnerability privately through the repository's
+[private vulnerability reporting](https://github.com/thetoui/jothost/security/advisories/new);
+[SECURITY.md](SECURITY.md#11-reporting-a-vulnerability) has what to include.
+Reports are acknowledged within **3 business days**, a critical or high-severity
+issue is fixed or mitigated within **30 days**, and disclosure is coordinated
+with the reporter (at the latest 90 days after the report). Security fixes are
+released as patch versions.

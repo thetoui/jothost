@@ -173,13 +173,23 @@ sh tests/staging/verify.sh \
   --ip 203.0.113.10 \
   --mail-host mail.example.com \
   --mail-domain example.com \
-  --dkim-selector default
+  --dkim-selector default \
+  --webmail webmail.example.com
 ```
 
 It reports, per check: public DNS resolution, forward/reverse DNS agreement,
 the certificate's trust, issuer and freshness, and the presence of the SPF,
 DKIM and DMARC records. It does not judge inbox placement (section 5) or the
 reboot (section 7) — those are yours to observe.
+
+With `--webmail` it also checks the page every mailbox password is typed into:
+the login page answers over **trusted** HTTPS, plain HTTP **redirects** to it
+rather than serving the form, and none of Roundcube's private paths (its
+configuration, database, logs, dependency tree, installer, scripts) answers
+with anything but a refusal or the login page. That last check needs no
+knowledge of the files: anything else means nginx can reach them. It was
+checked against a real install on the development stack, which it passes, and
+against the pre-fix permission layout, which it fails on ten paths.
 
 ---
 

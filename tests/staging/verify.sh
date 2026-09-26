@@ -3,7 +3,9 @@
 #
 # Checks the parts of a real deployment that are visible from the public
 # internet: DNS resolution, forward/reverse DNS agreement, the panel's
-# certificate, and a mail domain's SPF, DKIM and DMARC records. Run it from any
+# certificate, a mail domain's SPF, DKIM and DMARC records, and — with
+# --webmail — that webmail is served only over trusted HTTPS and serves nothing
+# but what Roundcube publishes. Run it from any
 # machine that can reach the internet — it needs the host to exist and its DNS
 # to be published, so it is a staging tool, not a CI check.
 #
@@ -15,14 +17,14 @@
 #
 #   sh verify.sh --panel panel.example.com --site site.example.com \
 #     --ip 203.0.113.10 --mail-host mail.example.com \
-#     --mail-domain example.com --dkim-selector default
+#     --mail-domain example.com --dkim-selector default #     --webmail webmail.example.com
 #
 # --site, --ip and the mail flags are optional; a check whose inputs are absent
 # is skipped rather than failed.
 
 set -u
 
-PANEL="" SITE="" IP="" MAIL_HOST="" MAIL_DOMAIN="" DKIM_SELECTOR="default"
+PANEL="" SITE="" IP="" MAIL_HOST="" MAIL_DOMAIN="" DKIM_SELECTOR="default" WEBMAIL=""
 RESOLVER="${RESOLVER:-1.1.1.1}"   # a public resolver, so we see what the world sees
 CERT_MIN_DAYS="${CERT_MIN_DAYS:-1}"
 
@@ -34,7 +36,8 @@ while [ $# -gt 0 ]; do
     --mail-host)     MAIL_HOST="$2"; shift 2 ;;
     --mail-domain)   MAIL_DOMAIN="$2"; shift 2 ;;
     --dkim-selector) DKIM_SELECTOR="$2"; shift 2 ;;
-    -h|--help)       sed -n '2,30p' "$0"; exit 0 ;;
+    --webmail)       WEBMAIL="$2"; shift 2 ;;
+    -h|--help)       sed -n '2,32p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -139,6 +142,64 @@ if [ -n "$MAIL_DOMAIN" ]; then
     || fail "no DKIM record at ${DKIM_SELECTOR}._domainkey.$MAIL_DOMAIN"
 else
   skip "mail records" "no --mail-domain"
+fi
+
+# ---------------------------------------------------------- 5. webmail
+
+echo "5. Webmail"
+# "<status>:<body>" for a path under webmail, over trusted HTTPS.
+webmail_fetch() {
+  curl -sS --max-time 20 -w '%{http_code}:' -o /tmp/webmail-probe.$$ "https://$WEBMAIL/$1" 2>/dev/null
+  # NULs are dropped so a binary file (a database) cannot upset the shell.
+  head -c 65536 /tmp/webmail-probe.$$ 2>/dev/null | tr -d '\000'
+  rm -f /tmp/webmail-probe.$$
+}
+if [ -n "$WEBMAIL" ]; then
+  # Without -k: curl refuses a certificate the public CA store does not trust,
+  # which is exactly the check. Every mailbox password is typed into this page.
+  login=$(curl -sS --max-time 20 "https://$WEBMAIL/" 2>/dev/null)
+  case "$login" in
+    *rcmloginuser*) pass "https://$WEBMAIL/ serves the login page over trusted HTTPS" ;;
+    "") fail "https://$WEBMAIL/ did not answer over trusted HTTPS" ;;
+    *) fail "https://$WEBMAIL/ answers, but not with the Roundcube login page" ;;
+  esac
+
+  # Plain HTTP must not serve the form: a password typed there crosses the
+  # network in the clear. A redirect to HTTPS is the pass.
+  http_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "http://$WEBMAIL/" 2>/dev/null)
+  http_to=$(curl -sS -o /dev/null -w '%{redirect_url}' --max-time 20 "http://$WEBMAIL/" 2>/dev/null)
+  case "$http_code:$http_to" in
+    30[1278]:https://*) pass "plain HTTP redirects to HTTPS" ;;
+    *) fail "plain HTTP answers $http_code without redirecting to HTTPS; turn on the HTTPS redirect for the site" ;;
+  esac
+
+  # Only what Roundcube publishes is served. The rule needs no knowledge of
+  # what each file contains: a private path must answer 403 or 404, or fall
+  # through to the login page (the site sends unknown paths to index.php).
+  # Anything else means nginx could reach the file — served raw, or, for a
+  # .php, run as a page — and a signature check would miss both an empty
+  # SQLite file (WAL mode keeps the data beside it) and a script that runs
+  # rather than shows its source. tests/integration/webmail_serving.sh draws
+  # the same line from inside the host.
+  # probe:begin
+  leaked=0
+  for private in config/config.inc.php config/config.inc.php.sample \
+                 db/roundcube.db logs/errors.log temp/ \
+                 composer.lock CHANGELOG.md SQL/sqlite.initial.sql bin/initdb.sh \
+                 vendor/autoload.php installer/index.php program/include/iniset.php; do
+    answer=$(webmail_fetch "$private")
+    code=${answer%%:*}
+    case "$code:$answer" in
+      403:*|404:*) ;;
+      200:*rcmloginuser*) ;;
+      *) fail "/$private answers HTTP $code with something other than the login page: nginx can reach it"
+         leaked=$((leaked + 1)) ;;
+    esac
+  done
+  # probe:end
+  [ "$leaked" -eq 0 ] && pass "none of the private paths probed is served"
+else
+  skip "webmail" "no --webmail"
 fi
 
 # ------------------------------------------------------------- result

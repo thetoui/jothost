@@ -50,7 +50,7 @@ printf '%s' "$EXTERNAL" | while IFS= read -r entry; do
 done || exit 1
 
 # Services some suites need. Brought up here rather than assumed: without
-# Mailpit the notification suite says FATAL and exits, and without MinIO the
+# Mailpit the notification suite says FATAL and exits, and without the S3 service the
 # backup suite reports its S3 destination as broken - both of which read as
 # product failures and are neither.
 #
@@ -60,15 +60,15 @@ done || exit 1
 # to prevent. A dependency that cannot be provided now stops the run, says
 # which one, and shows what compose said.
 #
-# The test file on its own, and minio-init as a run rather than an up: that is
+# The test file on its own, and s3-init as a run rather than an up: that is
 # how the Makefile targets for these suites have always started them, and
 # `run` returns only once the bucket exists rather than racing the suites.
-started="$($TEST_COMPOSE up -d mailpit minio 2>&1)" || {
-  printf 'FATAL could not start mailpit and minio:\n%s\n' "$started" >&2
+started="$($TEST_COMPOSE up -d mailpit s3 2>&1)" || {
+  printf 'FATAL could not start mailpit and the S3 service:\n%s\n' "$started" >&2
   exit 1
 }
-seeded="$($TEST_COMPOSE run --rm minio-init 2>&1)" || {
-  printf 'FATAL could not create the backup bucket in minio:\n%s\n' "$seeded" >&2
+seeded="$($TEST_COMPOSE run --rm s3-init 2>&1)" || {
+  printf 'FATAL could not create the backup bucket in the S3 service:\n%s\n' "$seeded" >&2
   exit 1
 }
 
@@ -86,7 +86,8 @@ wait_reachable() {
   done
 }
 wait_reachable mailpit http://mailpit:8025/api/v1/info
-wait_reachable minio http://minio:9000/minio/health/live
+# Any HTTP answer will do: an anonymous request is refused with 403.
+wait_reachable s3 http://s3:9000/
 
 for path in "$INTEGRATION_DIR"/*.sh; do
   name="$(basename "$path")"

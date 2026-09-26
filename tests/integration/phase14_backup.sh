@@ -28,10 +28,10 @@ ADMIN_USER="${INTEGRATION_ADMIN_USERNAME:-integration_admin}"
 ADMIN_PASS="${INTEGRATION_ADMIN_PASSWORD:-integration-admin-pw-9271}"
 
 # The S3 service started for the duration of these checks.
-MINIO_ENDPOINT="${MINIO_ENDPOINT:-http://minio:9000}"
-MINIO_BUCKET="${MINIO_BUCKET:-jothost-backups}"
-MINIO_KEY="${MINIO_ROOT_USER:-jothost_backup_test}"
-MINIO_SECRET="${MINIO_ROOT_PASSWORD:-jothost-backup-test-secret}"
+S3_ENDPOINT="${S3_ENDPOINT:-http://s3:9000}"
+S3_BUCKET="${S3_BUCKET:-jothost-backups}"
+S3_KEY="${S3_TEST_ACCESS_KEY:-jothost_backup_test}"
+S3_SECRET="${S3_TEST_SECRET_KEY:-jothost-backup-test-secret}"
 
 STAMP="$(date +%s)"
 DOMAIN="backup${STAMP}.test"
@@ -494,10 +494,10 @@ fi
 
 # --- S3, against a real service ---------------------------------------------
 
-s3_body="{\"name\":\"integration-s3-$STAMP\",\"kind\":\"s3\",\"endpoint\":\"$MINIO_ENDPOINT\",\"bucket\":\"$MINIO_BUCKET\",\"region\":\"us-east-1\",\"prefix\":\"integration-$STAMP\",\"access_key\":\"$MINIO_KEY\",\"secret_key\":\"$MINIO_SECRET\",\"path_style\":true,\"allow_insecure\":true}"
+s3_body="{\"name\":\"integration-s3-$STAMP\",\"kind\":\"s3\",\"endpoint\":\"$S3_ENDPOINT\",\"bucket\":\"$S3_BUCKET\",\"region\":\"us-east-1\",\"prefix\":\"integration-$STAMP\",\"access_key\":\"$S3_KEY\",\"secret_key\":\"$S3_SECRET\",\"path_style\":true,\"allow_insecure\":true}"
 # Plain http is refused unless somebody accepts it, so the same destination
 # without the acknowledgement must not be created at all.
-expect_status 'a plain-http S3 endpoint is refused until it is accepted' 422   "$(api_status POST /api/v1/backup-destinations      "{\"name\":\"noack-$STAMP\",\"kind\":\"s3\",\"endpoint\":\"$MINIO_ENDPOINT\",\"bucket\":\"$MINIO_BUCKET\",\"region\":\"us-east-1\",\"access_key\":\"$MINIO_KEY\",\"secret_key\":\"$MINIO_SECRET\",\"path_style\":true}")"
+expect_status 'a plain-http S3 endpoint is refused until it is accepted' 422   "$(api_status POST /api/v1/backup-destinations      "{\"name\":\"noack-$STAMP\",\"kind\":\"s3\",\"endpoint\":\"$S3_ENDPOINT\",\"bucket\":\"$S3_BUCKET\",\"region\":\"us-east-1\",\"access_key\":\"$S3_KEY\",\"secret_key\":\"$S3_SECRET\",\"path_style\":true}")"
 
 s3_dest="$(api POST /api/v1/backup-destinations "$s3_body")"
 s3_dest_id="$(json_field "$s3_dest" id)"
@@ -508,7 +508,7 @@ else
   created_destinations="$created_destinations $s3_dest_id"
   # The secret is stored and never comes back.
   contains 'the S3 destination records that it holds a credential' "$s3_dest" '"has_credentials":true'
-  not_contains 'the S3 destination never returns its secret key' "$s3_dest" "$MINIO_SECRET"
+  not_contains 'the S3 destination never returns its secret key' "$s3_dest" "$S3_SECRET"
 
   s3_check="$(api POST "/api/v1/backup-destinations/$s3_dest_id/check")"
   contains 'the S3 destination can be written to and read back' "$s3_check" '"last_check_ok":true'

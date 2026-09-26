@@ -45,6 +45,21 @@ describe('apiClient', () => {
     await expect(request('/health')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('treats 204 No Content as success', async () => {
+    // No body, so no envelope. Setting a mailbox password and removing a
+    // mailbox answer this way, and both used to be reported as failures after
+    // they had succeeded.
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(request<void>('/mail/mailboxes/1', { method: 'DELETE' })).resolves.toBeUndefined();
+  });
+
+  it('still treats a 401 without a body as a failure', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response(null, { status: 401 }));
+
+    await expect(request('/mail', { anonymous: true })).rejects.toMatchObject({ status: 401 });
+  });
+
   it('reports a non-JSON gateway response as an unknown error', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response('<html>502 Bad Gateway</html>', { status: 502 }),

@@ -128,6 +128,14 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
 
   const response = await globalThis.fetch(`${API_BASE_URL}${path}`, init);
 
+  // 204 is a success with nothing to say, by definition without a body — so
+  // without an envelope either. Reading one used to fail, and every endpoint
+  // that answers this way (removing a mailbox, setting its password, removing
+  // webmail) did what it was asked and then told the operator it had failed.
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   let envelope: ApiEnvelope<T> | null = null;
   try {
     envelope = (await response.json()) as ApiEnvelope<T>;

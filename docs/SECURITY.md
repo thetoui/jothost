@@ -96,6 +96,12 @@ Sensitive actions produce an audit event: who, what, which resource, and the
 outcome. Read them through `GET /api/v1/audit` (permission `audit.view`) or in
 the panel's Audit page. See [AUDIT.md](AUDIT.md).
 
+The trail is append-only and kept indefinitely: database triggers refuse every
+update and deletion, even by a superuser, and the panel has no setting to prune
+it. The Agent's own audit log is rotated weekly and kept for 52 weeks. What to
+do if you are legally required to delete entries is in
+[AUDIT.md section 7](AUDIT.md#7-retention).
+
 ## 6. Stored credentials that must be recoverable
 
 Some passwords cannot be hashed, because something has to present them later:

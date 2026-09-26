@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jothost/panel/api/internal/jobs"
+	"github.com/jothost/panel/shared/logger"
 	"github.com/jothost/panel/shared/protocol"
 )
 
@@ -19,36 +21,37 @@ import (
 // operator has already decided which name webmail is served on and has issued a
 // certificate for it, and the panel does not have to invent a second, weaker
 // path to the same thing.
-func (s *Service) InstallWebmail(ctx context.Context, actor Actor, requestID,
-	websiteID string,
-) (map[string]any, error) {
+//
+// A queued job, and webmail is recorded as installed only when it succeeds. It
+// used to be sent straight to the Agent as asynchronous work and recorded the
+// moment the Agent accepted it — before a byte was downloaded. A download that
+// failed, or a checksum that did not match, left the panel reporting webmail
+// installed on a site serving nothing, and the failure went nowhere anyone
+// could see it. Now it is a job whose progress and outcome the panel shows, and
+// JobFinished records the result.
+func (s *Service) InstallWebmail(ctx context.Context, actor Actor, websiteID string) (jobs.Job, error) {
 	if websiteID == "" {
-		return nil, ErrNoWebsite
+		return jobs.Job{}, ErrNoWebsite
 	}
 	site, err := s.websites.LookupForMail(ctx, websiteID)
 	if err != nil {
-		return nil, err
+		return jobs.Job{}, err
 	}
 	if site.DocumentRoot == "" || site.SystemUser == "" {
-		return nil, fmt.Errorf(
+		return jobs.Job{}, fmt.Errorf(
 			"%w: %s has no document root or system account yet", ErrNoWebsite, site.Domain)
 	}
 
 	settings, err := s.repo.Settings(ctx, s.serverID)
 	if err != nil {
-		return nil, err
+		return jobs.Job{}, err
 	}
 	if settings.Hostname == "" {
-		return nil, ErrNoHostname
+		return jobs.Job{}, ErrNoHostname
 	}
 
-	response, err := s.agent.Do(ctx, protocol.Request{
-		Operation: protocol.OperationWebmailInstall,
-		RequestID: requestID,
-		// Asynchronous: the download is several megabytes and the unpack is
-		// thousands of files, which is well past what a request should hold
-		// open.
-		Mode: protocol.ModeAsync,
+	job, err := s.jobs.Create(ctx, jobs.CreateParams{
+		Type: jobs.TypeWebmailInstall,
 		Payload: map[string]any{
 			"document_root": site.DocumentRoot,
 			"owner":         site.SystemUser,
@@ -59,18 +62,40 @@ func (s *Service) InstallWebmail(ctx context.Context, actor Actor, requestID,
 			"imap_host": settings.Hostname,
 			"smtp_host": settings.Hostname,
 		},
+		CreatedBy:    actor.UserID,
+		ResourceType: ResourceTypeWebmail,
+		ResourceID:   websiteID,
 	})
 	if err != nil {
-		return nil, err
+		return jobs.Job{}, err
 	}
 
-	if err := s.repo.SaveWebmail(ctx, s.serverID, websiteID, webmailVersion); err != nil {
-		return nil, err
-	}
 	s.record(ctx, actor, ActionWebmailInstall, ResourceTypeWebmail, websiteID, map[string]any{
-		"domain": site.Domain,
+		"domain": site.Domain, "job_id": job.ID,
 	})
-	return response.Data, nil
+	return job, nil
+}
+
+// JobFinished records webmail as installed once its job has succeeded.
+//
+// It satisfies jobs.Observer and ignores every other job. A failed install
+// changes nothing: whatever webmail was recorded before — on this site or
+// another — is still what the panel reports, because it is still what is there.
+func (s *Service) JobFinished(ctx context.Context, job jobs.Job, state jobs.State,
+	_ map[string]any, failure string,
+) {
+	if job.Type != jobs.TypeWebmailInstall || job.ResourceID == nil {
+		return
+	}
+	websiteID := *job.ResourceID
+	if state != jobs.StateSuccess {
+		s.log.Warn("webmail was not installed", "website_id", websiteID, "reason", failure)
+		return
+	}
+	if err := s.repo.SaveWebmail(ctx, s.serverID, websiteID, webmailVersion); err != nil {
+		s.log.Error("webmail was installed but could not be recorded",
+			"website_id", websiteID, logger.KeyError, err.Error())
+	}
 }
 
 // RemoveWebmail deletes the application from its document root.

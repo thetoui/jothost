@@ -92,7 +92,7 @@ export const mailApi = {
   removeAlias: (id: string) => request<void>(`/mail/aliases/${id}`, { method: 'DELETE' }),
 
   installWebmail: (websiteID: string) =>
-    request<unknown>('/mail/webmail', { method: 'POST', body: { website_id: websiteID } }),
+    request<JobAccepted>('/mail/webmail', { method: 'POST', body: { website_id: websiteID } }),
 
   removeWebmail: () => request<void>('/mail/webmail', { method: 'DELETE' }),
 };

@@ -137,8 +137,8 @@ type Service struct {
 	zones    Zones
 	agent    *agentclient.Client
 	audit    *audit.Recorder
-	// jobs queues the work that cannot finish inside a request. Installing a
-	// mail server is the only one here.
+	// jobs queues the work that cannot finish inside a request: installing a
+	// mail server, and installing webmail.
 	jobs     *jobs.Repository
 	log      *slog.Logger
 	serverID string

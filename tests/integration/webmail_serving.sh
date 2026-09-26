@@ -106,7 +106,7 @@ expect_private() {
 await_job() {
   aj_waited=0
   [ -n "$1" ] || { printf 'NO JOB'; return 0; }
-  while [ "$aj_waited" -lt 120 ]; do
+  while [ "$aj_waited" -lt 600 ]; do
     aj_state="$(field "$(api GET "/api/v1/jobs/$1")" status)"
     case "$aj_state" in
       SUCCESS|FAILED|CANCELLED) printf '%s' "$aj_state"; return 0 ;;
@@ -132,21 +132,10 @@ wait_active() {
   printf '%s' "${wait_state:-unknown}"
 }
 
-# The install is asynchronous and its last step walks the tree giving it to the
-# site. It is finished when nothing is left owned by root and nothing is
-# world-readable, whichever umask the unpack ran under.
-wait_installed() {
-  wi_i=0
-  while [ "$wi_i" -lt 150 ]; do
-    if [ -f "$DOCROOT/config/config.inc.php" ] && [ -d "$DOCROOT/db" ] &&
-       [ -z "$(find "$DOCROOT" \( -user root -o -perm -o=r \) ! -type l -print 2>/dev/null | head -n 1)" ]; then
-      printf 'installed'; return 0
-    fi
-    wi_i=$((wi_i + 1))
-    sleep 2
-  done
-  printf 'not finished after 300s'
-}
+# The install is a job, and webmail is recorded against the site only when it
+# succeeds. job_of reads the job id out of the 202 the request answers.
+job_of() { sed -n 's/.*"job":{"id":"\([0-9a-f-]*\)".*/\1/p'; }
+recorded_site() { field "$(api GET /api/v1/mail)" webmail_website_id; }
 
 # A file written as root, world-readable, into a directory of the install. It
 # stands for whatever the application writes there, at whatever mode.
@@ -203,9 +192,22 @@ fi
 
 log ''
 log '2. Installed, and running'
-control 'the install is accepted' \
-  "$(status_of POST /api/v1/mail/webmail "{\"website_id\":\"$site_id\"}")" 202
-control 'the install finished' "$(wait_installed)" installed
+before="$(recorded_site)"
+install_job="$(api POST /api/v1/mail/webmail "{\"website_id\":\"$site_id\"}" | job_of)"
+control 'the install is queued as a job' "$([ -n "$install_job" ] && echo queued)" queued
+# Recorded only once it has worked: while the job runs, the panel still says
+# whatever it said before.
+if [ "$(recorded_site)" = "$site_id" ] && [ "$before" != "$site_id" ]; then
+  fail 'webmail was recorded against the site before anything was installed'
+else
+  pass 'webmail is not recorded before it is installed'
+fi
+control 'the install job succeeded' "$(await_job "$install_job")" SUCCESS
+if [ "$(recorded_site)" = "$site_id" ]; then
+  pass 'and then the panel records webmail against the site'
+else
+  fail "the install succeeded and the panel does not record it (records '$(recorded_site)')"
+fi
 php_job="$(api PATCH "/api/v1/websites/$site_id/php" "{\"version\":\"$WEBMAIL_PHP\"}" |
   sed -n 's/.*"job":{"id":"\([0-9a-f-]*\)".*/\1/p')"
 control "PHP $WEBMAIL_PHP is switched on for the site" "$(await_job "$php_job")" SUCCESS
@@ -279,15 +281,8 @@ log '5. Reinstalled, it keeps what users stored'
 printf '%s\n' "$PROBE" > "$DOCROOT/db/probe.txt"
 chown "$OWNER" "$DOCROOT/db/probe.txt"
 db_before="$(disk_sum "$DOCROOT/db/roundcube.db")"
-control 'the reinstall is accepted' \
-  "$(status_of POST /api/v1/mail/webmail "{\"website_id\":\"$site_id\"}")" 202
-# The first install's config is replaced, so a new one appearing marks the swap.
-old_config="$(disk_sum "$DOCROOT/config/config.inc.php")"
-i=0
-while [ "$i" -lt 150 ] && [ "$(disk_sum "$DOCROOT/config/config.inc.php" 2>/dev/null)" = "$old_config" ]; do
-  i=$((i + 1)); sleep 2
-done
-control 'the reinstall finished' "$(wait_installed)" installed
+reinstall_job="$(api POST /api/v1/mail/webmail "{\"website_id\":\"$site_id\"}" | job_of)"
+control 'the reinstall job succeeded' "$(await_job "$reinstall_job")" SUCCESS
 if [ "$(cat "$DOCROOT/db/probe.txt" 2>/dev/null)" = "$PROBE" ] &&
    [ "$(disk_sum "$DOCROOT/db/roundcube.db")" = "$db_before" ]; then
   pass 'the database survived the reinstall'

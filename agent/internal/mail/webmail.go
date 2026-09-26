@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -148,20 +149,33 @@ func (p *Provider) InstallWebmail(ctx context.Context, req WebmailRequest,
 		return Webmail{}, err
 	}
 	configPath := filepath.Join(source, "config", "config.inc.php")
-	// 0640: it holds the DES key that encrypts session data and the IMAP
-	// password held for the length of a session. The web server reads it;
-	// nothing else needs to.
-	if err := writeFile(configPath, config, 0o640, -1, -1); err != nil {
+	// Owner-only: it holds the DES key that encrypts session data and the IMAP
+	// password kept for the length of a session. Only PHP reads it, and PHP
+	// runs as the site's own account - nginx never needs the bytes of a .php
+	// file, so giving its group read access could only ever leak it.
+	if err := writeFile(configPath, config, webmailPrivateFileMode, -1, -1); err != nil {
 		return Webmail{}, err
+	}
+	if err := os.MkdirAll(filepath.Join(source, webmailDBDir), webmailPrivateDirMode); err != nil {
+		return Webmail{}, fmt.Errorf("make room for the webmail database: %w", err)
+	}
+
+	// The document root as the website left it, taken before it is replaced:
+	// its group is the web server's, which is how nginx reads site content,
+	// and its mode is the site's. replaceTree swaps in the directory the Agent
+	// unpacked, which has neither.
+	rootInfo, err := os.Stat(req.DocumentRoot)
+	if err != nil {
+		return Webmail{}, fmt.Errorf("read the document root before replacing it: %w", err)
 	}
 
 	report(85, "Installing webmail into the document root")
-	if err := replaceTree(source, req.DocumentRoot); err != nil {
+	if err := replaceTree(source, req.DocumentRoot, webmailDBDir); err != nil {
 		return Webmail{}, err
 	}
 
 	report(95, "Setting ownership")
-	if err := p.ownWebmail(ctx, req); err != nil {
+	if err := p.ownWebmail(ctx, req, rootInfo); err != nil {
 		return Webmail{}, err
 	}
 
@@ -376,7 +390,12 @@ func buildWebmailConfig(req WebmailRequest) ([]byte, error) {
 	// reason to be a second thing to back up, grant, and keep a password for.
 	// A large installation would want MySQL, and that is a documented
 	// limitation rather than a hidden one.
-	out.WriteString("$config['db_dsnw'] = 'sqlite:///' . __DIR__ . '/../roundcube.db?mode=0640';\n\n")
+	//
+	// Owner-only, in a directory that is owner-only too: Roundcube chmods the
+	// file to the mode named here, and anything the web server's group can
+	// read is a file nginx will serve.
+	out.WriteString("$config['db_dsnw'] = 'sqlite:///' . __DIR__ . '/../" + webmailDBDir +
+		"/roundcube.db?mode=0600';\n\n")
 
 	// Localhost, always. Webmail exists to serve the mailboxes on this
 	// machine, and a configurable IMAP host would make this page a credential
@@ -421,9 +440,17 @@ func randomSecret() (string, error) {
 // which is the same shape as the restore in Phase 14 and exists for the same
 // reason: the failure this guards against is an installation that got halfway
 // and left a directory that is neither the old site nor the new one.
-func replaceTree(source, destination string) error {
+//
+// keep names entries of the old tree that are data rather than application —
+// webmail's database — and are moved into the new one. If one cannot be, the
+// old tree is left where it was moved aside rather than deleted, and the error
+// says where: an upgrade that quietly dropped every user's contacts would be
+// worse than one that stopped.
+func replaceTree(source, destination string, keep ...string) error {
 	previous := destination + ".replaced"
-	_ = os.RemoveAll(previous)
+	if err := os.RemoveAll(previous); err != nil {
+		return fmt.Errorf("clear %s from an earlier install: %w", previous, err)
+	}
 
 	restore := false
 	if _, err := os.Stat(destination); err == nil {
@@ -448,6 +475,25 @@ func replaceTree(source, destination string) error {
 	}
 
 	if restore {
+		for _, name := range keep {
+			old := filepath.Join(previous, name)
+			if _, err := os.Lstat(old); err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return fmt.Errorf("check the previous %s: %w — the previous install is at %s",
+					name, err, previous)
+			}
+			current := filepath.Join(destination, name)
+			if err := os.RemoveAll(current); err != nil {
+				return fmt.Errorf("make room for the previous %s: %w — it is still at %s",
+					name, err, old)
+			}
+			if err := os.Rename(old, current); err != nil {
+				return fmt.Errorf("carry the previous %s over: %w — it is still at %s",
+					name, err, old)
+			}
+		}
 		if err := os.RemoveAll(previous); err != nil {
 			// The installation succeeded; the leftover is untidy and not a
 			// failure. Reporting it as one would make a successful install
@@ -458,25 +504,121 @@ func replaceTree(source, destination string) error {
 	return nil
 }
 
-// ownWebmail gives the unpacked application to the website's own account.
+// Modes for an installed webmail, set outright rather than left to the umask.
+// Under the umask the installer starts a supervisor-less Agent with (077),
+// everything came out owner-only and nginx could not read a stylesheet; under
+// systemd's (022) everything came out world-readable. Neither is right.
 //
-// Not to root. PHP-FPM runs as the site's account, and an application owned by
-// root is one that cannot write its own cache or its temporary directory — so
-// webmail would load, log in, and fail at the first attachment.
-func (p *Provider) ownWebmail(ctx context.Context, req WebmailRequest) error {
-	if req.Owner == "" || p.accounts == nil {
-		return nil
+// Served paths get the site's convention: the account and the web server's
+// group. Everything else is the account's alone.
+const (
+	webmailDirMode         os.FileMode = 0o750
+	webmailFileMode        os.FileMode = 0o640
+	webmailPrivateDirMode  os.FileMode = 0o700
+	webmailPrivateFileMode os.FileMode = 0o600
+)
+
+// webmailServed is everything in the application a browser has any business
+// fetching: the entry point, and exactly what the release's own public_html/
+// links to. Roundcube ships that directory so the web server's root can be it
+// and nothing else — config/, logs/, temp/, vendor/, installer/ and the
+// database all sit beside it rather than under it.
+//
+// A website's document root is fixed by the website, so the panel cannot point
+// nginx at public_html. It draws the same line with the kernel instead: the
+// paths below are readable by the web server's group, and nothing else in the
+// tree is readable by anyone but the site's own account. nginx cannot open a
+// file it has no permission to, and its `try_files $uri =404` in front of PHP
+// means it cannot hand a script it cannot see to PHP either. PHP runs as the
+// account, so the application itself reads everything it needs.
+//
+// It matters because under nginx Roundcube's .htaccess protects nothing. With
+// the whole tree group-readable its error log (full of paths and usernames),
+// its temp files (attachments being composed), its database (contacts and
+// preferences — Roundcube chmods it 0640) and every PHP file in vendor/ were a
+// URL away.
+var webmailServed = []string{"index.php", "skins", "plugins", "program/js", "program/resources"}
+
+// webmailDBDir holds Roundcube's SQLite database. Its own directory, because
+// SQLite writes a journal and a shared-memory file beside the database and all
+// three must be private; and a directory is what reinstalling carries over.
+const webmailDBDir = "db"
+
+// webmailMode is the mode a path in the installed tree gets. rel is relative to
+// the document root, with forward slashes.
+func webmailMode(rel string, dir bool) os.FileMode {
+	served := false
+	for _, public := range webmailServed {
+		switch {
+		case rel == public || strings.HasPrefix(rel, public+"/"):
+			served = true
+		case dir && strings.HasPrefix(public, rel+"/"):
+			// A directory on the way to something served — program/ on the
+			// way to program/js. The web server must be able to walk through
+			// it. Its other contents are still private.
+			served = true
+		}
 	}
-	uid, gid, err := p.accounts.EnsureAccount(ctx, req.Owner, req.DocumentRoot)
-	if err != nil {
-		return fmt.Errorf("resolve the website account %s: %w", req.Owner, err)
+	switch {
+	case served && dir:
+		return webmailDirMode
+	case served:
+		return webmailFileMode
+	case dir:
+		return webmailPrivateDirMode
+	default:
+		return webmailPrivateFileMode
 	}
+}
+
+// ownWebmail gives the unpacked application to the website and draws the line
+// between what is served and what is not.
+//
+// The owner is the site's account: PHP-FPM runs as it, and an application it
+// cannot write to fails at the first attachment. The group is the one the
+// document root had before webmail replaced it - the web server's - because
+// that is how nginx reads site content. It used to be the account's own group,
+// so nginx could read the files only while they happened to be world-readable.
+//
+// Lchown, and no chmod through a link: a symbolic link in the tree is given to
+// the account itself, never to whatever it points at. A root process walking a
+// directory must not be steered somewhere else by what it finds in it.
+func (p *Provider) ownWebmail(ctx context.Context, req WebmailRequest, root os.FileInfo) error {
+	uid, gid := -1, -1
+	if req.Owner != "" && p.accounts != nil {
+		var err error
+		uid, gid, err = p.accounts.EnsureAccount(ctx, req.Owner, req.DocumentRoot)
+		if err != nil {
+			return fmt.Errorf("resolve the website account %s: %w", req.Owner, err)
+		}
+		if stat, ok := root.Sys().(*syscall.Stat_t); ok {
+			gid = int(stat.Gid)
+		}
+	}
+	rootMode := root.Mode() & (os.ModePerm | os.ModeSetgid)
+
 	return filepath.WalkDir(req.DocumentRoot, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if chownErr := os.Chown(path, uid, gid); chownErr != nil {
-			return fmt.Errorf("give %s to %s: %w", path, req.Owner, chownErr)
+		if uid >= 0 {
+			if err := os.Lchown(path, uid, gid); err != nil {
+				return fmt.Errorf("give %s to %s: %w", path, req.Owner, err)
+			}
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		mode := rootMode
+		if path != req.DocumentRoot {
+			rel, err := filepath.Rel(req.DocumentRoot, path)
+			if err != nil {
+				return fmt.Errorf("place %s in the webmail tree: %w", path, err)
+			}
+			mode = webmailMode(filepath.ToSlash(rel), entry.IsDir())
+		}
+		if err := os.Chmod(path, mode); err != nil {
+			return fmt.Errorf("set the mode of %s: %w", path, err)
 		}
 		return nil
 	})

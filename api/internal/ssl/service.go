@@ -138,7 +138,7 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (IssueResult, err
 
 	// Before anything is asked of a certificate authority: it will resolve
 	// each of these names and fetch a file from whatever answers.
-	alignment := s.alignDNS(ctx, req, provider, names)
+	alignment := s.alignDNS(ctx, req.WebsiteID, req.Actor, provider, names)
 
 	// The record is written before the job so the panel can show what the site
 	// is becoming while issuance runs.
@@ -200,7 +200,13 @@ func (s *Service) Issue(ctx context.Context, req IssueRequest) (IssueResult, err
 // A failure here does not stop issuance. The panel's zones are one of several
 // places a name can be served from, and refusing to try because this one could
 // not be read would block every host whose DNS lives elsewhere.
-func (s *Service) alignDNS(ctx context.Context, req IssueRequest, provider string,
+//
+// Renewal does this too. The authority validates a renewal exactly as it
+// validated the first issuance, and in the ninety days between them a record
+// can be deleted or a zone re-created from a template. A renewal that skipped
+// this step failed its challenge on a name issuance would have repaired, and
+// spent the same scarce attempts doing it.
+func (s *Service) alignDNS(ctx context.Context, websiteID string, actor Actor, provider string,
 	names []string,
 ) *dns.Alignment {
 	// Nothing resolves anything for a self-signed certificate: it is written
@@ -215,13 +221,13 @@ func (s *Service) alignDNS(ctx context.Context, req IssueRequest, provider strin
 	// in the panel's database that the name server has never read — which
 	// looks, from outside, exactly like the panel having done nothing.
 	alignment, err := s.dns.AlignForCertificate(ctx, dns.Actor{
-		UserID:    req.Actor.UserID,
-		IPAddress: req.Actor.IPAddress,
-		UserAgent: req.Actor.UserAgent,
+		UserID:    actor.UserID,
+		IPAddress: actor.IPAddress,
+		UserAgent: actor.UserAgent,
 	}, httpx.RequestIDFromContext(ctx), names)
 	if err != nil {
 		s.log.Warn("could not prepare DNS for a certificate; issuing anyway",
-			"website_id", req.WebsiteID, logger.KeyError, err.Error())
+			"website_id", websiteID, logger.KeyError, err.Error())
 		return nil
 	}
 	return &alignment
@@ -242,14 +248,17 @@ func (s *Service) Renew(ctx context.Context, websiteID string, actor Actor) (job
 		return jobs.Job{}, err
 	}
 
-	job, err := s.queueRenewal(ctx, site, existing, actor)
+	job, alignment, err := s.queueRenewal(ctx, site, existing, actor)
 	if err != nil {
 		return jobs.Job{}, err
 	}
 
-	s.record(ctx, actor, ActionSSLRenew, site.ID, map[string]any{
-		"domain": site.PrimaryDomain, "job_id": job.ID,
-	})
+	metadata := map[string]any{"domain": site.PrimaryDomain, "job_id": job.ID}
+	if alignment != nil {
+		metadata["dns_records_added"] = alignment.Added
+		metadata["dns_names_blocked"] = alignment.Blocked
+	}
+	s.record(ctx, actor, ActionSSLRenew, site.ID, metadata)
 	return job, nil
 }
 
@@ -258,6 +267,15 @@ func (s *Service) Renew(ctx context.Context, websiteID string, actor Actor) (job
 // Shared with the automatic sweep, which must produce exactly the same work as
 // a person clicking renew — two code paths for one operation is how they drift.
 func (s *Service) queueRenewal(ctx context.Context, site websites.Website,
+	existing Certificate, actor Actor,
+) (jobs.Job, *dns.Alignment, error) {
+	alignment := s.alignDNS(ctx, site.ID, actor, existing.Provider, existing.Domains)
+
+	job, err := s.createRenewal(ctx, site, existing, actor)
+	return job, alignment, err
+}
+
+func (s *Service) createRenewal(ctx context.Context, site websites.Website,
 	existing Certificate, actor Actor,
 ) (jobs.Job, error) {
 	payload, err := s.agentPayload(ctx, site, existing.Domains)

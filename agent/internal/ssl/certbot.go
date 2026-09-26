@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/jothost/panel/agent/internal/command"
@@ -37,7 +38,57 @@ const ACMEChallengeDir = "/var/www/.acme-challenge"
 var (
 	ErrCertbotUnavailable = errors.New("certbot is not installed on this host")
 	ErrIssueFailed        = errors.New("the certificate could not be issued")
+	ErrRenewFailed        = errors.New("the certificate could not be renewed")
+	// ErrRateLimited means Let's Encrypt refused the request under one of its
+	// rate limits. It is its own error because it is the one failure where
+	// trying again makes things worse: every attempt before the limit resets
+	// fails the same way, and the failed-validation limit counts them.
+	ErrRateLimited = errors.New("rate-limited by Let's Encrypt, which is refusing more requests for these names for now")
 )
+
+// rateLimitSigns are what Let's Encrypt's refusals say, across the wording of
+// its older and current limits. Matched case-insensitively against certbot's
+// output.
+var rateLimitSigns = []string{
+	"ratelimited", // the ACME problem type, urn:ietf:params:acme:error:rateLimited
+	"too many certificates",
+	"too many failed authorizations",
+	"too many new orders",
+	"too many registrations",
+	"too many currently pending authorizations",
+	"there were too many requests",
+}
+
+// retryAfterPattern finds when the limit lifts, in either format Let's Encrypt
+// has used: "retry after 2026-09-27T10:00:00Z" and "retry after 2026-09-27
+// 10:00:00 UTC".
+var retryAfterPattern = regexp.MustCompile(
+	`(?i)retry after (\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:Z| UTC)?)`)
+
+// rateLimited recognises a rate-limit refusal in certbot's output and says
+// what it means in words an operator can act on. The certbot summary follows,
+// because which limit it was is in there and is worth knowing.
+func rateLimited(streams ...string) (string, bool) {
+	output := strings.Join(streams, "\n")
+	lower := strings.ToLower(output)
+	hit := false
+	for _, sign := range rateLimitSigns {
+		if strings.Contains(lower, sign) {
+			hit = true
+			break
+		}
+	}
+	if !hit {
+		return "", false
+	}
+	when := "the limit resets (usually within the hour for failed validations, " +
+		"up to a week for repeated certificates)"
+	if match := retryAfterPattern.FindStringSubmatch(output); match != nil {
+		when = match[1]
+	}
+	return fmt.Sprintf("do not retry before %s — every attempt until then fails the same way. "+
+		"Certbot said: %s", when, summarize(streams...)), true
+}
 
 // Certbot obtains publicly trusted certificates over ACME.
 type Certbot struct {
@@ -115,9 +166,12 @@ func (c *Certbot) Issue(ctx context.Context, req IssueRequest, report func(int, 
 		return "", "", fmt.Errorf("%w: %v", ErrIssueFailed, err)
 	}
 	if !result.Succeeded() {
+		if detail, ok := rateLimited(result.Stderr, result.Stdout); ok {
+			return "", "", fmt.Errorf("%w: %w: %s", ErrIssueFailed, ErrRateLimited, detail)
+		}
 		// certbot's diagnostics name the actual obstacle — DNS not resolving,
-		// the challenge not reachable, a rate limit — which is exactly what an
-		// operator needs. It carries no key material.
+		// the challenge not reachable — which is exactly what an operator
+		// needs. It carries no key material.
 		return "", "", fmt.Errorf("%w: %s", ErrIssueFailed, summarize(result.Stderr, result.Stdout))
 	}
 
@@ -198,8 +252,13 @@ func (c *Certbot) Renew(ctx context.Context, domain string, report func(int, str
 		return fmt.Errorf("renew %s: %w", normalized, err)
 	}
 	if !result.Succeeded() {
-		return fmt.Errorf("could not renew %s: %s", normalized,
-			summarize(result.Stderr, result.Stdout))
+		if detail, ok := rateLimited(result.Stderr, result.Stdout); ok {
+			return fmt.Errorf("%w: %w: %s", ErrRenewFailed, ErrRateLimited, detail)
+		}
+		// Wrapped so the operation layer passes certbot's diagnostic on. It
+		// used to fall through to "The certificate operation failed", which is
+		// the whole of what an operator was told about a renewal that failed.
+		return fmt.Errorf("%w: %s", ErrRenewFailed, summarize(result.Stderr, result.Stdout))
 	}
 	return nil
 }

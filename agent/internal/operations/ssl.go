@@ -339,9 +339,10 @@ func sslError(err error) error {
 		errors.Is(err, ssl.ErrInvalidDomain),
 		errors.Is(err, validate.ErrInvalidDomain):
 		return Fail(protocol.CodeInvalidPayload, err.Error(), err)
-	case errors.Is(err, ssl.ErrIssueFailed):
+	case errors.Is(err, ssl.ErrIssueFailed), errors.Is(err, ssl.ErrRenewFailed):
 		// certbot's own diagnostic names the real obstacle, and it is what an
-		// operator needs to fix it.
+		// operator needs to fix it. A rate limit arrives here too, already
+		// phrased as when to try again.
 		return Fail(protocol.CodeInternal, err.Error(), err)
 	default:
 		return Fail(protocol.CodeInternal, "The certificate operation failed", err)

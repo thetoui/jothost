@@ -58,6 +58,23 @@ A failed renewal is not retried for 6 hours. Without that gap a persistently
 failing certificate is retried on every sweep, which for Let's Encrypt means
 walking into a rate limit and turning a fixable problem into a blocked one.
 
+A renewal — automatic or clicked — **points the certificate's names at this host
+in the panel's own zones first**, exactly as issuance does (Phase 13). The
+authority validates a renewal the same way it validated the first certificate,
+and ninety days is long enough for a record to be deleted or a zone re-created
+from a template. The automatic sweep gives each renewal its own request id,
+because publishing a zone goes to the Agent and the Agent refuses a request
+without one. A DNS failure is logged and the renewal still goes ahead: most
+hosts' DNS lives somewhere else.
+
+**A rate limit is reported as one.** When Let's Encrypt refuses a request under
+one of its limits, the job fails with "rate-limited by Let's Encrypt … do not
+retry before <time>", taking the reset time from the authority's own reply, and
+then certbot's words. Every attempt before that time fails the same way, and
+failed validations count towards the limit, so this is the one failure where
+retrying makes it worse. A failed renewal also now carries certbot's diagnostic
+at all; it used to reach the panel as "The certificate operation failed".
+
 ### 1.4 Endpoints
 
 | Endpoint | Purpose |

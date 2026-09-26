@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { authApi } from '@/features/auth/api';
+import { hasPermission, type PermissionName } from '@/features/auth/permissions';
 import { ApiError } from '@/services/apiClient';
 import { useAuthStore } from '@/stores/authStore';
 import { getRefreshToken } from '@/features/auth/tokenStorage';
@@ -167,4 +168,19 @@ export function errorMessage(error: unknown, fallback = 'Something went wrong.')
     return error.message;
   }
   return fallback;
+}
+
+/**
+ * useCan returns a check against the signed-in person's permissions, for
+ * hiding what they cannot open.
+ *
+ * With no profile loaded it allows everything. In the running app that never
+ * happens where it matters — RequireAuth holds the whole shell until the
+ * profile has arrived — so it only decides what a component rendered on its
+ * own shows, and an empty menu would be the worse answer there. The API
+ * enforces every permission regardless.
+ */
+export function useCan(): (permission: PermissionName) => boolean {
+  const { data: profile } = useProfile();
+  return (permission) => (profile ? hasPermission(profile, permission) : true);
 }

@@ -2451,6 +2451,17 @@ obtained by *connecting* — from this host's own routable address, because
 `checked: false` means the panel could not ask, which is reported as such rather
 than as a pass.
 
+## Webmail
+
+`POST /mail/webmail` with `{"website_id": "..."}` answers **202 with
+`{"job": {...}}`**, a `webmail.install` job to follow at `/jobs/:id`. The site's
+document root, account and name come from the website, and the IMAP and SMTP
+hosts are always this server's mail hostname; nothing else is accepted. Webmail
+is recorded against the site (`settings.webmail_website_id`,
+`settings.webmail_version`) **only when the job succeeds**. A failed job — a
+download that failed, a checksum that did not match — leaves the record as it
+was, and the job's `error` says why.
+
 ## Mailboxes
 
 A mailbox is created with a password of at least 12 characters — longer than

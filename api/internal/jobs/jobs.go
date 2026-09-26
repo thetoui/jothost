@@ -82,6 +82,10 @@ const (
 	// API_WRITE_TIMEOUT whatever the handler is doing, so the caller was told
 	// the install had failed while it ran on to completion behind them.
 	TypeMailInstall = "mail.install"
+
+	// Installing webmail downloads, verifies and unpacks a release. It is
+	// recorded as installed only when this job succeeds (mail.JobFinished).
+	TypeWebmailInstall = "webmail.install"
 )
 
 // Job is one unit of durable work.

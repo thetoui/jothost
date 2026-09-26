@@ -16,11 +16,11 @@ import (
 )
 
 // Timeouts. Reading is a handful of calls to local daemons; a reconcile writes
-// files and may restart two of them; installing pulls packages.
+// files and may restart two of them. Installing — the mail server or webmail —
+// goes through the job queue and is bounded there.
 const (
 	requestTimeout = 60 * time.Second
 	changeTimeout  = 3 * time.Minute
-	installTimeout = 20 * time.Minute
 )
 
 // maxBodyBytes bounds a request body.
@@ -376,16 +376,20 @@ func (h *Handler) installWebmail(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body) {
 		return
 	}
-	ctx, cancel := httpx.LongRequest(w, r, installTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
 
-	result, err := h.service.InstallWebmail(ctx, h.actor(r), httpx.RequestIDFromContext(ctx),
-		body.WebsiteID)
+	job, err := h.service.InstallWebmail(ctx, h.actor(r), body.WebsiteID)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, r, http.StatusAccepted, httpx.Envelope{Success: true, Data: result})
+	// 202: nothing is installed yet, only the intent to install it. The job
+	// says how it went.
+	httpx.WriteJSON(w, r, http.StatusAccepted, httpx.Envelope{
+		Success: true,
+		Data:    map[string]any{"job": job},
+	})
 }
 
 func (h *Handler) removeWebmail(w http.ResponseWriter, r *http.Request) {

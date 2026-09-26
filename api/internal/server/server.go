@@ -546,22 +546,25 @@ func New(opts Options) (*Server, error) {
 	s.quotaGuard = quotaGuard
 	websiteService.SetSubscriptions(tenancyService)
 
+	// Kept, because it also observes jobs: webmail is recorded as installed
+	// only when its job succeeds.
+	mailService := mailpkg.NewService(mailpkg.ServiceOptions{
+		Repo:     mailpkg.NewRepository(opts.Pool),
+		Websites: mailWebsites{repo: websiteRepo, ssl: sslRepo},
+		Zones:    mailZones{dns: dnsService},
+		Agent:    agent,
+		Audit:    auditRecorder,
+		// Installing a mail server goes through the queue: the packages
+		// take minutes and the virus scanner's signature database is
+		// several hundred megabytes, neither of which fits inside a
+		// request the HTTP server closes after API_WRITE_TIMEOUT.
+		Jobs:     jobRepo,
+		Log:      log,
+		ServerID: opts.LocalServerID,
+	})
 	s.mail = mailpkg.NewHandler(mailpkg.HandlerOptions{
-		Service: mailpkg.NewService(mailpkg.ServiceOptions{
-			Repo:     mailpkg.NewRepository(opts.Pool),
-			Websites: mailWebsites{repo: websiteRepo, ssl: sslRepo},
-			Zones:    mailZones{dns: dnsService},
-			Agent:    agent,
-			Audit:    auditRecorder,
-			// Installing a mail server goes through the queue: the packages
-			// take minutes and the virus scanner's signature database is
-			// several hundred megabytes, neither of which fits inside a
-			// request the HTTP server closes after API_WRITE_TIMEOUT.
-			Jobs:     jobRepo,
-			Log:      log,
-			ServerID: opts.LocalServerID,
-		}),
-		Auth: authService,
+		Service: mailService,
+		Auth:    authService,
 	})
 
 	// System updates. The host's package manager is the authority on what is
@@ -731,7 +734,7 @@ func New(opts Options) (*Server, error) {
 		s.worker = jobs.NewWorker(jobs.Options{
 			Repository: jobRepo,
 			Dispatcher: agent,
-			Observer:   jobs.Observers{websiteService, s.phpSync, s.renewer, backupService, deployService},
+			Observer:   jobs.Observers{websiteService, s.phpSync, s.renewer, backupService, deployService, mailService},
 			// The resolver rebuilds a backup job's payload at dispatch, so the
 			// queue never stores an S3 secret key or an SSH private key.
 			Resolver: jobs.Resolvers{backupService, deployService},

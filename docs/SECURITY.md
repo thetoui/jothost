@@ -188,7 +188,21 @@ misleading:
 
 ## 11. Reporting a vulnerability
 
-Report privately, through a security advisory on the project's repository, and
-give the maintainers time to release a fix before disclosing. Please include
-the version (`jothost-api version`), what you observed, and the smallest
-sequence that reproduces it.
+Report privately, through GitHub's private vulnerability reporting:
+**[open a report](https://github.com/thetoui/jothost/security/advisories/new)**
+(the repository's *Security* tab, *Report a vulnerability*). Only the
+maintainers can see it. Please do not open a public issue for a vulnerability.
+
+Include the version (`jothost-api version`), what you observed, and the
+smallest sequence that reproduces it.
+
+What you can expect:
+
+| | |
+|---|---|
+| Acknowledgement | within **3 business days** |
+| A fix or mitigation for a critical or high-severity issue | within **30 days** of the report |
+| Public disclosure | coordinated with you, once a fix is released, or at **90 days** if none is |
+
+A fix ships as a patch release ([SUPPORT.md](SUPPORT.md)), and its advisory
+credits you unless you ask otherwise.

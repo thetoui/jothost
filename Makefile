@@ -604,10 +604,10 @@ docker-test-security: create-integration-admin ## Run the Phase 15 Security Cent
 docker-test-backup: create-integration-admin ## Run the Phase 14 backup checks
 	# An S3 service is started for the duration, so the S3 destination is
 	# exercised against a real implementation rather than a stub.
-	docker compose -f docker-compose.test.yml up -d minio
-	docker compose -f docker-compose.test.yml run --rm minio-init
+	docker compose -f docker-compose.test.yml up -d s3
+	docker compose -f docker-compose.test.yml run --rm s3-init
 	$(COMPOSE) exec -T agent sh /tests/integration/phase14_backup.sh
-	docker compose -f docker-compose.test.yml stop minio
+	docker compose -f docker-compose.test.yml stop s3
 
 .PHONY: docker-test-hybrid
 docker-test-hybrid: create-integration-admin ## Run the Phase 4.5 Apache hybrid integration checks

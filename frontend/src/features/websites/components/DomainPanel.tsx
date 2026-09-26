@@ -59,7 +59,7 @@ export function DomainPanel({ site }: DomainPanelProps) {
 
   return (
     <div className="border-t border-surface-border bg-surface-sunken/40 px-4 py-4">
-      <div className="grid gap-5 lg:grid-cols-[17rem,1fr]">
+      <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <DomainSummary site={site} />
 
         <div className="min-w-0 space-y-4">

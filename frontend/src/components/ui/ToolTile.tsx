@@ -16,13 +16,17 @@ import { focusRingTight } from '@/components/ui/focus';
  */
 export type ToolTone = 'blue' | 'green' | 'violet' | 'amber' | 'slate' | 'rose';
 
+// Tinted for the dark theme: a translucent mid-tone square behind a light
+// icon. The light-theme pastels (bg-sky-100 and friends) survived the dark
+// migration, which only rewrote the slate scale, and drew bright squares with
+// dark icons on a dark page.
 const toneClasses: Record<ToolTone, string> = {
-  blue: 'bg-sky-100 text-sky-700',
-  green: 'bg-emerald-100 text-emerald-700',
-  violet: 'bg-violet-100 text-violet-700',
-  amber: 'bg-amber-100 text-amber-700',
+  blue: 'bg-sky-500/15 text-sky-300',
+  green: 'bg-emerald-500/15 text-emerald-300',
+  violet: 'bg-violet-500/15 text-violet-300',
+  amber: 'bg-amber-500/15 text-amber-300',
   slate: 'bg-surface-sunken text-ink',
-  rose: 'bg-rose-100 text-rose-700',
+  rose: 'bg-rose-500/15 text-rose-300',
 };
 
 interface ToolTileProps {

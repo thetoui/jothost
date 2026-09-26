@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronRight, LogOut, PanelLeftClose, PanelLeftOpen, UserCog } from 'lucide-react';
 
+import { ToolSearch } from '@/components/ToolSearch';
+import { TOOLS_PATH, locate } from '@/components/navigation';
 import { Button } from '@/components/ui/Button';
 import { MenuItem, MenuPanel } from '@/components/ui/Menu';
 import { focusRing, focusRingTight } from '@/components/ui/focus';
@@ -36,6 +38,7 @@ export function Header() {
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
+        <ToolSearch />
         <ApiStatus pending={isPending} failed={isError} version={health?.version} />
         {profile && <UserMenu username={profile.username} roles={profile.roles} />}
       </div>
@@ -82,41 +85,44 @@ function ApiStatus({
   );
 }
 
-/** Human labels for the first path segment. */
-const SEGMENT_LABELS: Record<string, string> = {
-  websites: 'Websites',
-  php: 'PHP',
-  security: 'Account security',
-};
-
 /**
  * Breadcrumbs show where the reader is inside the panel.
  *
- * Only the first segment is named; a website's id is not a useful crumb, so a
- * detail page shows its parent and leaves the page's own heading to say which
- * record is open.
+ * A page reached through Tools & Settings says so — "Tools & Settings ›
+ * Firewall" — because the sidebar no longer lists it, and the crumb is what
+ * tells somebody how they got there and how to get back. A website's id is not
+ * a useful crumb, so a detail page shows its parent and leaves the page's own
+ * heading to say which record is open.
+ *
+ * Labels come from navigation.ts. They used to come from a three-entry map
+ * here, so every other page showed its raw URL segment: "Dashboard › services".
  */
 function Breadcrumbs() {
   const { pathname } = useLocation();
-  const segments = pathname.split('/').filter(Boolean);
 
-  if (segments.length === 0) {
+  if (pathname === '/') {
     return <span className="truncate text-sm font-medium text-ink-strong">Dashboard</span>;
   }
 
-  const [first] = segments;
-  const label = SEGMENT_LABELS[first ?? ''] ?? first;
-  const isDetail = segments.length > 1;
+  const found = locate(pathname);
+  const parent = found?.underTools
+    ? { label: 'Tools & Settings', to: TOOLS_PATH }
+    : { label: 'Dashboard', to: '/' };
+  const label = found?.destination.label ?? pathname.split('/').filter(Boolean)[0] ?? '';
+  const isDetail = found !== undefined && pathname !== found.destination.to;
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
-      <Link to="/" className={`shrink-0 rounded-sm text-ink-muted hover:text-ink-strong ${focusRingTight}`}>
-        Dashboard
+      <Link
+        to={parent.to}
+        className={`shrink-0 rounded-sm text-ink-muted hover:text-ink-strong ${focusRingTight}`}
+      >
+        {parent.label}
       </Link>
       <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
-      {isDetail ? (
+      {isDetail && found ? (
         <Link
-          to={`/${first}`}
+          to={found.destination.to}
           className={`truncate rounded-sm text-ink-muted hover:text-ink-strong ${focusRingTight}`}
         >
           {label}

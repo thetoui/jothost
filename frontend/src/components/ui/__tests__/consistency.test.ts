@@ -247,4 +247,34 @@ describe('UI consistency', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it('separates grid tracks with underscores, never commas', () => {
+    // `grid-cols-[1fr,17rem]` is not two columns. Tailwind turns underscores
+    // into spaces and leaves commas alone, so no valid rule comes out of it and
+    // the browser quietly falls back to one column. Four two-column layouts
+    // shipped like that — the server column beside Websites & Domains, an
+    // open domain's panel, the editor's file tree and the Server page — each
+    // stacked at every width. Commas inside minmax() are fine; only one
+    // between tracks is the bug, so this counts parenthesis depth.
+    const template = /\bgrid-(?:cols|rows)-\[([^\]\s"'`]+)\]/g;
+    const offenders: string[] = [];
+
+    for (const file of files) {
+      const source = code(readFileSync(file, 'utf8'));
+      for (const match of source.matchAll(template)) {
+        const value = match[1] ?? '';
+        let depth = 0;
+        for (const char of value) {
+          if (char === '(') depth += 1;
+          else if (char === ')') depth -= 1;
+          else if (char === ',' && depth === 0) {
+            offenders.push(`${name(file)}: ${match[0]}`);
+            break;
+          }
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
 });

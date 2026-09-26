@@ -159,7 +159,7 @@ export function EditorPage() {
         </Alert>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[18rem,1fr]">
+      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <Card label="File tree">
           <CardHeader
             icon={<Code2 aria-hidden="true" className="h-4 w-4" />}

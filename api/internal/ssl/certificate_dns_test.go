@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jothost/panel/api/internal/dns"
 	"github.com/jothost/panel/api/internal/jobs"
@@ -24,15 +25,17 @@ import (
 // going to resolve anything.
 
 type recordingAligner struct {
-	calls  [][]string
-	report dns.Alignment
-	err    error
+	calls      [][]string
+	requestIDs []string
+	report     dns.Alignment
+	err        error
 }
 
-func (a *recordingAligner) AlignForCertificate(_ context.Context, _ dns.Actor, _ string,
+func (a *recordingAligner) AlignForCertificate(_ context.Context, _ dns.Actor, requestID string,
 	names []string,
 ) (dns.Alignment, error) {
 	a.calls = append(a.calls, names)
+	a.requestIDs = append(a.requestIDs, requestID)
 	if a.err != nil {
 		return dns.Alignment{}, a.err
 	}
@@ -157,5 +160,105 @@ func TestDNSFailingDoesNotStopIssuance(t *testing.T) {
 	}
 	if issued.DNS != nil {
 		t.Fatal("a failed alignment was reported as though it had happened")
+	}
+}
+
+// ----------------------------------------------------------------- renewal
+
+// issuedFrom records a certificate from a given provider, as the Agent would
+// have reported it, expiring in expiresIn.
+func (f *fixture) issuedFrom(t *testing.T, websiteID, provider string, expiresIn time.Duration) {
+	t.Helper()
+	ctx := context.Background()
+	names := []string{"example.test", "www.example.test"}
+	if _, err := f.repo.Upsert(ctx, ssl.UpsertParams{
+		WebsiteID: websiteID, Provider: provider, Domains: names,
+		AutoRenew: true, Status: ssl.StatusIssuing,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	now := time.Now()
+	if err := f.repo.MarkIssued(ctx, ssl.IssuedParams{
+		WebsiteID: websiteID, Provider: provider, Domains: names,
+		CertificatePath: "/etc/letsencrypt/live/example.test/fullchain.pem",
+		PrivateKeyPath:  "/etc/letsencrypt/live/example.test/privkey.pem",
+		Fingerprint:     "AA:BB", Issuer: "R11",
+		IssuedAt: now, ExpiresAt: now.Add(expiresIn),
+	}, now); err != nil {
+		t.Fatalf("mark issued: %v", err)
+	}
+}
+
+func TestRenewingFromLetsEncryptPointsTheNamesAtThisHostFirst(t *testing.T) {
+	// The authority validates a renewal exactly as it validated the first
+	// certificate. Ninety days is long enough for a record to be deleted or a
+	// zone rebuilt from a template, and a renewal that skipped this failed its
+	// challenge on a name issuance would have repaired.
+	aligner := &recordingAligner{}
+	f := alignerFixture(t, aligner)
+	ctx := context.Background()
+	site := f.activeSite(t, "example.test")
+	f.issuedFrom(t, site.ID, ssl.ProviderLetsEncrypt, 20*24*time.Hour)
+
+	if _, err := f.service.Renew(ctx, site.ID, ssl.Actor{}); err != nil {
+		t.Fatalf("renew: %v", err)
+	}
+	if len(aligner.calls) != 1 {
+		t.Fatalf("DNS was asked about the names %d times, want 1", len(aligner.calls))
+	}
+	// The names the certificate covers, which is what the authority checks —
+	// not whatever the site's alias list says today.
+	if got := aligner.calls[0]; len(got) != 2 || got[0] != "example.test" || got[1] != "www.example.test" {
+		t.Fatalf("the names sent to DNS were %v", got)
+	}
+}
+
+func TestTheAutomaticRenewalAlignsDNSWithARequestTheAgentWillAccept(t *testing.T) {
+	// Nobody clicked anything, so there is no HTTP request and no request id
+	// in the context. Publishing a zone goes to the Agent, which refuses a
+	// request without one — and the record would then exist in the panel's
+	// database and nowhere a resolver could see it.
+	aligner := &recordingAligner{}
+	f := alignerFixture(t, aligner)
+	site := f.activeSite(t, "example.test")
+	f.issuedFrom(t, site.ID, ssl.ProviderLetsEncrypt, 10*24*time.Hour)
+
+	if queued := f.renewer.Sweep(context.Background()); queued != 1 {
+		t.Fatalf("swept %d certificates, want 1", queued)
+	}
+	if len(aligner.calls) != 1 {
+		t.Fatalf("the sweep asked DNS %d times, want 1", len(aligner.calls))
+	}
+	if aligner.requestIDs[0] == "" {
+		t.Fatal("the sweep aligned DNS with no request id; the Agent would refuse to publish the zone")
+	}
+}
+
+func TestRenewingASelfSignedCertificateTouchesNoDNS(t *testing.T) {
+	aligner := &recordingAligner{}
+	f := alignerFixture(t, aligner)
+	site := f.activeSite(t, "example.test")
+	f.issuedFrom(t, site.ID, ssl.ProviderSelfSigned, 10*24*time.Hour)
+
+	if queued := f.renewer.Sweep(context.Background()); queued != 1 {
+		t.Fatalf("swept %d certificates, want 1", queued)
+	}
+	if len(aligner.calls) != 0 {
+		t.Fatalf("a self-signed renewal changed DNS: %v", aligner.calls)
+	}
+}
+
+func TestDNSFailingDoesNotStopRenewal(t *testing.T) {
+	aligner := &recordingAligner{err: errors.New("the name server is not answering")}
+	f := alignerFixture(t, aligner)
+	site := f.activeSite(t, "example.test")
+	f.issuedFrom(t, site.ID, ssl.ProviderLetsEncrypt, 20*24*time.Hour)
+
+	job, err := f.service.Renew(context.Background(), site.ID, ssl.Actor{})
+	if err != nil {
+		t.Fatalf("renewal was refused because DNS failed: %v", err)
+	}
+	if job.Type != jobs.TypeSSLRenew {
+		t.Fatalf("job type = %q", job.Type)
 	}
 }

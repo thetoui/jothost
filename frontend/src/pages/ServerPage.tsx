@@ -78,7 +78,7 @@ export function ServerPage() {
         </Alert>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr),20rem]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         {/* min-w-0 on the column, not only overflow-x-auto on the table: a grid
             track sized 1fr will not shrink below its content's minimum width,
             so the wide process table pushed the whole page sideways and took

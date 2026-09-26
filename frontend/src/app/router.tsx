@@ -30,6 +30,7 @@ import { ServicesPage } from '@/pages/ServicesPage';
 import { WebserverPage } from '@/pages/WebserverPage';
 import { SSLPage } from '@/pages/SSLPage';
 import { TenancyPage } from '@/pages/TenancyPage';
+import { ToolsPage } from '@/pages/ToolsPage';
 import { WebsiteDetailPage } from '@/pages/WebsiteDetailPage';
 import { WebsitesPage } from '@/pages/WebsitesPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -115,6 +116,7 @@ export const router = createBrowserRouter(
             { path: 'node', element: <NodePage /> },
             { path: 'ssl', element: <SSLPage /> },
             { path: 'security', element: <SecurityPage /> },
+            { path: 'tools', element: <ToolsPage /> },
             { path: '*', element: <NotFoundPage /> },
           ],
         },

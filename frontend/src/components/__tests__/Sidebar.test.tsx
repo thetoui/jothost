@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 
 import { Sidebar } from '@/components/Sidebar';
 import { renderWithProviders } from '@/test/utils';
@@ -16,33 +16,53 @@ describe('Sidebar', () => {
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument();
   });
 
-  it('links only to destinations implemented in this phase', () => {
+  it('keeps the everyday pages and one way into everything else', () => {
     renderWithProviders(<Sidebar />);
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' });
 
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/');
-    // Websites became a real destination in Phase 4, PHP in Phase 5.
-    expect(screen.getByRole('link', { name: 'Websites' })).toHaveAttribute(
+    expect(within(nav).getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/');
+    expect(within(nav).getByRole('link', { name: 'Websites & Domains' })).toHaveAttribute(
       'href',
       '/websites',
     );
-    expect(screen.getByRole('link', { name: 'PHP' })).toHaveAttribute('href', '/php');
-    // Databases became a real destination in Phase 8.
-    expect(screen.getByRole('link', { name: 'Databases' })).toHaveAttribute(
+    expect(within(nav).getByRole('link', { name: 'Tools & Settings' })).toHaveAttribute(
       'href',
-      '/databases',
+      '/tools',
     );
-    // Backups became a real destination in Phase 14.
-    expect(screen.getByRole('link', { name: 'Backups' })).toHaveAttribute('href', '/backups');
-    // Security Center became a real destination in Phase 15.
-    expect(screen.getByRole('link', { name: 'Security Center' })).toHaveAttribute(
-      'href',
-      '/security-center',
-    );
-    // Server was the last entry that went nowhere. It is a real destination
-    // now, so the navigation has no dead links left at all — which is the
-    // property worth asserting, rather than the presence of a particular one.
-    expect(screen.getByRole('link', { name: 'Server' })).toHaveAttribute('href', '/server');
+    // Server administration lives on Tools & Settings now, not in the sidebar.
+    expect(within(nav).queryByRole('link', { name: 'Firewall' })).not.toBeInTheDocument();
+    // Short enough to scan.
+    expect(within(nav).getAllByRole('link').length).toBeLessThanOrEqual(10);
     expect(document.querySelectorAll('[aria-disabled="true"]')).toHaveLength(0);
+  });
+
+  it('marks the current page', () => {
+    renderWithProviders(<Sidebar />, { route: '/databases' });
+
+    expect(screen.getByRole('link', { name: 'Databases' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
+  it('lights up Tools & Settings for a page reached through it', () => {
+    renderWithProviders(<Sidebar />, { route: '/firewall' });
+
+    // Lit, but not claimed to be the page itself.
+    expect(screen.getByRole('link', { name: 'Tools & Settings' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('keeps Websites & Domains lit on a website of its own', () => {
+    renderWithProviders(<Sidebar />, { route: '/websites/0b6e3f0c-4f51-4f79-9d3e-8a2f6a1c2b3d' });
+
+    expect(screen.getByRole('link', { name: 'Websites & Domains' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
   });
 
   it('collapses in response to UI state', () => {

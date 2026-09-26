@@ -129,15 +129,52 @@ removed history would be the one way to defeat the append-only trigger.
 
 ---
 
-## 7. Known limitations
+## 7. Retention
+
+**The panel's audit trail is kept indefinitely.** That is a decision, not a
+gap: an audit trail's value is that nobody — an attacker with the API's
+credentials included — can make it forget. It is enforced in the database, not
+in the panel: the `audit_logs_no_update` and `audit_logs_no_delete` triggers
+refuse every change and every deletion, even by a PostgreSQL superuser, and the
+application's role has no `UPDATE` or `DELETE` grant in production
+(DATABASE.md section 25). The panel has no setting to prune it, deliberately:
+any such setting would be a way to erase the record through the panel.
+
+The trail is part of the panel's database, so every panel backup carries it,
+and a panel restored onto a new host keeps its history.
+
+**The Agent's own log** (`/var/log/jothost/agent-audit.log`, a second record
+written by the privileged side) is rotated weekly by logrotate and kept for 52
+weeks, compressed.
+
+**If you are required to delete entries** — audit rows hold IP addresses and
+user agents, which some data-protection regimes count as personal data with a
+limit on how long they may be kept — do it as a deliberate act from the host,
+outside the panel, and write down why:
+
+```bash
+sudo -u postgres psql jothost <<'SQL'
+BEGIN;
+ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_no_delete;
+DELETE FROM audit_logs WHERE created_at < now() - interval '400 days';
+ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_no_delete;
+COMMIT;
+SQL
+```
+
+Everything happens in one transaction, so the trigger cannot be left disabled
+by a failure part way. Older panel backups still hold the deleted rows, so a
+retention duty covers those backups as well.
+
+## 8. Known limitations
 
 - **No export.** There is no CSV or JSON download, so taking the trail to
   somewhere it can be kept independently means querying the API and saving the
   result yourself. Anyone who needs tamper-evident retention wants it shipped
   off the host anyway, which is the larger version of this gap.
-- **No retention policy.** The table grows forever. That is the safe default
-  for an audit trail and the wrong one for a disk, and nothing currently warns
-  when it gets large.
+- **Retention is indefinite, by design (section 7).** The table only grows, and
+  nothing warns about its size beyond the host's own disk alerts. Rows are
+  small and written only for sensitive actions, so it is slow growth.
 - **No full-text search.** Filtering is by field. "Find the entry mentioning
   example.test" means filtering by resource or reading pages, because the
   metadata is JSONB with no index on its contents.

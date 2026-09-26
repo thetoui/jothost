@@ -145,6 +145,36 @@ func (s *Service) BackupFailed(ctx context.Context, backupID, subject, reason st
 	})
 }
 
+// BackupUnverifiable raises a stored backup that verified once and, checked
+// again later, no longer does: damaged, truncated, or gone from its
+// destination.
+//
+// The same event kind as a failed backup, so every channel that already hears
+// about failed backups hears about this without anybody changing a
+// subscription — it is the same news, a copy that is not there. A dedupe key of
+// its own, one per backup: the sweep stops re-reading a backup once it has
+// failed, but a person re-verifying it by hand should not produce a second
+// message about a problem already reported.
+func (s *Service) BackupUnverifiable(ctx context.Context, backupID, subject, detail string) {
+	body := "A backup that verified when it was taken failed a later check."
+	if detail != "" {
+		body += " " + detail
+	}
+	body += " It will not restore. Take a new backup of " + subject +
+		", and look at what happened to the destination it was stored on."
+
+	s.Emit(ctx, Event{
+		Source:    SourceBackup,
+		Kind:      validate.EventBackupFailed,
+		Severity:  validate.NotifyCritical,
+		Title:     "Backup no longer verifies: " + subject,
+		Body:      body,
+		Link:      "/backups",
+		DedupeKey: "backup.unverifiable:" + safeKey(backupID),
+		Metadata:  map[string]any{"backup_id": backupID, "subject": subject},
+	})
+}
+
 // SSLExpiring raises a certificate running out of time.
 //
 // The dedupe key carries the *bucket* rather than the day, so one certificate

@@ -655,6 +655,47 @@ type PrunableParams struct {
 	KeepLast   int
 }
 
+// DueForReverification returns stored backups whose last successful
+// verification is older than cutoff, the longest-unchecked first.
+//
+// Only backups that verified before are taken. One that failed its last check
+// already has verified_at cleared, has already been reported, and is waiting on
+// a person; reading it again every sweep would repeat the report and the
+// download without telling anybody anything new.
+func (r *Repository) DueForReverification(ctx context.Context, serverID string,
+	cutoff time.Time, limit int,
+) ([]Backup, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT `+backupColumns+`
+		FROM backups b
+		WHERE b.server_id = $1::uuid
+		  AND b.status = 'completed'
+		  AND b.verified_at IS NOT NULL
+		  AND b.verified_at < $2
+		  AND b.destination_id IS NOT NULL
+		  AND b.path IS NOT NULL
+		ORDER BY b.verified_at
+		LIMIT $3`,
+		serverID, cutoff, limit)
+	if err != nil {
+		return nil, fmt.Errorf("select backups due for reverification: %w", err)
+	}
+	defer rows.Close()
+
+	backups := []Backup{}
+	for rows.Next() {
+		item, err := scanBackup(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan backup: %w", err)
+		}
+		backups = append(backups, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate backups due for reverification: %w", err)
+	}
+	return backups, nil
+}
+
 // Prunable returns the backups a schedule's retention would remove.
 //
 // The count floor is applied *before* the age filter, not after: the most

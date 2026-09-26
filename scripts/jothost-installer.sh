@@ -497,21 +497,25 @@ install_dependencies() {
   # interpreter. A panel whose first WordPress install fails on a missing gd or
   # a missing intl has not saved anybody the trouble of installing PHP; it has
   # moved the trouble to a place where the error message is somebody else's.
+  #
+  # SQLite's PDO driver is the panel's own webmail's: Roundcube keeps contacts
+  # and preferences in SQLite, and without the driver it answers every request
+  # with a 500 and a "Class PDO not found" in the site's PHP log.
   case "$OS_FAMILY" in
     debian)
       base="nginx postgresql redis-server certbot openssl ca-certificates curl cron logrotate"
-      php="php-fpm php-cli php-mysql php-pgsql php-mbstring php-xml php-curl php-zip
+      php="php-fpm php-cli php-mysql php-pgsql php-sqlite3 php-mbstring php-xml php-curl php-zip
            php-gd php-intl php-bcmath php-soap php-opcache" ;;
     alpine)
       base="nginx postgresql postgresql-contrib redis certbot openssl ca-certificates curl openrc dcron logrotate"
-      php="php83-fpm php83-cli php83-pdo php83-pdo_mysql php83-pdo_pgsql php83-mysqli
+      php="php83-fpm php83-cli php83-pdo php83-pdo_mysql php83-pdo_pgsql php83-pdo_sqlite php83-mysqli
            php83-mbstring php83-xml php83-simplexml php83-dom php83-curl php83-zip
            php83-gd php83-session php83-opcache php83-openssl php83-fileinfo
            php83-iconv php83-phar php83-tokenizer php83-ctype php83-posix
            php83-exif php83-intl php83-bcmath php83-sodium" ;;
     rhel)
       base="nginx postgresql-server redis certbot openssl ca-certificates curl cronie logrotate"
-      php="php-fpm php-cli php-mysqlnd php-pgsql php-mbstring php-xml php-gd
+      php="php-fpm php-cli php-mysqlnd php-pgsql php-pdo php-mbstring php-xml php-gd
            php-intl php-bcmath php-soap php-opcache" ;;
   esac
 

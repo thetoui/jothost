@@ -7,9 +7,13 @@ import {
   TOOLS_PATH,
   allDestinations,
   locate,
+  searchDestinations,
   sidebarGroups,
   sidebarTarget,
   toolGroups,
+  visibleGroups,
+  visibleSidebar,
+  type Can,
 } from '@/components/navigation';
 
 /**
@@ -65,5 +69,48 @@ describe('navigation', () => {
     // The longest prefix wins: /security-center is not /security.
     expect(locate('/security-center')?.destination.label).toBe('Security Center');
     expect(locate('/security')?.destination.label).toBe('Account security');
+  });
+
+  // ------------------------------------------------ what each person sees
+
+  const only =
+    (...granted: string[]): Can =>
+    (permission) =>
+      granted.includes(permission);
+  const paths = (groups: { items: { to: string }[] }[]) =>
+    groups.flatMap((group) => group.items.map((item) => item.to));
+
+  it('gives every page a permission except the two everybody may open', () => {
+    // A page added without one would be shown to everybody, which is the
+    // mistake this whole filter exists to prevent.
+    const open = allDestinations.filter((d) => d.permission === undefined).map((d) => d.to);
+    expect(open.sort()).toEqual(['/security', TOOLS_PATH].sort());
+  });
+
+  it('shows a website customer only what their permissions open', () => {
+    const can = only('website.view', 'file.read');
+    const sidebar = paths(visibleSidebar(can));
+
+    expect(sidebar).toEqual(expect.arrayContaining(['/websites', '/files', TOOLS_PATH, '/security']));
+    // server.view, database.manage: not theirs.
+    expect(sidebar).not.toContain('/');
+    expect(sidebar).not.toContain('/databases');
+    expect(sidebar).not.toContain('/monitoring');
+
+    const tools = visibleGroups(toolGroups, can);
+    expect(paths(tools).sort()).toEqual(['/editor', '/node', '/ssl']);
+    // A group with nothing left in it goes too, rather than showing a heading.
+    expect(tools.map((group) => group.title)).not.toContain('Security');
+  });
+
+  it('drops Tools & Settings when nothing on it can be opened', () => {
+    expect(paths(visibleSidebar(only()))).toEqual(['/security']);
+  });
+
+  it('keeps search from reaching round the menu', () => {
+    expect(searchDestinations('fire', only('website.view')).map((d) => d.to)).not.toContain(
+      '/firewall',
+    );
+    expect(searchDestinations('fire').map((d) => d.to)).toContain('/firewall');
   });
 });

@@ -1,7 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 
-import { sidebarGroups, sidebarTarget, type Destination } from '@/components/navigation';
+import { sidebarTarget, visibleSidebar, type Destination } from '@/components/navigation';
 import { focusRingRail } from '@/components/ui/focus';
+import { useCan } from '@/features/auth/hooks';
 import { useUiStore } from '@/stores/uiStore';
 
 /**
@@ -15,6 +16,8 @@ export function Sidebar() {
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
   const { pathname } = useLocation();
   const current = sidebarTarget(pathname);
+  // Only the pages this person can open; see visibleSidebar.
+  const groups = visibleSidebar(useCan());
 
   return (
     <nav
@@ -33,7 +36,7 @@ export function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
-        {sidebarGroups.map((group, index) => (
+        {groups.map((group, index) => (
           <div key={group.title ?? `group-${index}`} className={index > 0 ? 'mt-5' : undefined}>
             {group.title && !collapsed && (
               <p className="mb-1.5 px-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-rail-text/70">

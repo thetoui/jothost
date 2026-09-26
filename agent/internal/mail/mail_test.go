@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/jothost/panel/agent/internal/testsupport"
@@ -552,6 +553,124 @@ func TestTheWebmailConfigurationDisablesItsOwnInstaller(t *testing.T) {
 	}
 }
 
+func TestOnlyWhatRoundcubePublishesIsReadableByTheWebServer(t *testing.T) {
+	// The line Roundcube's own public_html/ draws, enforced by mode because
+	// under nginx its .htaccess protects nothing. Anything the web server's
+	// group can read, nginx will serve to whoever asks for it by name.
+	for _, tc := range []struct {
+		rel  string
+		dir  bool
+		want os.FileMode
+	}{
+		{"index.php", false, 0o640},
+		{"skins", true, 0o750},
+		{"skins/elastic/styles/styles.min.css", false, 0o640},
+		{"plugins/archive/archive.js", false, 0o640},
+		{"program", true, 0o750}, // walked through to reach program/js
+		{"program/js", true, 0o750},
+		{"program/js/app.min.js", false, 0o640},
+		{"program/resources/blocked.gif", false, 0o640},
+
+		{"program/lib", true, 0o700},
+		{"program/include/rcmail.php", false, 0o600},
+		{"config", true, 0o700},
+		{"config/config.inc.php", false, 0o600},
+		{"config/config.inc.php.sample", false, 0o600},
+		{"logs", true, 0o700},
+		{"logs/errors.log", false, 0o600},
+		{"temp", true, 0o700},
+		{"db", true, 0o700},
+		{"db/roundcube.db", false, 0o600},
+		{"vendor/autoload.php", false, 0o600},
+		{"installer/index.php", false, 0o600},
+		{"bin/initdb.sh", false, 0o600},
+		{"SQL/sqlite.initial.sql", false, 0o600},
+		{"composer.lock", false, 0o600},
+		{"CHANGELOG.md", false, 0o600},
+		// Prefixes are whole segments: "skinsx" is not "skins".
+		{"skinsx", true, 0o700},
+		{"index.php.bak", false, 0o600},
+		{"program/json", true, 0o700},
+	} {
+		if got := webmailMode(tc.rel, tc.dir); got != tc.want {
+			t.Errorf("%s: mode %o, want %o", tc.rel, got, tc.want)
+		}
+	}
+}
+
+func TestTheWebmailDatabaseIsPrivateAndOutsideWhatIsServed(t *testing.T) {
+	config, err := buildWebmailConfig(WebmailRequest{Domain: "webmail.example.com"})
+	if err != nil {
+		t.Fatalf("buildWebmailConfig: %v", err)
+	}
+	// Roundcube chmods the file to the mode in the DSN. 0640 — what this used
+	// to say — is a database the web server's group can read, and so serve.
+	want := "'sqlite:///' . __DIR__ . '/../db/roundcube.db?mode=0600'"
+	if !strings.Contains(string(config), want) {
+		t.Errorf("the database is not the private one in db/:\n%s", config)
+	}
+	if webmailMode("db", true) != 0o700 {
+		t.Error("the database directory is readable by the web server")
+	}
+}
+
+func TestReinstallingWebmailKeepsItsDatabase(t *testing.T) {
+	// Reinstalling is how webmail is upgraded. The application is replaced;
+	// every user's contacts and preferences must not be.
+	base := t.TempDir()
+	root := filepath.Join(base, "public")
+	for path, content := range map[string]string{
+		filepath.Join(root, "index.php"):          "old",
+		filepath.Join(root, "db", "roundcube.db"): "contacts",
+		filepath.Join(base, "new", "index.php"):   "new",
+		filepath.Join(base, "new", "db", ".keep"): "",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := replaceTree(filepath.Join(base, "new"), root, webmailDBDir); err != nil {
+		t.Fatalf("replaceTree: %v", err)
+	}
+
+	for path, want := range map[string]string{
+		filepath.Join(root, "index.php"):          "new",
+		filepath.Join(root, "db", "roundcube.db"): "contacts",
+	} {
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != want {
+			t.Errorf("%s: got %q (%v), want %q", path, got, err, want)
+		}
+	}
+	if _, err := os.Stat(root + ".replaced"); !os.IsNotExist(err) {
+		t.Errorf("the previous install was left behind: %v", err)
+	}
+}
+
+func TestAFirstWebmailInstallHasNoDatabaseToCarry(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "public")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "index.html"), []byte("placeholder"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "new", "db"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceTree(filepath.Join(base, "new"), root, webmailDBDir); err != nil {
+		t.Fatalf("replaceTree: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "db")); err != nil {
+		t.Errorf("the new install's own database directory is gone: %v", err)
+	}
+}
+
 func TestAWebmailValueThatWouldEscapeThePHPStringIsRefused(t *testing.T) {
 	if _, err := buildWebmailConfig(WebmailRequest{
 		Domain: "webmail.example.com'; system('id'); //",
@@ -683,5 +802,87 @@ func TestDovecotIsToldWhichAccountMayHoldMail(t *testing.T) {
 		if !strings.Contains(conf, setting) {
 			t.Errorf("missing %q — mail would be deferred, not delivered", setting)
 		}
+	}
+}
+
+func TestInstalledWebmailIsOwnedTheWaySiteContentIs(t *testing.T) {
+	testsupport.RequireRoot(t)
+
+	// A document root as a website provisions it: the site's account, the
+	// web server's group, 0750. The web server's group is 4242 here, distinct
+	// from the account's own group (5000) that the fake account tool returns.
+	const webGID = 4242
+	base := t.TempDir()
+	root := filepath.Join(base, "public")
+	for _, dir := range []string{root, filepath.Join(root, "skins"), filepath.Join(root, "config")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chown(root, 5000, webGID); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// What an unpack under a 077 umask leaves: owner-only, owned by root.
+	css := filepath.Join(root, "skins", "styles.css")
+	config := filepath.Join(root, "config", "config.inc.php")
+	for _, file := range []string{css, config} {
+		if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A link pointing out of the site. Whatever it names must be left alone.
+	outside := filepath.Join(base, "outside")
+	if err := os.WriteFile(outside, []byte("not the site's"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &Provider{accounts: fakeAccounts{}}
+	req := WebmailRequest{Owner: "web_example", DocumentRoot: root}
+	if err := provider.ownWebmail(context.Background(), req, rootInfo); err != nil {
+		t.Fatalf("ownWebmail: %v", err)
+	}
+
+	check := func(path string, wantMode os.FileMode) {
+		t.Helper()
+		info, err := os.Lstat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stat := info.Sys().(*syscall.Stat_t)
+		if stat.Uid != 5000 || stat.Gid != webGID {
+			t.Errorf("%s is %d:%d, want 5000:%d - the web server reads site content through its group",
+				path, stat.Uid, stat.Gid, webGID)
+		}
+		if wantMode != 0 && info.Mode().Perm() != wantMode {
+			t.Errorf("%s has mode %o, want %o", path, info.Mode().Perm(), wantMode)
+		}
+	}
+	check(root, 0o750)
+	check(filepath.Join(root, "skins"), 0o750)
+	check(css, 0o640)
+	check(filepath.Join(root, "config"), 0o700)
+	check(config, 0o600)
+	check(link, 0)
+
+	info, err := os.Stat(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := info.Sys().(*syscall.Stat_t)
+	if stat.Uid != 0 || info.Mode().Perm() != 0o644 {
+		t.Fatalf("the file a link points to was changed (%d, %o): chown or chmod followed the link",
+			stat.Uid, info.Mode().Perm())
 	}
 }

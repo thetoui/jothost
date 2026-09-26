@@ -301,6 +301,28 @@ Roundcube's own installer is disabled in the generated configuration. It is a pa
 that can rewrite that configuration and connect to arbitrary hosts, and leaving it
 reachable is how a webmail installation becomes somebody else's.
 
+**Only what Roundcube publishes is served.** Roundcube ships `public_html/` so a
+web root can be exactly that: the entry point, `skins/`, `plugins/`, `program/js/`
+and `program/resources/`. A website's document root is fixed by the website, so
+the panel draws the same line with file modes instead. Those paths belong to the
+site's account and the web server's group, like any site content; everything else
+— `config/`, `logs/`, `temp/`, `vendor/`, `installer/`, `SQL/`, `bin/` and the
+database — is the account's alone (0700 directories, 0600 files). nginx cannot
+read what it has no permission to, and the `.php` location's `try_files $uri =404`
+means it cannot hand PHP a script it cannot see; PHP runs as the account and reads
+all of it. Roundcube's `.htaccess` rules would do this under Apache and protect
+nothing under nginx.
+
+The SQLite database lives in its own private `db/` directory with mode 0600, and
+**reinstalling carries it over** — reinstalling is how webmail is upgraded, and it
+replaces the application, not every user's contacts and preferences.
+
+Webmail needs PHP's SQLite PDO driver. The installer's PHP includes it
+(`php-sqlite3`, `php83-pdo_sqlite`, `php-pdo`); a PHP without it answers every
+webmail request with a 500 and `Class "PDO" not found` in the site's PHP log.
+`tests/integration/webmail_serving.sh` installs webmail into a live site, loads the
+login page, and checks from outside that nothing but the published paths is served.
+
 ---
 
 ## 10. What running it found
@@ -372,6 +394,10 @@ every message in them.
 - **Webmail uses SQLite** for its own contacts and preferences. That is officially
   supported and right for a single host; a large installation would want MySQL,
   and this panel does not offer it.
+- **Upgrading webmail does not migrate its schema.** The database is carried
+  across a reinstall, but a future Roundcube release with schema changes will need
+  `bin/updatedb.sh` run as part of that upgrade. 1.6.9 is the only release the
+  panel has installed, so no upgrade has needed one yet.
 - **Mail is not backed up by Phase 14.** Maildirs are not in the backup subjects,
   so the messages on this host are protected by nothing the panel does. This is
   the most significant gap in the phase.

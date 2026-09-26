@@ -18,13 +18,16 @@ vi.mock('@monaco-editor/react', () => ({
     value,
     onChange,
     options,
+    theme,
   }: {
     value: string;
     onChange: (value: string | undefined) => void;
     options?: { readOnly?: boolean };
+    theme?: string;
   }) => (
     <textarea
       aria-label="Editor"
+      data-theme={theme}
       value={value}
       readOnly={options?.readOnly ?? false}
       onChange={(event) => onChange(event.target.value)}
@@ -139,6 +142,19 @@ describe('EditorPage', () => {
 
     expect(await screen.findByRole('textbox', { name: 'Editor' })).toHaveValue('<?php echo 1;');
     expect(screen.getByRole('tablist', { name: 'Open files' })).toBeInTheDocument();
+  });
+
+  it('draws the editor in the dark theme the rest of the panel uses', async () => {
+    const user = userEvent.setup();
+    globalThis.fetch = mockFetch({ profile: ['file.read', 'file.write'] });
+    renderWithProviders(<EditorPage />);
+
+    await user.click(await screen.findByRole('button', { name: /index\.php/ }));
+
+    expect(await screen.findByRole('textbox', { name: 'Editor' })).toHaveAttribute(
+      'data-theme',
+      'vs-dark',
+    );
   });
 
   it('marks a tab unsaved once it is edited, and saves it', async () => {

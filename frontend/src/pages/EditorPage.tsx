@@ -246,6 +246,10 @@ function ActiveEditor({ tab, readOnly, onChange }: ActiveEditorProps) {
   return (
     <Editor
       height="28rem"
+      // The panel is dark throughout (color-scheme: dark); Monaco's default
+      // is its light theme, which left one white rectangle in the middle of
+      // an otherwise dark page.
+      theme="vs-dark"
       path={tab.path}
       language={tab.language}
       value={tab.content}

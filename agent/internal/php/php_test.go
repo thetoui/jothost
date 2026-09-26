@@ -3,6 +3,7 @@ package php_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -317,6 +318,91 @@ func TestRenderPoolTogglesOPcache(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "opcache.enable] = off") {
 		t.Fatalf("opcache was not turned off:\n%s", rendered)
+	}
+}
+
+func TestAnAddedPHPVersionComesWithWhatApplicationsNeed(t *testing.T) {
+	// The FPM package alone is an interpreter WordPress fails on at its first
+	// database call, and webmail answers every request with a 500 on.
+	has := func(list []string, want string) bool {
+		for _, pkg := range list {
+			if pkg == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	alpine, ok := php.ExtensionPackagesFor("8.3", php.ManagerAPK)
+	if !ok {
+		t.Fatal("no extensions for PHP 8.3 under apk")
+	}
+	for _, want := range []string{"php83-pdo_mysql", "php83-pdo_sqlite", "php83-mysqli",
+		"php83-dom", "php83-mbstring", "php83-intl", "php83-gd", "php83-zip", "php83-opcache"} {
+		if !has(alpine, want) {
+			t.Errorf("apk: %s is missing from %v", want, alpine)
+		}
+	}
+
+	debian, ok := php.ExtensionPackagesFor("8.3", php.ManagerAPT)
+	if !ok {
+		t.Fatal("no extensions for PHP 8.3 under apt")
+	}
+	for _, want := range []string{"php8.3-mysql", "php8.3-sqlite3", "php8.3-xml",
+		"php8.3-mbstring", "php8.3-intl", "php8.3-gd", "php8.3-zip", "php8.3-opcache"} {
+		if !has(debian, want) {
+			t.Errorf("apt: %s is missing from %v", want, debian)
+		}
+	}
+
+	// Every name is a plain package name: these become arguments to a package
+	// manager running as root.
+	name := regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]{0,63}$`)
+	for _, pkg := range append(alpine, debian...) {
+		if !name.MatchString(pkg) {
+			t.Errorf("%q is not a plain package name", pkg)
+		}
+	}
+}
+
+func TestOPcacheIsNotRequestedWhereItIsPartOfPHP(t *testing.T) {
+	// From 8.5 OPcache is built in and the package no longer exists; asking
+	// for it fails the whole install ("Unable to locate package
+	// php8.5-opcache", checked against the Sury repository).
+	packages, ok := php.ExtensionPackagesFor("8.5", php.ManagerAPT)
+	if !ok {
+		t.Fatal("no extensions for PHP 8.5")
+	}
+	for _, pkg := range packages {
+		if strings.Contains(pkg, "opcache") {
+			t.Fatalf("8.5 asks for %s, which does not exist", pkg)
+		}
+	}
+}
+
+func TestPHP7GetsItsSeparateJSONPackage(t *testing.T) {
+	packages, _ := php.ExtensionPackagesFor("7.4", php.ManagerAPT)
+	found := false
+	for _, pkg := range packages {
+		found = found || pkg == "php7.4-json"
+	}
+	if !found {
+		t.Fatalf("PHP 7.4 was installed without JSON: %v", packages)
+	}
+	eight, _ := php.ExtensionPackagesFor("8.3", php.ManagerAPT)
+	for _, pkg := range eight {
+		if strings.HasSuffix(pkg, "-json") {
+			t.Fatalf("PHP 8 asks for %s, which is part of the core", pkg)
+		}
+	}
+}
+
+func TestAnInvalidVersionProducesNoExtensionPackages(t *testing.T) {
+	if _, ok := php.ExtensionPackagesFor("8.3 --allow-untrusted", php.ManagerAPK); ok {
+		t.Fatal("an invalid version produced package names")
+	}
+	if _, ok := php.ExtensionPackagesFor("8.3", "yum"); ok {
+		t.Fatal("an unknown package manager produced package names")
 	}
 }
 

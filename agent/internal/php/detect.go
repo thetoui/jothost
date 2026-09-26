@@ -269,6 +269,74 @@ func PackageFor(version, manager string) (string, bool) {
 	}
 }
 
+// Extensions a PHP version is installed with, by package manager: the same set
+// the installer gives the host's default PHP (scripts/jothost-installer.sh).
+//
+// A version the panel added used to be the FPM package alone — no PDO, no XML,
+// no mbstring, no intl. The panel offered it for any site, and WordPress on it
+// failed at its first database call; webmail answered every request with a 500.
+// A PHP version in a hosting panel is the interpreter *and* what ordinary
+// applications expect beside it.
+//
+// Each list was checked against the distribution's repositories: Alpine 3.21
+// for 8.2 to 8.4, and Debian 12 with the Sury repository for 7.4 to 8.5.
+var (
+	apkExtensions = []string{
+		"cli", "pdo", "pdo_mysql", "pdo_pgsql", "pdo_sqlite", "mysqli",
+		"mbstring", "xml", "simplexml", "dom", "curl", "zip", "gd", "session",
+		"opcache", "openssl", "fileinfo", "iconv", "phar", "tokenizer", "ctype",
+		"posix", "exif", "intl", "bcmath", "sodium",
+	}
+	aptExtensions = []string{
+		"cli", "mysql", "pgsql", "sqlite3", "mbstring", "xml", "curl", "zip",
+		"gd", "intl", "bcmath", "soap", "opcache",
+	}
+)
+
+// ExtensionPackagesFor returns the extension packages installed alongside a
+// version's FPM package.
+func ExtensionPackagesFor(version, manager string) ([]string, bool) {
+	if err := validate.PHPVersion(version); err != nil {
+		return nil, false
+	}
+
+	var prefix string
+	var names []string
+	switch manager {
+	case ManagerAPK:
+		prefix, names = "php"+validate.PHPVersionCompact(version)+"-", apkExtensions
+	case ManagerAPT:
+		prefix, names = "php"+version+"-", aptExtensions
+		// JSON was its own package before PHP 8 made it part of the core.
+		if !atLeast(version, 8, 0) {
+			names = append(names[:len(names):len(names)], "json")
+		}
+	default:
+		return nil, false
+	}
+
+	packages := make([]string, 0, len(names))
+	for _, name := range names {
+		// OPcache is part of PHP itself from 8.5, and the separate package
+		// no longer exists: asking for it fails the whole install.
+		if name == "opcache" && atLeast(version, 8, 5) {
+			continue
+		}
+		packages = append(packages, prefix+name)
+	}
+	return packages, true
+}
+
+// atLeast reports whether a validated major.minor version is at least the one
+// given.
+func atLeast(version string, major, minor int) bool {
+	var gotMajor, gotMinor int
+	if _, err := fmt.Sscanf(version, "%d.%d", &gotMajor, &gotMinor); err != nil {
+		return false
+	}
+	return gotMajor > major || (gotMajor == major && gotMinor >= minor)
+}
+
 // FormatVersions renders versions for a protocol response.
 func FormatVersions(versions []Version) []map[string]any {
 	out := make([]map[string]any, 0, len(versions))

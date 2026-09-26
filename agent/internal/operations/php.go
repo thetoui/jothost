@@ -61,6 +61,14 @@ func (r *Registry) handlePHPInstall(ctx context.Context, req protocol.Request, r
 	// Already installed is success, not an error: a retried job must converge
 	// rather than fail on its second attempt.
 	if existing, err := r.deps.PHP.Lookup(ctx, version); err == nil {
+		// Still make sure its extensions are there: a version an earlier Agent
+		// installed has the FPM package alone. Not a failure if this cannot be
+		// done — the version may have been installed by hand, outside the
+		// package manager, and it worked before this was asked.
+		if err := r.deps.PHPInstaller.EnsureExtensions(ctx, version, reporterFunc(reporter)); err != nil {
+			r.log.Warn("could not install the extensions of an existing PHP version",
+				"version", version, "error", err.Error())
+		}
 		return map[string]any{
 			"version":         existing.Version,
 			"already_present": true,

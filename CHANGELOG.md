@@ -8,7 +8,36 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ## [Unreleased]
 
+## [0.2.0-rc.1] — 2026-09-26
+
+A release candidate: the first tag to go through the signed-release pipeline,
+installed from its published URL by CI on Debian 12 and Ubuntu 22.04 and 24.04.
+
 ### Added
+
+- **Signed releases and an installer that checks them.** A `v*` tag builds the
+  archive, checks it matches `VERSION`, signs it with Sigstore keyless signing
+  bound to this repository's release workflow, publishes it with its SHA-256,
+  and installs it from its published URL on every supported OS — with a
+  tampered download as a control that must be refused. `get-jothost.sh`
+  verifies the checksum and the signature's identity before it runs anything.
+  `docs/SUPPORT.md` states the supported platforms and the versioning policy.
+- **Webmail from the Mail page.** A Webmail card installs Roundcube into a
+  chosen website, says first that the site's document root is replaced, follows
+  the install's progress, explains a failure, and removes it again. For the site
+  it is on, it says when PHP is off or the site has no certificate — the second
+  would send every mailbox password in the clear.
+- **Stored backups are re-verified on a schedule** (`BACKUP_VERIFY_INTERVAL`,
+  weekly by default). A backup that no longer verifies raises a notification,
+  so bit rot is found by the panel rather than by a restore that fails.
+- **Log rotation.** The installer configures logrotate for the API, the Agent
+  and the Agent's audit log; the Agent reopens its audit log on `SIGHUP`.
+- **A Plesk-style layout.** A persistent sidebar, a Tools & Settings page that
+  gathers every tool by area, a tool search in the header, and breadcrumbs.
+- **The Stage 2 check covers webmail.** `tests/staging/verify.sh --webmail`
+  checks from the public internet that webmail is served only over trusted
+  HTTPS, that plain HTTP redirects, and that none of its private paths is
+  reachable.
 
 - **A capacity harness.** `tests/capacity` (standard library only) drives an
   installed panel through its API and measures the three things a capacity
@@ -91,6 +120,26 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Changed
 
+- **The panel is dark throughout**, on a design system of shared components and
+  tokens; the code editor now uses the dark theme too.
+- **Each person sees only the pages they can open.** The sidebar, Tools &
+  Settings and search are filtered by permission, and someone without the
+  dashboard lands on the first page they can use.
+- **A PHP version the panel installs comes with its extensions** — PDO for
+  MySQL, PostgreSQL and SQLite, XML, mbstring, intl, gd, zip and the rest, the
+  set the installer gives the default PHP. It used to be the FPM package alone,
+  which WordPress failed on at its first database call. Installing a version
+  already present fills in what is missing.
+- **Webmail's install is a queued job**, and webmail is recorded as installed
+  only when it succeeds. It was recorded the moment the host accepted the
+  request, so a failed download left the panel reporting webmail on a site
+  serving nothing.
+- **The audit trail's retention is stated**: indefinite, by design, with a
+  documented purge procedure (`docs/AUDIT.md`).
+- monaco-editor 0.52 to 0.56 and routine frontend updates. Dependabot now holds
+  TypeScript's major version until `typescript-eslint` supports the next one.
+- The S3 backup suite runs against VersityGW, which checks request signatures
+  as AWS does, in place of withdrawn MinIO images.
 - **The frontend's major dependencies are current.** React 18 to 19, Tailwind
   CSS 3 to 4, Vite 6 to 8, Vitest 3 to 5, ESLint 9 to 10, react-router 6 to 7,
   jsdom, lucide-react and the testing libraries all move up a major, having been
@@ -118,6 +167,25 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Fixed
 
+- **Webmail never worked, and would have published its private files once it
+  did.** The installer's PHP on Debian and Alpine had no SQLite driver, so
+  Roundcube answered every request with a 500. With that fixed, its error log,
+  temp files, database and every script in `vendor/` would have been served,
+  because the whole release sat in the web root and nginx ignores Roundcube's
+  `.htaccess`. Only what Roundcube publishes is now readable by the web server,
+  the database lives in a private directory, and reinstalling keeps it.
+- **Long operations were cut off at the connection's write deadline** whatever
+  their own timeout, and large database imports through nginx could fail on its
+  body and proxy limits. Long requests now extend their own deadlines, and the
+  installer's nginx streams imports.
+- **Removing a mailbox, setting its password and every other action that
+  answers 204 was reported as a failure after it had succeeded.**
+- **Certificate renewal skipped the DNS alignment issuance does**, so it could
+  fail a challenge issuance would have repaired. A Let's Encrypt rate limit is
+  now reported as one, with the time it lifts, and a failed renewal carries
+  certbot's explanation rather than "The certificate operation failed".
+- The DNS integration suite could fail after every check had passed, on a race
+  in its own cleanup.
 - **The Agent could not reach PostgreSQL on any installed host.** It connected
   as `postgres` over the Unix socket, peer authentication refused root, and the
   Agent reported PostgreSQL unavailable: customers could not create PostgreSQL
@@ -164,6 +232,11 @@ Ask a binary what it is with `jothost-api version` or `jothost-agent version`.
 
 ### Security
 
+- **Vulnerabilities can be reported privately.** The documentation pointed
+  reporters at a private advisory while that route was switched off on the
+  repository. It is on, `docs/SECURITY.md` links straight to it, and it states
+  the response: acknowledgement within 3 business days, a fix or mitigation for
+  critical and high issues within 30 days, coordinated disclosure.
 - Go 1.23 to 1.26, and `golang.org/x/text`, `pgx` and `go-redis` updated,
   clearing the 35 vulnerabilities `govulncheck` reported. CI now runs
   `govulncheck` over all three modules on every push and pull request.

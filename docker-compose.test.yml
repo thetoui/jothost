@@ -148,55 +148,66 @@ services:
   # It is on the dev stack's network because the Agent is what talks to it, and
   # the Agent runs there.
   #
-  # From quay.io, not Docker Hub. MinIO no longer publishes to Docker Hub and
-  # the Docker Hub tags now refuse to pull, so a machine that had not already
-  # cached this image could not start the backup checks - CI, on its first
-  # run. The same release tags are published on quay.io, where MinIO ships
-  # its images.
-  minio:
-    image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
+  # VersityGW rather than MinIO. MinIO stopped publishing to Docker Hub, then
+  # withdrew its images from quay.io as well: the pinned release answered 401,
+  # and every CI run failed before a single backup check had run. VersityGW is
+  # an Apache-licensed S3 gateway published by Versity, pinned to a release.
+  #
+  # It checks SigV4 signatures properly - a wrong secret is refused with
+  # SignatureDoesNotMatch - so the backup checks still catch a signing bug. A
+  # lenient mock would not. The panel's S3 client uses path-style PUT, GET,
+  # HEAD and DELETE, all of which it serves.
+  s3:
+    image: versity/versitygw:v1.8.0
+    command: ["--port", ":9000", "posix", "/data"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jothost_backup_test}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jothost-backup-test-secret}
-    command: ["server", "/data", "--address", ":9000"]
+      ROOT_ACCESS_KEY: ${S3_TEST_ACCESS_KEY:-jothost_backup_test}
+      ROOT_SECRET_KEY: ${S3_TEST_SECRET_KEY:-jothost-backup-test-secret}
     tmpfs:
       - /data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # Any HTTP answer means it is serving. An anonymous request is refused
+      # with 403, and BusyBox wget exits 1 for that exactly as it does for a
+      # refused connection - so the exit code says nothing, and the check is
+      # whether an HTTP status line came back at all.
+      test: ["CMD-SHELL", "wget -O /dev/null http://127.0.0.1:9000/ 2>&1 | grep -q 'HTTP/1.1'"]
       interval: 3s
       timeout: 3s
       retries: 30
     networks:
       - jothost_default
 
-  # Creates the bucket the checks write into.
+  # Creates the bucket the checks write into, through the S3 API itself.
   #
-  # A separate one-shot container rather than a pre-made directory: MinIO's
-  # on-disk layout is its own business, and a test that depended on it would
-  # break on an upgrade for reasons that had nothing to do with this panel.
-  minio-init:
-    # quay.io for the same reason as minio above.
-    image: quay.io/minio/mc:RELEASE.2024-09-16T17-43-14Z
+  # A separate one-shot container rather than a pre-made directory: the
+  # gateway's on-disk layout is its own business, and a test that depended on
+  # it would break on an upgrade for reasons that had nothing to do with this
+  # panel. head-bucket first, because creating a bucket that exists is an error.
+  s3-init:
+    image: amazon/aws-cli:2.37.4
     depends_on:
-      minio:
+      s3:
         condition: service_healthy
     entrypoint:
       - sh
       - -euc
       - |
-        mc alias set target http://minio:9000 \
-          "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
-        mc mb --ignore-existing target/jothost-backups
+        mkdir -p ~/.aws
+        printf '%s\n' '[default]' 's3 =' '  addressing_style = path' > ~/.aws/config
+        endpoint="--endpoint-url http://s3:9000"
+        aws $$endpoint s3api head-bucket --bucket jothost-backups 2>/dev/null ||
+          aws $$endpoint s3api create-bucket --bucket jothost-backups >/dev/null
         echo "bucket ready"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-jothost_backup_test}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jothost-backup-test-secret}
+      AWS_ACCESS_KEY_ID: ${S3_TEST_ACCESS_KEY:-jothost_backup_test}
+      AWS_SECRET_ACCESS_KEY: ${S3_TEST_SECRET_KEY:-jothost-backup-test-secret}
+      AWS_DEFAULT_REGION: us-east-1
     networks:
       - jothost_default
 
   # A real SMTP server that keeps what it receives, for the Phase 20 checks.
   #
-  # It lives here rather than in the dev stack for the same reason MinIO does:
+  # It lives here rather than in the dev stack for the same reason the S3 service does:
   # it stands in for somebody's mail relay, and a dev stack that ran one
   # permanently would be a container nobody asked for. `make
   # docker-test-notifications` starts it, the checks drive it, and it goes away.

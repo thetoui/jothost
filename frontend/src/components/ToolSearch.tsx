@@ -1,8 +1,9 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
 import { locate, searchDestinations, type Destination } from '@/components/navigation';
+import { useCan } from '@/features/auth/hooks';
 
 /**
  * ToolSearch is the search box in the header: type part of a page's name, or
@@ -20,7 +21,9 @@ export function ToolSearch() {
   const navigate = useNavigate();
   const listId = useId();
 
-  const results = useMemo(() => searchDestinations(query), [query]);
+  const can = useCan();
+  // Only pages this person can open: search should not be a way round the menu.
+  const results = searchDestinations(query, can);
   const showList = open && query.trim() !== '';
   const activeId = showList && results[active] ? `${listId}-option-${active}` : undefined;
 

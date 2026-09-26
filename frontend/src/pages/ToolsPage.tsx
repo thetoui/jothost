@@ -1,6 +1,7 @@
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ToolTile, type ToolTone } from '@/components/ui/ToolTile';
-import { toolGroups } from '@/components/navigation';
+import { toolGroups, visibleGroups } from '@/components/navigation';
+import { useCan } from '@/features/auth/hooks';
 
 /**
  * A hue per group, so the eye can find "the security ones" before it has read
@@ -23,6 +24,8 @@ const groupTones: Record<string, ToolTone> = {
  * reaches any of it by name.
  */
 export function ToolsPage() {
+  const groups = visibleGroups(toolGroups, useCan());
+
   return (
     <div className="space-y-6">
       <header>
@@ -35,7 +38,7 @@ export function ToolsPage() {
       {/* Columns of groups, not one long list: a group is scanned as a unit,
           and three across puts the whole page above the fold on a desktop. */}
       <div className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-        {toolGroups.map((group) => (
+        {groups.map((group) => (
           <Card key={group.title} label={group.title}>
             <CardHeader title={group.title} />
             <ul className="p-2">

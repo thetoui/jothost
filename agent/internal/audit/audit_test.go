@@ -250,3 +250,75 @@ func TestCloseIsIdempotent(t *testing.T) {
 	// Writing after close must not panic; the record still reaches the log.
 	writer.Write(Record{Operation: "x", RequestID: "req_1", Status: StatusSuccess})
 }
+
+func TestReopenFollowsARotation(t *testing.T) {
+	// What logrotate does: rename the live file, then SIGHUP.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	rotated := filepath.Join(dir, "audit.log.1")
+
+	writer, _ := newWriter(t, path)
+	writer.Write(Record{Operation: "before", RequestID: "req_1", Status: StatusSuccess})
+	if err := os.Rename(path, rotated); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+
+	// Control: without a reopen the record follows the open handle into the
+	// rotated file, and nothing appears at the path. That is the bug.
+	writer.Write(Record{Operation: "stale", RequestID: "req_2", Status: StatusSuccess})
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("control: expected no file at %s before reopening, got err=%v", path, err)
+	}
+
+	if err := writer.Reopen(); err != nil {
+		t.Fatalf("Reopen: %v", err)
+	}
+	writer.Write(Record{Operation: "after", RequestID: "req_3", Status: StatusSuccess})
+
+	if got := readRecords(t, rotated); len(got) != 2 || got[0].Operation != "before" || got[1].Operation != "stale" {
+		t.Fatalf("rotated file: want before+stale, got %+v", got)
+	}
+	if got := readRecords(t, path); len(got) != 1 || got[0].Operation != "after" {
+		t.Fatalf("new file: want only the record written after the reopen, got %+v", got)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode := info.Mode().Perm(); mode != defaultMode {
+		t.Fatalf("reopened file mode %o, want %o", mode, defaultMode)
+	}
+}
+
+func TestAFailedReopenKeepsTheOldFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	writer, _ := newWriter(t, path)
+	before := writer.file
+
+	// Something the path can no longer be opened as.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writer.Reopen(); err == nil {
+		t.Fatal("expected reopening onto a directory to fail")
+	}
+	if writer.file != before {
+		t.Fatal("a failed reopen dropped the open file; every record until a restart would be lost")
+	}
+}
+
+func TestReopenWithoutAFileIsANoOp(t *testing.T) {
+	var buf bytes.Buffer
+	writer, err := NewWriter(Options{Log: logger.New(logger.Options{Service: "agent", Output: &buf})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Reopen(); err != nil {
+		t.Fatalf("Reopen with no path: %v", err)
+	}
+}

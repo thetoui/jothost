@@ -53,6 +53,7 @@ type Writer struct {
 	mu   sync.Mutex
 	file io.WriteCloser
 	path string
+	mode os.FileMode
 }
 
 // Options configures a Writer.
@@ -100,7 +101,40 @@ func NewWriter(opts Options) (*Writer, error) {
 
 	w.file = file
 	w.path = opts.Path
+	w.mode = mode
 	return w, nil
+}
+
+// Reopen closes the audit log and opens it again at the same path.
+//
+// It is what makes the log rotatable. The file is held open for the Agent's
+// whole life, so once logrotate renames it, every record would go on landing
+// in the renamed file and the new one would stay empty; logrotate sends
+// SIGHUP after renaming, and the Agent calls this.
+//
+// The new file is opened before the old one is closed, and a failure keeps
+// the old handle: records going to a rotated file are still records, where a
+// failed reopen that had already closed the old file would lose every one
+// until the Agent restarted.
+func (w *Writer) Reopen() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.path == "" {
+		return nil
+	}
+	file, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, w.mode) //nolint:gosec // path comes from validated configuration
+	if err != nil {
+		return fmt.Errorf("reopen audit log %s: %w", w.path, err)
+	}
+	old := w.file
+	w.file = file
+	if old != nil {
+		if err := old.Close(); err != nil {
+			return fmt.Errorf("close the rotated audit log: %w", err)
+		}
+	}
+	return nil
 }
 
 // Path returns the audit log location, or "" when only the logger is used.

@@ -1,7 +1,10 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { mailApi } from '@/features/mail/api';
+import { jobsApi } from '@/features/websites/api';
 import type {
+  JobStatus,
   MailAliasInput,
   MailAutoresponderInput,
   MailDomainInput,
@@ -198,13 +201,38 @@ export function useDeleteAlias() {
   });
 }
 
-/** useInstallWebmail unpacks webmail into a website. */
+/**
+ * useInstallWebmail queues webmail's installation into a website.
+ *
+ * It answers with a job: the download and unpack run on the host after the
+ * request has returned, and webmail is recorded only if they succeed.
+ */
 export function useInstallWebmail() {
-  const invalidate = useInvalidateMail();
   return useMutation({
     mutationFn: (websiteID: string) => mailApi.installWebmail(websiteID),
-    onSuccess: invalidate,
   });
+}
+
+const FINISHED: ReadonlySet<JobStatus> = new Set(['SUCCESS', 'FAILED', 'CANCELLED']);
+
+/**
+ * useWebmailJob follows a webmail install to the end, and refreshes the mail
+ * overview when it gets there — the overview is where the result is recorded.
+ */
+export function useWebmailJob(jobID: string | undefined) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: [...mailKeys.all, 'webmail-job', jobID ?? ''],
+    queryFn: ({ signal }) => jobsApi.get(jobID as string, signal),
+    enabled: Boolean(jobID),
+    refetchInterval: (current) =>
+      current.state.data && FINISHED.has(current.state.data.status) ? false : 3_000,
+  });
+  const finished = query.data !== undefined && FINISHED.has(query.data.status);
+  useEffect(() => {
+    if (finished) void queryClient.invalidateQueries({ queryKey: mailKeys.overview() });
+  }, [finished, queryClient]);
+  return query;
 }
 
 /** useRemoveWebmail deletes webmail from its document root. */

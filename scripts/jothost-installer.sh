@@ -499,18 +499,18 @@ install_dependencies() {
   # moved the trouble to a place where the error message is somebody else's.
   case "$OS_FAMILY" in
     debian)
-      base="nginx postgresql redis-server certbot openssl ca-certificates curl cron"
+      base="nginx postgresql redis-server certbot openssl ca-certificates curl cron logrotate"
       php="php-fpm php-cli php-mysql php-pgsql php-mbstring php-xml php-curl php-zip
            php-gd php-intl php-bcmath php-soap php-opcache" ;;
     alpine)
-      base="nginx postgresql postgresql-contrib redis certbot openssl ca-certificates curl openrc dcron"
+      base="nginx postgresql postgresql-contrib redis certbot openssl ca-certificates curl openrc dcron logrotate"
       php="php83-fpm php83-cli php83-pdo php83-pdo_mysql php83-pdo_pgsql php83-mysqli
            php83-mbstring php83-xml php83-simplexml php83-dom php83-curl php83-zip
            php83-gd php83-session php83-opcache php83-openssl php83-fileinfo
            php83-iconv php83-phar php83-tokenizer php83-ctype php83-posix
            php83-exif php83-intl php83-bcmath php83-sodium" ;;
     rhel)
-      base="nginx postgresql-server redis certbot openssl ca-certificates curl cronie"
+      base="nginx postgresql-server redis certbot openssl ca-certificates curl cronie logrotate"
       php="php-fpm php-cli php-mysqlnd php-pgsql php-mbstring php-xml php-gd
            php-intl php-bcmath php-soap php-opcache" ;;
   esac
@@ -1510,6 +1510,54 @@ service_reload() {
   return 0
 }
 
+# write_log_rotation keeps the panel's own log files from growing forever.
+#
+# The Agent's audit trail was appended to for the life of the host with nothing
+# ever rotating it. It is held open by the Agent, so it is renamed and the
+# Agent told to reopen it with SIGHUP (it reopens rather than exiting, which is
+# Go's default for an unhandled SIGHUP). The OpenRC and no-init logs are the
+# services' own output, which cannot be reopened, so they are copied and
+# truncated instead. On systemd hosts the services log to journald, which
+# rotates by itself.
+#
+# "su root $PANEL_GROUP" is required, not decoration: the log directory is
+# group-writable by the panel's group, and logrotate refuses to touch a file
+# in a directory writable by a group other than root's without it.
+#
+# The audit trail is kept for 52 weeks, compressed. The panel's database keeps
+# its own audit trail separately; this file is the Agent's.
+write_log_rotation() {
+  [ -d /etc/logrotate.d ] || mkdir -p /etc/logrotate.d
+  cat > /etc/logrotate.d/jothost <<EOF
+# Written by the JotHost Panel installer. Removed by install.sh uninstall.
+$LOG_DIR/agent-audit.log {
+    su root $PANEL_GROUP
+    weekly
+    rotate 52
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root $PANEL_GROUP
+    postrotate
+        pkill -HUP -x jothost-agent >/dev/null 2>&1 || true
+    endscript
+}
+
+$LOG_DIR/agent.log $LOG_DIR/api.log $LOG_DIR/postgres.log {
+    su root $PANEL_GROUP
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+EOF
+  chmod 0644 /etc/logrotate.d/jothost
+}
+
 install_services() {
   step "Installing the panel's services"
 
@@ -1522,6 +1570,8 @@ install_services() {
     openrc)  write_openrc_units;  ok "OpenRC init scripts written" ;;
     none)    warn "no init system on this host: the services cannot be supervised or started at boot" ;;
   esac
+
+  write_log_rotation && ok "log rotation configured"
 
   if [ "$INIT_RUNNING" = 1 ]; then
     case "$INIT_SYSTEM" in
@@ -1902,6 +1952,7 @@ do_uninstall() {
   esac
   pkill -f "$API_BIN" >/dev/null 2>&1 || true
   pkill -f "$AGENT_BIN" >/dev/null 2>&1 || true
+  rm -f /etc/logrotate.d/jothost
   ok "services stopped and removed"
 
   step "Removing the panel's own files"

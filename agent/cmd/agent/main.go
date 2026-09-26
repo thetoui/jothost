@@ -191,6 +191,14 @@ func run(cfg config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// SIGHUP reopens the audit log: it is what logrotate sends once it has
+	// renamed the file. Unhandled, Go's default for SIGHUP is to exit, so the
+	// first rotation would have taken the Agent down with it.
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
+	go reopenOnHangup(ctx, hup, auditWriter, log)
+
 	serveErr := srv.Serve(ctx)
 
 	// Running jobs are cancelled and drained after the listener stops, so a
@@ -205,6 +213,23 @@ func run(cfg config.Config) error {
 		return serveErr
 	}
 	return nil
+}
+
+// reopenOnHangup reopens the audit log each time a SIGHUP arrives, until ctx
+// ends.
+func reopenOnHangup(ctx context.Context, hup <-chan os.Signal, w *audit.Writer, log *slog.Logger) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-hup:
+			if err := w.Reopen(); err != nil {
+				log.Error("could not reopen the audit log after SIGHUP", logger.KeyError, err.Error())
+				continue
+			}
+			log.Info("audit log reopened", "path", w.Path())
+		}
+	}
 }
 
 // buildRegistry assembles the operation registry and its collaborators.

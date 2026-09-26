@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jothost/panel/api/internal/httpx"
 	"github.com/jothost/panel/api/internal/jobs"
 	"github.com/jothost/panel/api/internal/websites"
 	"github.com/jothost/panel/shared/logger"
@@ -143,7 +144,12 @@ func (r *Renewer) Sweep(ctx context.Context) int {
 
 		// Actor is empty: this was not a person's request, and attributing it
 		// to one in the audit trail would be a lie.
-		job, err := r.service.queueRenewal(ctx, site, certificate, Actor{})
+		//
+		// A request id of its own, though: renewal re-aligns DNS first, and
+		// publishing a zone goes to the Agent, which refuses a request without
+		// one. Without it the record would be written and never served.
+		renewCtx := httpx.ContextWithRequestID(ctx, httpx.NewRequestID())
+		job, _, err := r.service.queueRenewal(renewCtx, site, certificate, Actor{})
 		if err != nil {
 			r.log.Error("failed to queue an automatic renewal",
 				"website_id", certificate.WebsiteID, logger.KeyError, err.Error())

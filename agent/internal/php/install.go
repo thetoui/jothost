@@ -134,14 +134,52 @@ func (i *Installer) Install(ctx context.Context, version string, report func(int
 		return fmt.Errorf("%w: no package name is known for PHP %s under %s",
 			ErrInstallFailed, version, i.manager)
 	}
+	extensions, ok := ExtensionPackagesFor(version, i.manager)
+	if !ok {
+		return fmt.Errorf("%w: no extension packages are known for PHP %s under %s",
+			ErrInstallFailed, version, i.manager)
+	}
 
-	progress(report, 20, "Installing "+pkg)
+	progress(report, 20, "Installing "+pkg+" and its extensions")
 
-	args, err := i.installArgs(pkg)
-	if err != nil {
+	// One transaction: a version is installed with its extensions or not at
+	// all, never as an interpreter that the next WordPress install finds
+	// missing half of what it needs.
+	if err := i.run(ctx, append([]string{pkg}, extensions...)...); err != nil {
 		return err
 	}
 
+	progress(report, 90, "Verifying the installation")
+	return nil
+}
+
+// EnsureExtensions installs whatever of a version's extension set is missing.
+//
+// For a version already on the host. The package manager skips what is
+// present, so on a host that already has everything this changes nothing; on
+// one where an earlier Agent installed only the FPM package, it is the repair.
+func (i *Installer) EnsureExtensions(ctx context.Context, version string, report func(int, string)) error {
+	if err := validate.PHPVersion(version); err != nil {
+		return err
+	}
+	if !i.Available() {
+		return ErrNoPackageManager
+	}
+	extensions, ok := ExtensionPackagesFor(version, i.manager)
+	if !ok {
+		return fmt.Errorf("%w: no extension packages are known for PHP %s under %s",
+			ErrInstallFailed, version, i.manager)
+	}
+	progress(report, 40, "Checking PHP "+version+"'s extensions")
+	return i.run(ctx, extensions...)
+}
+
+// run installs packages whose names came from this package's tables.
+func (i *Installer) run(ctx context.Context, packages ...string) error {
+	args, err := i.installArgs(packages...)
+	if err != nil {
+		return err
+	}
 	result, err := i.runner.Run(ctx, managerCommand(i.manager), args...)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInstallFailed, err)
@@ -150,8 +188,6 @@ func (i *Installer) Install(ctx context.Context, version string, report func(int
 		return fmt.Errorf("%w: %s", ErrInstallFailed,
 			strings.TrimSpace(firstNonEmpty(result.Stderr, result.Stdout)))
 	}
-
-	progress(report, 90, "Verifying the installation")
 	return nil
 }
 
@@ -261,17 +297,26 @@ func validatePackageName(pkg string) error {
 
 // installArgs builds the argument vector for an install.
 //
-// The package name is the only variable, and it came from a table keyed by a
-// validated version — never from the request text.
-func (i *Installer) installArgs(pkg string) ([]string, error) {
+// The package names are the only variables, and they came from tables keyed by
+// a validated version — never from the request text. Each is checked again, so
+// nothing that looks like an option reaches a package manager running as root.
+func (i *Installer) installArgs(packages ...string) ([]string, error) {
+	if len(packages) == 0 {
+		return nil, fmt.Errorf("%w: no packages to install", ErrInstallFailed)
+	}
+	for _, pkg := range packages {
+		if err := validatePackageName(pkg); err != nil {
+			return nil, err
+		}
+	}
 	switch i.manager {
 	case ManagerAPK:
-		return []string{"add", "--no-cache", pkg}, nil
+		return append([]string{"add", "--no-cache"}, packages...), nil
 	case ManagerAPT:
 		// -y because there is no terminal to answer a prompt, and
 		// --no-install-recommends to avoid pulling a web server or a mail
 		// transport agent onto a host that already has its own.
-		return []string{"install", "-y", "--no-install-recommends", pkg}, nil
+		return append([]string{"install", "-y", "--no-install-recommends"}, packages...), nil
 	default:
 		return nil, ErrNoPackageManager
 	}
